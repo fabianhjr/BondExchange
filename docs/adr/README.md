@@ -18,4 +18,5 @@ Alternatives considered sections.
 
 - [ADR-0001: Use devenv for project dependencies and tasks](0001-use-devenv.md)
 - [ADR-0002: Use TLA+ for behavioral system specification](0002-use-tla-plus.md)
-
+- [ADR-0003: Use append-only PostgreSQL facts for offers and purchases](0003-use-append-only-postgresql-facts.md)
+- [ADR-0004: Use dbmate for database migrations](0004-use-dbmate-for-database-migrations.md)

@@ -1,0 +1,108 @@
+name: Go quality
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/go-quality.yml"
+      - ".gremlins.yaml"
+      - "cmd/**"
+      - "db/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "devenv.nix"
+      - "devenv.yaml"
+      - "devenv.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/go-quality.yml"
+      - ".gremlins.yaml"
+      - "cmd/**"
+      - "db/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "devenv.nix"
+      - "devenv.yaml"
+      - "devenv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: Coverage (minimum 90%)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure devenv binary cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+
+      - name: Run coverage gate
+        env:
+          CI: "true"
+        run: devenv tasks run go:coverage
+
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-coverage
+          path: .artifacts/coverage.out
+          if-no-files-found: ignore
+
+  mutation:
+    name: Mutation efficacy (minimum 80%)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure devenv binary cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+
+      - name: Run mutation gate
+        env:
+          CI: "true"
+        run: devenv tasks run go:mutation
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-mutation-report
+          path: .artifacts/mutation-report.json
+          if-no-files-found: ignore

@@ -1,0 +1,37 @@
+silent: false
+unleash:
+  integration: true
+  dry-run: false
+  output: ".artifacts/mutation-report.json"
+  workers: 1
+  test-cpu: 1
+  timeout-coefficient: 3
+  exclude-files:
+    - "^cmd/"
+  threshold:
+    efficacy: 80
+    mutant-coverage: 0
+
+mutants:
+  arithmetic-base:
+    enabled: true
+  conditionals-boundary:
+    enabled: true
+  conditionals-negation:
+    enabled: true
+  increment-decrement:
+    enabled: true
+  invert-assignments:
+    enabled: false
+  invert-bitwise:
+    enabled: false
+  invert-bwassign:
+    enabled: false
+  invert-negatives:
+    enabled: true
+  invert-logical:
+    enabled: false
+  invert-loopctrl:
+    enabled: false
+  remove-self-assignments:
+    enabled: false

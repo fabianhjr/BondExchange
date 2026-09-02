@@ -2,16 +2,18 @@
 EXTENDS BondExchangeActions
 
 (***************************************************************************)
-(* Top-level specification for buying one existing sale offer by its ID.   *)
+(* Top-level specification for one user buying one existing sale offer.    *)
 (***************************************************************************)
 
 Init ==
   /\ saleOffers \in SUBSET SaleOffer
   /\ saleOffers # {}
   /\ UniqueSaleOfferIds
+  /\ purchases = {}
 
 Next ==
-  \E offerId \in SaleOfferIds : Buy(offerId)
+  \E buyer \in Users :
+    \E offerId \in SaleOfferIds : Buy(buyer, offerId)
 
 Spec == Init /\ [][Next]_vars
 

@@ -7,9 +7,9 @@ EXTENDS FiniteSets, Naturals, Sequences, TLC
 
 CONSTANTS Users, Bonds, SaleOfferIds, Prices, CurrencyCodes
 
-VARIABLE saleOffers
+VARIABLES saleOffers, purchases
 
-vars == <<saleOffers>>
+vars == <<saleOffers, purchases>>
 
 UppercaseAlphaNumericCharacters == {
   "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
@@ -45,18 +45,37 @@ SaleOffer == [
   currency : CurrencyCodes
 ]
 
+Purchase == [
+  offer : SaleOffer,
+  buyer : Users
+]
+
 SaleOfferIdsOf(offers) == {offer.id : offer \in offers}
 
 OffersWithId(offerId) ==
   {offer \in saleOffers : offer.id = offerId}
 
-TypeOK == saleOffers \subseteq SaleOffer
+PurchasedOfferIdsOf(completedPurchases) ==
+  {purchase.offer.id : purchase \in completedPurchases}
+
+TypeOK ==
+  /\ saleOffers \subseteq SaleOffer
+  /\ purchases \subseteq Purchase
 
 UniqueSaleOfferIds ==
   Cardinality(SaleOfferIdsOf(saleOffers)) = Cardinality(saleOffers)
 
-Buy(offerId) ==
+UniquePurchasedOfferIds ==
+  Cardinality(PurchasedOfferIdsOf(purchases)) = Cardinality(purchases)
+
+ActiveAndPurchasedOffersAreDisjoint ==
+  (SaleOfferIdsOf(saleOffers) \cap PurchasedOfferIdsOf(purchases)) = {}
+
+Buy(buyer, offerId) ==
+  /\ buyer \in Users
   /\ Cardinality(OffersWithId(offerId)) = 1
-  /\ saleOffers' = saleOffers \ OffersWithId(offerId)
+  /\ \E offer \in OffersWithId(offerId) :
+       /\ saleOffers' = saleOffers \ {offer}
+       /\ purchases' = purchases \cup {[offer |-> offer, buyer |-> buyer]}
 
 =============================================================================

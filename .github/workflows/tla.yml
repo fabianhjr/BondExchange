@@ -52,4 +52,4 @@ jobs:
       - name: Check specification
         env:
           CI: "true"
-        run: devenv test
+        run: devenv tasks run spec:check

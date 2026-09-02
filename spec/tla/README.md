@@ -2,8 +2,8 @@
 
 This directory contains a deliberately small marketplace model:
 
-- `BondExchangeActions.tla` defines the domain, sale-offer state, validation,
-  and buying action.
+- `BondExchangeActions.tla` defines the domain, active sale offers, completed
+  purchases, validation, and buying action.
 - `BondExchange.tla` defines the possible initial sale books and composes the
   buying action into the temporal specification.
 - `BondExchange.cfg` provides a finite instance for exhaustive TLC checking.
@@ -15,6 +15,7 @@ This directory contains a deliberately small marketplace model:
   is between 3 and 40 characters, inclusive.
 - A sale offer has a unique ID, a seller, a bond, a positive price, and one
   currency code.
+- A completed purchase relates the purchased offer to the user who bought it.
 
 The initial state represents any non-empty, well-formed set of sale offers
 within the configured bounds. Offer IDs must be unique within that set.
@@ -26,10 +27,14 @@ identifiers and verifies that their stored representation is uppercase.
 
 ## Behavior
 
-`Buy(offerId)` is the only state-changing action. It is enabled only when
-exactly one existing sale offer has the requested ID. The action atomically
-removes that one offer. An empty sale book is a valid terminal state, so the
-TLC configuration does not treat it as a deadlock error.
+`Buy(buyer, offerId)` is the only state-changing action. It is enabled only
+when the buyer is a user and exactly one active sale offer has the requested
+ID. The action atomically removes that offer from the active sale book and
+records a completed purchase containing the unchanged offer and its buyer. An
+empty active sale book is a valid terminal state, so the TLC configuration
+does not treat it as a deadlock error.
+
+The model does not prohibit a seller from buying their own offer.
 
 There are intentionally no buy offers, matching engine, balances, holdings,
 partial fills, order publication, ownership transfer, or settlement process in
@@ -37,14 +42,16 @@ this model.
 
 ## Verification
 
-TLC checks that every reachable sale-offer set is well formed and that offer
-IDs remain unique:
+TLC checks that every reachable active sale-offer and completed-purchase set
+is well formed, that offer IDs remain unique, and that an offer cannot be both
+active and purchased:
 
 ```console
 devenv tasks run spec:check
 ```
 
-`devenv test` includes the same check and is the command run by CI.
+`devenv test` includes the same check. The specification CI workflow invokes
+the focused `spec:check` task directly.
 
 When the domain grows, introduce only behavior required by an explicit system
 decision and add its properties to both the TLA+ module and TLC configuration.
