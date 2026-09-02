@@ -1,0 +1,55 @@
+name: TLA+ specification
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tla.yml"
+      - "devenv.nix"
+      - "devenv.yaml"
+      - "devenv.lock"
+      - "spec/tla/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/tla.yml"
+      - "devenv.nix"
+      - "devenv.yaml"
+      - "devenv.lock"
+      - "spec/tla/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tla-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  model-check:
+    name: TLC model check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure devenv binary cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+
+      - name: Check specification
+        env:
+          CI: "true"
+        run: devenv test
