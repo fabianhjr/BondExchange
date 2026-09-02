@@ -30,6 +30,14 @@ deployment run `dbmate up` as a separate step using an identity authorized for
 schema changes. Tests depend on a devenv migration task before accessing
 PostgreSQL.
 
+Every forward migration must preserve existing facts and remain compatible
+with the previously deployed application version. Use separate
+expand/backfill/contract steps: add compatible structures first, backfill
+without destroying the source data, and contract only redundant compatibility
+structures after old application versions can no longer run. Preserve all
+unique data and prefer corrective forward migrations over destructive
+rollback.
+
 ## Consequences
 
 - Repeated migration runs are safe because dbmate skips recorded versions.
@@ -39,8 +47,10 @@ PostgreSQL.
   identity separate from the runtime application identity.
 - Applied migration files must be immutable; corrections require a new
   migration.
-- Rollbacks are explicit SQL and remain an operator decision, particularly for
-  destructive changes to append-only facts.
+- Compatibility may require temporary duplicate structures or dual-read/write
+  behavior across deployments.
+- A down migration must fail rather than discard domain facts when no lossless
+  reversal exists.
 
 ## Alternatives considered
 

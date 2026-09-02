@@ -83,4 +83,9 @@ REVOKE UPDATE, DELETE, TRUNCATE
 
 -- migrate:down
 
-DROP SCHEMA bond_exchange CASCADE;
+DO $$
+BEGIN
+  RAISE EXCEPTION
+    'the initial append-only schema has no lossless down migration; roll forward';
+END;
+$$;

@@ -37,6 +37,13 @@ devenv tasks run db:migrate
 Create later migrations with `dbmate new <description>`. Do not edit an
 already-applied migration; add a new timestamp-versioned migration instead.
 
+Forward migrations must be lossless and compatible with the previously
+deployed application. Use separate expand, backfill, and contract migrations:
+introduce compatible structures first, preserve source data during backfill,
+and contract only redundant compatibility structures after old application
+versions can no longer run. Preserve all unique data and prefer a corrective
+forward migration when a lossless rollback is not possible.
+
 Statement-level triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` on domain
 fact tables as defense in depth. Production runtime roles should not own the
 schema and should be granted only the `SELECT` and `INSERT` privileges their

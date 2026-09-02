@@ -26,6 +26,29 @@
 - Omit generated files, local runtime state, and low-level implementation
   details.
 
+## Architectural guardrails
+
+- Keep TLA+ focused on domain behavior. Do not model HTTP, SQL, deployment, or
+  input-canonicalization mechanics; update the specification when domain
+  behavior or invariants change.
+- Preserve the Go dependency direction: `cmd/server` performs composition;
+  HTTP and PostgreSQL adapters depend on `internal/exchange`, never the reverse.
+- Keep server instances stateless. Cross-instance buy serialization belongs to
+  PostgreSQL's one-purchase-per-offer constraint, not process-local locking.
+- Keep domain-fact tables append-only. Corrections or reversals require new
+  facts and review of the specification and ADRs.
+- Manage schema changes with dbmate. Add timestamped migrations and never
+  rewrite an applied migration or migrate during application startup.
+- Make forward migrations lossless and backward compatible: the previously
+  deployed application must continue to work after each migration. Use
+  expand/backfill/contract steps, preserve all unique data, and contract only
+  redundant compatibility structures after old application versions can no
+  longer run. Do not use down migrations to discard domain facts; prefer a
+  corrective forward migration.
+- Use devenv tasks for project commands. Run focused checks while iterating and
+  `devenv test` before handing off cross-cutting changes; do not weaken quality
+  gates without documenting the decision.
+
 ## Project map
 
 | Area | Responsibility |
