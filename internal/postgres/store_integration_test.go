@@ -13,6 +13,7 @@ import (
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 )
 
 const testDatabaseEnvironment = "BOND_EXCHANGE_TEST_DATABASE_URL"
@@ -71,6 +72,9 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 	}
 	if purchase.BuyerID == "" || purchase.BoughtAt.IsZero() {
 		t.Fatalf("purchase = %#v", purchase)
+	}
+	if !purchase.Offer.Price.Equal(decimal.RequireFromString("100.25")) {
+		t.Fatalf("purchase price = %s, want 100.25", purchase.Offer.Price)
 	}
 
 	var purchaseCount, offerCount, activeCount int
@@ -156,6 +160,67 @@ func TestDomainFactTablesRejectMutation(t *testing.T) {
 	}
 }
 
+func TestSaleOffersRejectInvalidDecimalPrices(t *testing.T) {
+	pool := openTestPool(t)
+	seller := insertUser(t, pool, "seller")
+	bond := insertBond(t, pool)
+
+	for _, price := range []string{
+		"0",
+		"-0.01",
+		"10000000000",
+		"NaN",
+		"Infinity",
+		"-Infinity",
+	} {
+		_, err := pool.Exec(
+			context.Background(),
+			`INSERT INTO bond_exchange.sale_offers
+			   (id, seller_id, bond_series, price, currency_code)
+			 VALUES ($1, $2, $3, $4::numeric, 'USD')`,
+			exchange.OfferID(uniqueID(t, "invalid-price")),
+			seller,
+			bond,
+			price,
+		)
+		if err == nil {
+			t.Fatalf("price %q was accepted", price)
+		}
+	}
+}
+
+func TestMonetaryAmountDomainHasFixedPrecisionAndScale(t *testing.T) {
+	pool := openTestPool(t)
+
+	var dataType, columnDomain string
+	var precision, scale int
+	if err := pool.QueryRow(context.Background(), `
+SELECT data_type, numeric_precision, numeric_scale
+FROM information_schema.domains
+WHERE domain_schema = 'bond_exchange' AND domain_name = 'monetary_amount'`).Scan(
+		&dataType,
+		&precision,
+		&scale,
+	); err != nil {
+		t.Fatalf("query monetary_amount domain: %v", err)
+	}
+	if dataType != "numeric" || precision != 14 || scale != 4 {
+		t.Fatalf("monetary_amount = %s(%d,%d), want numeric(14,4)", dataType, precision, scale)
+	}
+
+	if err := pool.QueryRow(context.Background(), `
+SELECT domain_name
+FROM information_schema.columns
+WHERE table_schema = 'bond_exchange'
+  AND table_name = 'sale_offers'
+  AND column_name = 'price'`).Scan(&columnDomain); err != nil {
+		t.Fatalf("query sale_offers.price domain: %v", err)
+	}
+	if columnDomain != "monetary_amount" {
+		t.Fatalf("sale_offers.price domain = %q, want monetary_amount", columnDomain)
+	}
+}
+
 func TestStoreReturnsConnectionErrors(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
@@ -217,7 +282,7 @@ func insertOffer(
 		context.Background(),
 		`INSERT INTO bond_exchange.sale_offers
 		   (id, seller_id, bond_series, price, currency_code)
-		 VALUES ($1, $2, $3, 100, 'USD')`,
+		 VALUES ($1, $2, $3, 100.25, 'USD')`,
 		id,
 		seller,
 		bond,

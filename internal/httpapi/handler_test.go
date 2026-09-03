@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fabianhjr/BondExchange/internal/exchange"
+	"github.com/shopspring/decimal"
 )
 
 type applicationStub struct {
@@ -100,7 +101,10 @@ func TestBuyHandler(t *testing.T) {
 func TestActiveOffersHandler(t *testing.T) {
 	t.Parallel()
 
-	application := &applicationStub{offers: []exchange.SaleOffer{{ID: "offer-2"}}}
+	application := &applicationStub{offers: []exchange.SaleOffer{{
+		ID:    "offer-2",
+		Price: decimal.RequireFromString("100.25"),
+	}}}
 	handler := NewHandler(application, healthStub{})
 	response := performRequest(handler, http.MethodGet, "/active-offers?bond=bnd&after=offer-1&limit=25", "")
 	if response.Code != http.StatusOK {
@@ -110,6 +114,9 @@ func TestActiveOffersHandler(t *testing.T) {
 		t.Fatalf("application received bond %q, after %q, limit %d", application.bond, application.after, application.limit)
 	}
 	if !strings.Contains(response.Body.String(), `"id":"offer-2"`) {
+		t.Fatalf("body = %s", response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"price":"100.25"`) {
 		t.Fatalf("body = %s", response.Body.String())
 	}
 

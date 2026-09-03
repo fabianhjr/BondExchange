@@ -66,7 +66,7 @@ func (store *Store) Buy(
 		offerIDValue string
 		sellerID     string
 		bondSeries   string
-		price        int64
+		priceText    string
 		currencyCode string
 		buyerIDValue string
 		boughtAt     time.Time
@@ -75,18 +75,22 @@ func (store *Store) Buy(
 		&offerIDValue,
 		&sellerID,
 		&bondSeries,
-		&price,
+		&priceText,
 		&currencyCode,
 		&buyerIDValue,
 		&boughtAt,
 	)
 	if err == nil {
+		price, parseErr := exchange.ParsePrice(priceText)
+		if parseErr != nil {
+			return exchange.Purchase{}, parseErr
+		}
 		return exchange.Purchase{
 			Offer: exchange.SaleOffer{
 				ID:         exchange.OfferID(offerIDValue),
 				SellerID:   exchange.UserID(sellerID),
 				BondSeries: exchange.BondSeries(bondSeries),
-				Price:      exchange.Price(price),
+				Price:      price,
 				Currency:   exchange.CurrencyCode(currencyCode),
 			},
 			BuyerID:  exchange.UserID(buyerIDValue),
@@ -134,16 +138,24 @@ func (store *Store) ActiveOffers(
 
 	offers := make([]exchange.SaleOffer, 0)
 	for rows.Next() {
-		var offer exchange.SaleOffer
+		var (
+			offer     exchange.SaleOffer
+			priceText string
+		)
 		if err := rows.Scan(
 			&offer.ID,
 			&offer.SellerID,
 			&offer.BondSeries,
-			&offer.Price,
+			&priceText,
 			&offer.Currency,
 		); err != nil {
 			return nil, err
 		}
+		price, err := exchange.ParsePrice(priceText)
+		if err != nil {
+			return nil, err
+		}
+		offer.Price = price
 		offers = append(offers, offer)
 	}
 	if err := rows.Err(); err != nil {

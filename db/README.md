@@ -3,6 +3,18 @@
 PostgreSQL stores users, bonds, sale offers, and purchases as append-only
 facts. The initial migration is
 [`migrations/20260901000000_append_only_exchange.sql`](migrations/20260901000000_append_only_exchange.sql).
+The decimal-price migration is
+[`migrations/20260902000000_use_decimal_prices.sql`](migrations/20260902000000_use_decimal_prices.sql).
+
+The `bond_exchange.monetary_amount` domain is based on PostgreSQL
+`numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
+positive value of `9999999999.9999`. Its constraint excludes NaN and infinite
+values, while the sale-offer column constraint also rejects zero and negative
+prices. PostgreSQL rounds direct inputs having more than four fractional
+digits, so provisioning code must validate the scale before insertion when
+rounding is not intended. The Go adapter converts the database's exact decimal
+text to `decimal.Decimal`; it never passes monetary values through binary
+floating point.
 
 A purchase contains the buyer and uses its sale-offer ID as the primary key.
 Concurrent inserts for the same offer therefore have one winner even when they

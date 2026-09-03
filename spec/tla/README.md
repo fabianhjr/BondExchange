@@ -17,6 +17,11 @@ This directory contains a deliberately small marketplace model:
   currency code.
 - A completed purchase relates the purchased offer to the user who bought it.
 
+`Prices` uses positive natural numbers in the finite TLC instance as abstract
+representatives of positive exact monetary values. Decimal precision,
+PostgreSQL encoding, and JSON serialization do not affect buying behavior or
+the checked invariants, so they remain outside the domain model.
+
 The initial state represents any non-empty, well-formed set of sale offers
 within the configured bounds. Offer IDs must be unique within that set.
 

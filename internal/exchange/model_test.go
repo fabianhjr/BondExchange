@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestIdentifierParsing(t *testing.T) {
@@ -61,12 +63,22 @@ func TestParseBondSeries(t *testing.T) {
 func TestPriceAndCurrencyParsing(t *testing.T) {
 	t.Parallel()
 
-	if price, err := ParsePrice(100); err != nil || price != 100 {
-		t.Fatalf("ParsePrice() = %d, %v", price, err)
+	for _, valid := range []string{"0.0001", "100.25", "100.25000", "9999999999.9999"} {
+		price, err := ParsePrice(valid)
+		if err != nil || !price.Equal(decimal.RequireFromString(valid)) {
+			t.Fatalf("ParsePrice(%q) = %s, %v", valid, price, err)
+		}
 	}
-	for _, invalid := range []int64{-1, 0} {
+	for _, invalid := range []string{
+		"-1",
+		"0",
+		"0.00001",
+		"1.23456",
+		"10000000000",
+		"not-a-decimal",
+	} {
 		if _, err := ParsePrice(invalid); !errors.Is(err, ErrInvalidPrice) {
-			t.Fatalf("ParsePrice(%d) error = %v", invalid, err)
+			t.Fatalf("ParsePrice(%q) error = %v", invalid, err)
 		}
 	}
 	if code, err := ParseCurrencyCode("USD"); err != nil || code != "USD" {

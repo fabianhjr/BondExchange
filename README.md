@@ -53,6 +53,12 @@ Available endpoints are:
 Bond-series input is canonicalized to uppercase at the service boundary. Its
 canonical stored form is 3–40 uppercase ASCII letters or digits.
 
+Monetary prices are exact decimal values and are returned as JSON strings, for
+example `"price":"100.25"`. Consumers must parse them as decimals rather than
+binary floating-point numbers. A price must be greater than zero and fit ten
+integer and four fractional digits (maximum `9999999999.9999`); its currency
+remains explicit in `currency_code`.
+
 ## Verification
 
 Run focused checks with devenv tasks:

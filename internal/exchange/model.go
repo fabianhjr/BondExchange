@@ -4,18 +4,24 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 const (
-	MinBondSeriesLength = 3
-	MaxBondSeriesLength = 40
+	MinBondSeriesLength     = 3
+	MaxBondSeriesLength     = 40
+	MonetaryAmountPrecision = 14
+	MonetaryAmountScale     = 4
 )
+
+var maxMonetaryAmount = decimal.New(99_999_999_999_999, -MonetaryAmountScale)
 
 var (
 	ErrInvalidUserID           = errors.New("user ID must not be empty")
 	ErrInvalidOfferID          = errors.New("sale-offer ID must not be empty")
 	ErrInvalidBondSeries       = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
-	ErrInvalidPrice            = errors.New("price must be positive")
+	ErrInvalidPrice            = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
 	ErrInvalidCurrencyCode     = errors.New("currency code must not be empty")
 	ErrInvalidActiveOfferLimit = errors.New("active-offer limit must be between 1 and 100")
 	ErrBuyerNotFound           = errors.New("buyer does not exist")
@@ -63,13 +69,15 @@ func IsCanonicalBondSeries(value string) bool {
 	return true
 }
 
-type Price int64
-
-func ParsePrice(value int64) (Price, error) {
-	if value <= 0 {
-		return 0, ErrInvalidPrice
+func ParsePrice(value string) (decimal.Decimal, error) {
+	price, err := decimal.NewFromString(value)
+	if err != nil ||
+		!price.IsPositive() ||
+		!price.Equal(price.Round(MonetaryAmountScale)) ||
+		price.GreaterThan(maxMonetaryAmount) {
+		return decimal.Zero, ErrInvalidPrice
 	}
-	return Price(value), nil
+	return price, nil
 }
 
 type CurrencyCode string
@@ -82,11 +90,11 @@ func ParseCurrencyCode(value string) (CurrencyCode, error) {
 }
 
 type SaleOffer struct {
-	ID         OfferID      `json:"id"`
-	SellerID   UserID       `json:"seller_id"`
-	BondSeries BondSeries   `json:"bond_series"`
-	Price      Price        `json:"price"`
-	Currency   CurrencyCode `json:"currency_code"`
+	ID         OfferID         `json:"id"`
+	SellerID   UserID          `json:"seller_id"`
+	BondSeries BondSeries      `json:"bond_series"`
+	Price      decimal.Decimal `json:"price"`
+	Currency   CurrencyCode    `json:"currency_code"`
 }
 
 type Purchase struct {
