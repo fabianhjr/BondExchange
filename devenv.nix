@@ -22,11 +22,17 @@ let
 in
 {
   packages = [
+    pkgs.buf
     pkgs.dbmate
     pkgs.go
     pkgs.gawk
+    pkgs.grpc-gateway
+    pkgs.grpcurl
     pkgs.jdk21_headless
     pkgs.postgresql_17
+    pkgs.protobuf
+    pkgs.protoc-gen-go
+    pkgs.protoc-gen-go-grpc
     tlaPlus
     gremlins
   ];
@@ -59,7 +65,7 @@ in
   tasks."go:check" = {
     description = "Check Go formatting and run go vet";
     exec = ''
-      unformatted="$(gofmt -l cmd internal)"
+      unformatted="$(gofmt -l cmd gen internal)"
       if [ -n "$unformatted" ]; then
         echo "The following Go files need formatting:"
         echo "$unformatted"
@@ -67,6 +73,39 @@ in
       fi
       go vet ./...
     '';
+    after = [ "api:check" ];
+  };
+
+  tasks."api:generate" = {
+    description = "Generate Go, gRPC-Gateway, and Swagger artifacts from Proto3";
+    cwd = "./api";
+    exec = "buf generate";
+  };
+
+  tasks."api:update-deps" = {
+    description = "Update the locked remote Proto3 schema dependencies";
+    cwd = "./api";
+    exec = "buf dep update";
+  };
+
+  tasks."api:check" = {
+    description = "Lint Proto3 and verify that generated API artifacts are current";
+    exec = ''
+      snapshot_api() {
+        find gen/go api/openapi -type f -print0 2>/dev/null \
+          | sort -z \
+          | xargs -0 sha256sum
+      }
+      before="$(snapshot_api)"
+      buf lint api
+      (cd api && buf generate)
+      after="$(snapshot_api)"
+      if [ "$before" != "$after" ]; then
+        echo "Generated API artifacts were stale; review and commit the regenerated files."
+        exit 1
+      fi
+    '';
+    before = [ "devenv:enterTest" ];
   };
 
   tasks."go:test" = {

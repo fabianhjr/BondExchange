@@ -8,6 +8,7 @@ unleash:
   timeout-coefficient: 3
   exclude-files:
     - "^cmd/"
+    - "^gen/"
   threshold:
     efficacy: 80
     mutant-coverage: 0

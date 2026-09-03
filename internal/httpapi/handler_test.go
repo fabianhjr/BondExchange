@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fabianhjr/BondExchange/internal/exchange"
+	"github.com/fabianhjr/BondExchange/internal/rpcapi"
 	"github.com/shopspring/decimal"
 )
 
@@ -55,12 +56,18 @@ func TestBuyHandler(t *testing.T) {
 	t.Parallel()
 
 	purchase := exchange.Purchase{
-		Offer:    exchange.SaleOffer{ID: "offer-1"},
+		Offer: exchange.SaleOffer{
+			ID:         "offer-1",
+			SellerID:   "seller-1",
+			BondSeries: "BND1",
+			Price:      decimal.RequireFromString("100.25"),
+			Currency:   "USD",
+		},
 		BuyerID:  "buyer-1",
 		BoughtAt: time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC),
 	}
 	application := &applicationStub{purchase: purchase}
-	handler := NewHandler(application, healthStub{})
+	handler := newHandler(t, application, healthStub{})
 
 	response := performRequest(handler, http.MethodPost, "/buys", `{"buyer_id":"buyer-1","sale_offer_id":"offer-1"}`)
 	if response.Code != http.StatusCreated {
@@ -69,8 +76,21 @@ func TestBuyHandler(t *testing.T) {
 	if application.buyer != "buyer-1" || application.offer != "offer-1" {
 		t.Fatalf("application received buyer %q and offer %q", application.buyer, application.offer)
 	}
-	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
+	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
 		t.Fatalf("Content-Type = %q", contentType)
+	}
+	for _, expected := range []string{
+		`"id":"offer-1"`,
+		`"seller_id":"seller-1"`,
+		`"bond_series":"BND1"`,
+		`"price":"100.25"`,
+		`"currency_code":"USD"`,
+		`"buyer_id":"buyer-1"`,
+		`"bought_at":"2026-09-01T00:00:00Z"`,
+	} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("body %s does not contain %s", response.Body.String(), expected)
+		}
 	}
 
 	tests := []struct {
@@ -94,6 +114,9 @@ func TestBuyHandler(t *testing.T) {
 			if response.Code != test.status {
 				t.Fatalf("status = %d, want %d; body = %s", response.Code, test.status, response.Body.String())
 			}
+			if test.status >= http.StatusBadRequest && !strings.Contains(response.Body.String(), `"error":`) {
+				t.Fatalf("error body = %s", response.Body.String())
+			}
 		})
 	}
 }
@@ -105,7 +128,7 @@ func TestActiveOffersHandler(t *testing.T) {
 		ID:    "offer-2",
 		Price: decimal.RequireFromString("100.25"),
 	}}}
-	handler := NewHandler(application, healthStub{})
+	handler := newHandler(t, application, healthStub{})
 	response := performRequest(handler, http.MethodGet, "/active-offers?bond=bnd&after=offer-1&limit=25", "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
@@ -147,12 +170,15 @@ func TestActiveOffersHandler(t *testing.T) {
 func TestHealthHandler(t *testing.T) {
 	t.Parallel()
 
-	response := performRequest(NewHandler(&applicationStub{}, healthStub{}), http.MethodGet, "/healthz", "")
+	response := performRequest(newHandler(t, &applicationStub{}, healthStub{}), http.MethodGet, "/healthz", "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("healthy status = %d", response.Code)
 	}
+	if !strings.Contains(response.Body.String(), `"status":"ok"`) {
+		t.Fatalf("healthy body = %s", response.Body.String())
+	}
 	response = performRequest(
-		NewHandler(&applicationStub{}, healthStub{err: errors.New("down")}),
+		newHandler(t, &applicationStub{}, healthStub{err: errors.New("down")}),
 		http.MethodGet,
 		"/healthz",
 		"",
@@ -160,6 +186,15 @@ func TestHealthHandler(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unhealthy status = %d", response.Code)
 	}
+}
+
+func newHandler(t *testing.T, application *applicationStub, health healthStub) http.Handler {
+	t.Helper()
+	handler, err := NewHandler(rpcapi.NewServer(application, health))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
 }
 
 func performRequest(handler http.Handler, method string, target string, body string) *httptest.ResponseRecorder {

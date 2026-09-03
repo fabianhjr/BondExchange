@@ -54,7 +54,8 @@
 | Area | Responsibility |
 | --- | --- |
 | Repository root | Project guidance, contributor documentation, and the devenv/Nix development environment. |
-| `cmd/` and `internal/` | Stateless Go server, domain logic, HTTP transport, and PostgreSQL adapter. |
+| `api/` and `gen/go/` | Proto3 API source, generated Swagger contract, and generated Go transport bindings. |
+| `cmd/` and `internal/` | Stateless Go server, domain logic, REST/gRPC transport adapters, and PostgreSQL adapter. |
 | `db/` | Versioned database schema and persistence documentation. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |
 | `docs/adr/` | Architecture decision records and their index. |

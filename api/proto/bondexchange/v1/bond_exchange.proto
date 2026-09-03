@@ -1,0 +1,194 @@
+syntax = "proto3";
+
+package bondexchange.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option go_package = "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1;bondexchangev1";
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "Bond Exchange API"
+    version: "1.0.0"
+    description: "REST and gRPC API for buying sale offers and listing active offers."
+  }
+  consumes: "application/json"
+  produces: "application/json"
+};
+
+// BondExchangeService exposes the bond-sale application over gRPC and REST.
+service BondExchangeService {
+  // Buy purchases one currently active sale offer for a buyer.
+  rpc Buy(BuyRequest) returns (BuyResponse) {
+    option (google.api.http) = {
+      post: "/buys"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      responses: {
+        key: "201"
+        value: {
+          description: "The offer was purchased."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.BuyResponse"}
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "The request is invalid."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "The buyer or active offer was not found."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "The server could not complete the request."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+    };
+  }
+
+  // ListActiveOffers returns active sale offers using keyset pagination.
+  rpc ListActiveOffers(ListActiveOffersRequest) returns (ListActiveOffersResponse) {
+    option (google.api.http) = {get: "/active-offers"};
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      responses: {
+        key: "200"
+        value: {
+          description: "The active sale offers."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.ListActiveOffersResponse"}
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "A filter or pagination value is invalid."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "The server could not complete the request."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+    };
+  }
+
+  // CheckHealth reports whether the server can reach its database.
+  rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse) {
+    option (google.api.http) = {get: "/healthz"};
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      responses: {
+        key: "200"
+        value: {
+          description: "The service is healthy."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.CheckHealthResponse"}
+          }
+        }
+      }
+      responses: {
+        key: "503"
+        value: {
+          description: "The database is unavailable."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+    };
+  }
+}
+
+message BuyRequest {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["buyer_id", "sale_offer_id"]}
+  };
+
+  string buyer_id = 1;
+  string sale_offer_id = 2;
+}
+
+message ListActiveOffersRequest {
+  // Bond series to filter by. The service canonicalizes this value to uppercase.
+  string bond = 1;
+  // Return offers whose IDs sort after this sale-offer ID.
+  string after = 2;
+  // Page size from 1 through 100. Zero selects the server default of 50.
+  int32 limit = 3;
+}
+
+message ListActiveOffersResponse {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["offers"]}
+  };
+
+  repeated SaleOffer offers = 1;
+}
+
+message CheckHealthRequest {}
+
+message CheckHealthResponse {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["status"]}
+  };
+
+  string status = 1;
+}
+
+message SaleOffer {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["id", "seller_id", "bond_series", "price", "currency_code"]}
+  };
+
+  string id = 1;
+  string seller_id = 2;
+  string bond_series = 3;
+  // Exact decimal monetary amount encoded as a string.
+  string price = 4;
+  string currency_code = 5;
+}
+
+message BuyResponse {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["offer", "buyer_id", "bought_at"]}
+  };
+
+  SaleOffer offer = 1;
+  string buyer_id = 2;
+  google.protobuf.Timestamp bought_at = 3;
+}
+
+// Error is the REST error response. Native gRPC callers receive the equivalent status code and message.
+message Error {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["error"]}
+  };
+
+  string error = 1;
+}

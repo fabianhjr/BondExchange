@@ -21,3 +21,4 @@ Alternatives considered sections.
 - [ADR-0003: Use append-only PostgreSQL facts for offers and purchases](0003-use-append-only-postgresql-facts.md)
 - [ADR-0004: Use dbmate for database migrations](0004-use-dbmate-for-database-migrations.md)
 - [ADR-0005: Use shopspring/decimal for monetary amounts](0005-use-shopspring-decimal-for-monetary-amounts.md)
+- [ADR-0006: Use Proto3 for the REST and gRPC API](0006-use-protobuf-for-rest-and-grpc-api.md)

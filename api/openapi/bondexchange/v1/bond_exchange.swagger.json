@@ -1,0 +1,245 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Bond Exchange API",
+    "description": "REST and gRPC API for buying sale offers and listing active offers.",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "BondExchangeService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/active-offers": {
+      "get": {
+        "summary": "ListActiveOffers returns active sale offers using keyset pagination.",
+        "operationId": "BondExchangeService_ListActiveOffers",
+        "responses": {
+          "200": {
+            "description": "The active sale offers.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.ListActiveOffersResponse"
+            }
+          },
+          "400": {
+            "description": "A filter or pagination value is invalid.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "500": {
+            "description": "The server could not complete the request.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "bond",
+            "description": "Bond series to filter by. The service canonicalizes this value to uppercase.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "after",
+            "description": "Return offers whose IDs sort after this sale-offer ID.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "limit",
+            "description": "Page size from 1 through 100. Zero selects the server default of 50.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "BondExchangeService"
+        ]
+      }
+    },
+    "/buys": {
+      "post": {
+        "summary": "Buy purchases one currently active sale offer for a buyer.",
+        "operationId": "BondExchangeService_Buy",
+        "responses": {
+          "201": {
+            "description": "The offer was purchased.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.BuyResponse"
+            }
+          },
+          "400": {
+            "description": "The request is invalid.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "404": {
+            "description": "The buyer or active offer was not found.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "500": {
+            "description": "The server could not complete the request.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.BuyRequest"
+            }
+          }
+        ],
+        "tags": [
+          "BondExchangeService"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "CheckHealth reports whether the server can reach its database.",
+        "operationId": "BondExchangeService_CheckHealth",
+        "responses": {
+          "200": {
+            "description": "The service is healthy.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.CheckHealthResponse"
+            }
+          },
+          "503": {
+            "description": "The database is unavailable.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          }
+        },
+        "tags": [
+          "BondExchangeService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "bondexchange.v1.BuyRequest": {
+      "type": "object",
+      "properties": {
+        "buyer_id": {
+          "type": "string"
+        },
+        "sale_offer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "buyer_id",
+        "sale_offer_id"
+      ]
+    },
+    "bondexchange.v1.BuyResponse": {
+      "type": "object",
+      "properties": {
+        "offer": {
+          "$ref": "#/definitions/bondexchange.v1.SaleOffer"
+        },
+        "buyer_id": {
+          "type": "string"
+        },
+        "bought_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "offer",
+        "buyer_id",
+        "bought_at"
+      ]
+    },
+    "bondexchange.v1.CheckHealthResponse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "bondexchange.v1.Error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      },
+      "description": "Error is the REST error response. Native gRPC callers receive the equivalent status code and message.",
+      "required": [
+        "error"
+      ]
+    },
+    "bondexchange.v1.ListActiveOffersResponse": {
+      "type": "object",
+      "properties": {
+        "offers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/bondexchange.v1.SaleOffer"
+          }
+        }
+      },
+      "required": [
+        "offers"
+      ]
+    },
+    "bondexchange.v1.SaleOffer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "seller_id": {
+          "type": "string"
+        },
+        "bond_series": {
+          "type": "string"
+        },
+        "price": {
+          "type": "string",
+          "description": "Exact decimal monetary amount encoded as a string."
+        },
+        "currency_code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "seller_id",
+        "bond_series",
+        "price",
+        "currency_code"
+      ]
+    }
+  }
+}
