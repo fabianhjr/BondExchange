@@ -25,7 +25,7 @@ let
     runtimeInputs = [
       pkgs.coreutils
       pkgs.dbmate
-      pkgs.postgresql_17
+      pkgs.postgresql_18
       pkgs.util-linux
     ];
     text = builtins.readFile ./nix/with-postgres.sh;
@@ -36,7 +36,7 @@ let
     runtimeInputs = [
       pkgs.bash
       pkgs.coreutils
-      pkgs.postgresql_17
+      pkgs.postgresql_18
       postgresHarness
     ];
     text = builtins.readFile ./nix/postgres-lifecycle-check.sh;
@@ -46,7 +46,7 @@ let
     name = "bond-exchange-demo-serve";
     runtimeInputs = [
       pkgs.go
-      pkgs.postgresql_17
+      pkgs.postgresql_18
       pkgs.stdenv.cc
     ];
     text = builtins.readFile ./nix/demo-serve.sh;
@@ -211,7 +211,7 @@ in
     pkgs.golangci-lint
     pkgs.jdk21_headless
     pkgs.nixfmt
-    pkgs.postgresql_17
+    pkgs.postgresql_18
     pkgs.protobuf
     pkgs.protoc-gen-go
     pkgs.protoc-gen-go-grpc

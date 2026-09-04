@@ -90,7 +90,7 @@ ON CONFLICT (work_key) DO NOTHING`,
 		err = tx.QueryRow(ctx, `
 UPDATE bond_exchange.sie_exchange_rate_fetch_coordination
 SET
-  lease_token = $2,
+  lease_nonce = $2,
   lease_until = transaction_timestamp() + ($3 * interval '1 microsecond')
 WHERE work_key = $1
   AND series_id = $4
@@ -155,7 +155,7 @@ func (store *Store) Complete(
 	for _, unit := range units {
 		var owned bool
 		if err := tx.QueryRow(ctx, `
-SELECT lease_token = $2
+SELECT lease_nonce = $2
 FROM bond_exchange.sie_exchange_rate_fetch_coordination
 WHERE work_key = $1`, unit.Key, leaseToken).Scan(&owned); err != nil {
 			return err
@@ -174,12 +174,12 @@ WHERE work_key = $1`, unit.Key, leaseToken).Scan(&owned); err != nil {
 		periodStart = request.From
 		periodEnd = request.To
 	}
-	var importID int64
+	var importID string
 	err = tx.QueryRow(ctx, `
 INSERT INTO bond_exchange.sie_exchange_rate_imports
   (request_kind, series_ids, period_start, period_end, response_body, response_sha256)
 VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-RETURNING id`, request.Kind, seriesIDs, periodStart, periodEnd, result.Response, digest[:]).Scan(&importID)
+RETURNING uuid_id`, request.Kind, seriesIDs, periodStart, periodEnd, result.Response, digest[:]).Scan(&importID)
 	if err != nil {
 		return err
 	}
@@ -201,11 +201,11 @@ RETURNING id`, request.Kind, seriesIDs, periodStart, periodEnd, result.Response,
 		}
 		_, err := tx.Exec(ctx, `
 INSERT INTO bond_exchange.sie_exchange_rate_observations
-  (import_id, series_id, base_currency, quote_currency, observed_on, value)
+  (import_uuid, series_id, base_currency, quote_currency, observed_on, value)
 SELECT $1, $2, $3, $4, $5, $6::numeric
 WHERE NOT EXISTS (
   SELECT 1
-  FROM bond_exchange.current_sie_exchange_rates
+  FROM bond_exchange.current_sie_exchange_rates_v2
   WHERE series_id = $2
     AND base_currency = $3
     AND quote_currency = $4
@@ -240,10 +240,11 @@ SET
     ELSE NULL
   END,
   lease_token = NULL,
+  lease_nonce = NULL,
   lease_until = NULL,
   next_attempt_at = transaction_timestamp(),
   last_error_class = NULL
-WHERE work_key = $1 AND lease_token = $2`, unit.Key, leaseToken, coveredUntil, freshMicros)
+WHERE work_key = $1 AND lease_nonce = $2`, unit.Key, leaseToken, coveredUntil, freshMicros)
 		if err != nil {
 			return err
 		}
@@ -266,10 +267,11 @@ func (store *Store) Fail(
 UPDATE bond_exchange.sie_exchange_rate_fetch_coordination
 SET
   lease_token = NULL,
+  lease_nonce = NULL,
   lease_until = NULL,
   next_attempt_at = transaction_timestamp() + ($3 * interval '1 microsecond'),
   last_error_class = $4
-WHERE work_key = $1 AND lease_token = $2`, unit.Key, leaseToken, retryAfter.Microseconds(), errorClass)
+WHERE work_key = $1 AND lease_nonce = $2`, unit.Key, leaseToken, retryAfter.Microseconds(), errorClass)
 		if err != nil {
 			return err
 		}
@@ -288,7 +290,7 @@ func (store *Store) LatestObservations(
 	for _, item := range series {
 		observation, err := scanRate(store.pool.QueryRow(ctx, `
 SELECT series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
-FROM bond_exchange.current_sie_exchange_rates
+FROM bond_exchange.current_sie_exchange_rates_v2
 WHERE series_id = $1 AND base_currency = $2 AND quote_currency = $3
 ORDER BY observed_on DESC
 LIMIT 1`, item.ID, item.Base, item.Quote))
@@ -325,7 +327,7 @@ WITH requested AS (
     AS item(series_id, base_currency, quote_currency)
 )
 SELECT series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
-FROM bond_exchange.current_sie_exchange_rates AS rate
+FROM bond_exchange.current_sie_exchange_rates_v2 AS rate
 JOIN requested AS item USING (series_id, base_currency, quote_currency)
 WHERE observed_on BETWEEN $4 AND $5
 ORDER BY series_id, observed_on`, seriesIDs, bases, quotes, from, to)

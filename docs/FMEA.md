@@ -112,8 +112,8 @@ production-readiness decision.
   reservation, causing a severe integrity failure and ambiguous recovery.
 - **Causes:** Cross-instance races, retry races, or loss of database uniqueness
   and transactional checks.
-- **Current controls and detection:** `purchases.sale_offer_id` is the primary
-  key; each authorization decision and insert occurs in one PostgreSQL
+- **Current controls and detection:** Each purchase has a UUIDv7 primary key,
+  while `purchases.sale_offer_uuid` is unique; each authorization decision and insert occurs in one PostgreSQL
   transaction; the losing request reports the offer unavailable. Integration
   tests exercise store-level concurrency, and a generated full-server workload
   requires exactly one success when independent buys contend for one offer.
@@ -138,8 +138,9 @@ production-readiness decision.
   binding drift, or idempotency uniqueness loss.
 - **Current controls and detection:** Short-lived EdDSA/ES256 assertions bind
   issuer, audience, principal, client, operation, deterministic request digest,
-  and mutation key. PostgreSQL resolves the principal and checks append-only
-  RBAC in the mutation transaction. A unique operation scope and stored digest
+  and a canonical UUIDv4 mutation nonce; assertion `jti` values are also
+  UUIDv4. PostgreSQL resolves the principal and checks append-only RBAC in the
+  mutation transaction. A unique UUID-backed operation scope and stored digest
   make an exact retry return the prior result and reject changed input. Focused
   negative, integration, race, coverage, mutation, and TLC checks exercise the
   boundary. The full-server REST journey also retries a buy with a freshly
@@ -162,8 +163,9 @@ production-readiness decision.
 - **Causes:** Provisioning and security administration currently require direct
   SQL, while several database constraints are looser than service validation.
 - **Current controls and detection:** Go validates API inputs, foreign keys and
-  selected database checks reject some invalid relationships, and append-only
-  triggers prevent silent rewriting. There is no supported provisioning path
+  PostgreSQL UUID-version checks reject invalid current identifiers and nonces,
+  and append-only triggers prevent silent rewriting. Legacy text aliases and
+  currency constraints remain looser, there is no supported provisioning path
   or complete storage-level constraint equivalence, and no pre-insert detection
   for privileged SQL.
 - **Action:** Define and test a supported administration workflow and add a
@@ -287,10 +289,11 @@ production-readiness decision.
   destination-specific side effects occur.
 - **Causes:** Delivery is intentionally at least once, and consumer
   deduplication is outside this repository and unverified.
-- **Current controls and detection:** The immutable `(table_name, id)` source
-  reference is a stable deduplication key. Delivery leases prevent concurrent
+- **Current controls and detection:** The immutable event UUIDv7 is a stable
+  deduplication key, independently of its source reference. UUIDv4 delivery
+  leases prevent concurrent
   intentional sends, but cannot resolve an ambiguous external acknowledgement.
-- **Action:** Make idempotent consumer handling by `(table_name, id)` an
+- **Action:** Make idempotent consumer handling by event UUID an
   acceptance criterion for every destination; exercise acknowledgement-loss
   and replay tests and monitor duplicate outcomes before enabling it.
 - **Traceability:** [F-017](../FRICTIONS.md#f-017--integration-event-recovery-is-manual-and-has-no-destination-p2)
@@ -389,18 +392,26 @@ production-readiness decision.
   version corruption across instances.
 - **Causes:** Rewriting an applied migration, destructive contraction, new
   required privileges or columns without expansion, unsafe backfill, or use of
-  a destructive down migration.
+  a destructive down migration. The PostgreSQL 18 UUID transition additionally
+  depends on a correctly sequenced major-version upgrade and a synchronized
+  legacy/UUID relationship graph during its compatibility period.
 - **Current controls and detection:** Repository guidance requires timestamped
   dbmate migrations, lossless backward-compatible expand/backfill/contract
   changes, corrective roll-forward, and separately owned migrations. Fresh
-  isolated database and PostgreSQL lifecycle checks exercise the full history;
+  isolated PostgreSQL 18 database and lifecycle checks exercise the full
+  history; schema tests verify the server major version and all 21 UUID primary
+  keys, while compatibility triggers preserve prior-writer inserts and
   append-only triggers prevent ordinary fact mutation. These checks do not
-  simulate every production dataset or mixed-version rollout.
+  simulate every production dataset, PostgreSQL major upgrade, direct writer,
+  or mixed-version rollout.
 - **Action:** Preserve the guardrails; for every schema change, test the prior
   application against the expanded schema and representative existing data,
-  document rollout/rollback-forward steps, and require backup/restore evidence
-  before production execution.
+  document rollout/rollback-forward steps, verify compatibility-graph drift,
+  and require PostgreSQL upgrade plus backup/restore evidence before production
+  execution.
 - **Traceability:** [ADR-0004](adr/0004-use-dbmate-for-database-migrations.md),
+  [ADR-0017](adr/0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md),
+  [F-018](../FRICTIONS.md#f-018--the-uuid-migration-retains-a-dual-identifier-graph-p2),
   [database migration policy](../db/README.md), and
   [repository guardrails](../AGENTS.md#architectural-guardrails).
 

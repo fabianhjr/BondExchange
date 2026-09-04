@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-09-01
 
+ADR-0017 amends the physical identity mapping to UUIDv7 primary keys and a
+separate unique purchase `sale_offer_uuid`. The append-only and PostgreSQL
+concurrency decisions remain accepted.
+
 ## Context
 
 The Go server must be safe when several instances handle attempts to buy the
@@ -37,11 +41,12 @@ privileges required by the application. The schema also rejects updates,
 deletes, and truncation of domain-fact tables as defense in depth. Schema
 migrations and exceptional recovery use a separately controlled owner.
 
-Expose active offers through a non-materialized `active_offers` view. It
+Expose active offers through a non-materialized view (`active_offers_v2` in
+the UUID schema). It
 contains sale offers for which no purchase exists. The refinement mapping is:
 
 ```text
-TLA+ saleOffers = rows visible through active_offers
+TLA+ saleOffers = rows visible through active_offers_v2
 TLA+ purchases  = purchase facts joined to their immutable sale offers
 ```
 

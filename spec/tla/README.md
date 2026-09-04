@@ -21,6 +21,11 @@ This directory contains a deliberately small marketplace model:
 - An operation result records its principal, client, operation, idempotency
   key, abstract request digest, and resulting offer ID.
 
+Users, offers, operation keys, and purchases are abstract values here. The
+implementation's UUIDv7 identity representation, UUIDv4 nonce syntax, and
+PostgreSQL 18 generation mechanics do not change domain behavior and remain
+outside the model.
+
 `Prices` uses positive natural numbers in the finite TLC instance as abstract
 representatives of positive exact monetary values. Decimal precision,
 PostgreSQL encoding, and JSON serialization do not affect buying behavior or
@@ -41,7 +46,8 @@ identifiers and verifies that their stored representation is uppercase.
 currency)` publishes a new active sale offer. It requires authorization, a new
 idempotency scope, valid domain values, and an ID that has never appeared in
 either the active book or purchase history. Creation appends the offer and its
-operation result and does not change purchase facts.
+operation result and does not change purchase facts. `offerId` represents the
+fresh identity allocated by the service; it is not modeled as caller-selected.
 
 `Buy(buyer, client, key, requestDigest, offerId)` is enabled only when the
 principal/client is authorized, the idempotency scope is new, and exactly one

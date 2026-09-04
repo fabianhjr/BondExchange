@@ -25,8 +25,9 @@ const (
 )
 
 type BuyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SaleOfferId   string                 `protobuf:"bytes,2,opt,name=sale_offer_id,json=saleOfferId,proto3" json:"sale_offer_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Canonical UUIDv7 returned by the service when the offer was created.
+	SaleOfferId   string `protobuf:"bytes,2,opt,name=sale_offer_id,json=saleOfferId,proto3" json:"sale_offer_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -70,7 +71,6 @@ func (x *BuyRequest) GetSaleOfferId() string {
 
 type CreateSaleOfferRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Bond series to sell. The service canonicalizes this value to uppercase.
 	BondSeries string `protobuf:"bytes,3,opt,name=bond_series,json=bondSeries,proto3" json:"bond_series,omitempty"`
 	// Exact positive decimal monetary amount encoded as a string.
@@ -108,13 +108,6 @@ func (x *CreateSaleOfferRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CreateSaleOfferRequest.ProtoReflect.Descriptor instead.
 func (*CreateSaleOfferRequest) Descriptor() ([]byte, []int) {
 	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *CreateSaleOfferRequest) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
 }
 
 func (x *CreateSaleOfferRequest) GetBondSeries() string {
@@ -627,9 +620,10 @@ func (x *PublishPendingEventsResponse) GetRemaining() uint64 {
 }
 
 type SaleOffer struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	BondSeries string                 `protobuf:"bytes,3,opt,name=bond_series,json=bondSeries,proto3" json:"bond_series,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// PostgreSQL-generated canonical UUIDv7.
+	Id         string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	BondSeries string `protobuf:"bytes,3,opt,name=bond_series,json=bondSeries,proto3" json:"bond_series,omitempty"`
 	// Exact decimal monetary amount encoded as a string.
 	Price         string `protobuf:"bytes,4,opt,name=price,proto3" json:"price,omitempty"`
 	CurrencyCode  string `protobuf:"bytes,5,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
@@ -800,14 +794,13 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\n" +
 	"BuyRequest\x12\"\n" +
 	"\rsale_offer_id\x18\x02 \x01(\tR\vsaleOfferId:\x15\x92A\x12\n" +
-	"\x10\xd2\x01\rsale_offer_idJ\x04\b\x01\x10\x02R\bbuyer_id\"\xc7\x01\n" +
-	"\x16CreateSaleOfferRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
+	"\x10\xd2\x01\rsale_offer_idJ\x04\b\x01\x10\x02R\bbuyer_id\"\xbc\x01\n" +
+	"\x16CreateSaleOfferRequest\x12\x1f\n" +
 	"\vbond_series\x18\x03 \x01(\tR\n" +
 	"bondSeries\x12\x14\n" +
 	"\x05price\x18\x04 \x01(\tR\x05price\x12#\n" +
-	"\rcurrency_code\x18\x05 \x01(\tR\fcurrencyCode:0\x92A-\n" +
-	"+\xd2\x01\x02id\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeJ\x04\b\x02\x10\x03R\tseller_id\"Z\n" +
+	"\rcurrency_code\x18\x05 \x01(\tR\fcurrencyCode:+\x92A(\n" +
+	"&\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03R\x02idR\tseller_id\"Z\n" +
 	"\x17CreateSaleOfferResponse\x120\n" +
 	"\x05offer\x18\x01 \x01(\v2\x1a.bondexchange.v1.SaleOfferR\x05offer:\r\x92A\n" +
 	"\n" +
@@ -853,9 +846,9 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error:\r\x92A\n" +
 	"\n" +
-	"\b\xd2\x01\x05error2\xcf\x14\n" +
-	"\x13BondExchangeService\x12\xc7\x03\n" +
-	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x84\x03\x92A\xf0\x02JC\n" +
+	"\b\xd2\x01\x05error2\xf3\x14\n" +
+	"\x13BondExchangeService\x12\xc9\x03\n" +
+	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x86\x03\x92A\xf2\x02JC\n" +
 	"\x03201\x12<\n" +
 	"\x18The offer was purchased.\x12 \n" +
 	"\x1e\x1a\x1c.bondexchange.v1.BuyResponseJ<\n" +
@@ -867,11 +860,11 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorrS\n" +
-	"Q\n" +
-	"\x0fIdempotency-Key\x12:A 16-128 character key bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\n" +
-	":\x01*\"\x05/buys\x12\xcb\x04\n" +
-	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\xe4\x03\x92A\xc9\x03JR\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorrU\n" +
+	"S\n" +
+	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\n" +
+	":\x01*\"\x05/buys\x12\xeb\x04\n" +
+	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\x84\x04\x92A\xe9\x03JR\n" +
 	"\x03201\x12K\n" +
 	"\x1bThe sale offer was created.\x12,\n" +
 	"*\x1a(.bondexchange.v1.CreateSaleOfferResponseJ?\n" +
@@ -880,15 +873,15 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
 	"\x03404\x12=\n" +
 	"\x1fThe bond series does not exist.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorJF\n" +
-	"\x03409\x12?\n" +
-	"!The sale-offer ID already exists.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJd\n" +
+	"\x03409\x12]\n" +
+	"?The generated sale-offer ID collided with an existing resource.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorrS\n" +
-	"Q\n" +
-	"\x0fIdempotency-Key\x12:A 16-128 character key bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/sale-offers\x12\xfe\x02\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorrU\n" +
+	"S\n" +
+	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/sale-offers\x12\xfe\x02\n" +
 	"\x10ListActiveOffers\x12(.bondexchange.v1.ListActiveOffersRequest\x1a).bondexchange.v1.ListActiveOffersResponse\"\x92\x02\x92A\xf8\x01JO\n" +
 	"\x03200\x12H\n" +
 	"\x17The active sale offers.\x12-\n" +
@@ -913,8 +906,8 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x03503\x12:\n" +
 	"\x1cThe database is unavailable.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\n" +
-	"\x12\b/healthz\x12\xd1\x04\n" +
-	"\x14PublishPendingEvents\x12,.bondexchange.v1.PublishPendingEventsRequest\x1a-.bondexchange.v1.PublishPendingEventsResponse\"\xdb\x03\x92A\xa9\x03Jf\n" +
+	"\x12\b/healthz\x12\xd3\x04\n" +
+	"\x14PublishPendingEvents\x12,.bondexchange.v1.PublishPendingEventsRequest\x1a-.bondexchange.v1.PublishPendingEventsResponse\"\xdd\x03\x92A\xab\x03Jf\n" +
 	"\x03200\x12_\n" +
 	"*The visible pending events were attempted.\x121\n" +
 	"/\x1a-.bondexchange.v1.PublishPendingEventsResponseJ^\n" +
@@ -923,10 +916,10 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJX\n" +
 	"\x03500\x12Q\n" +
 	"3The server could not complete the recovery attempt.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.Errorr\x84\x01\n" +
-	"\x81\x01\n" +
-	"\x0fIdempotency-Key\x12jA 16-128 character key bound into the operation assertion; per-event leases coordinate overlapping drains.\x18\x01(\x01\x82\xd3\xe4\x93\x02(:\x01*\"#/event-publications:publish-pendingB\xea\x02\x92A\x91\x02\x12T\n" +
-	"\x11Bond Exchange API\x128REST and gRPC API for publishing and buying sale offers.2\x051.0.02\x10application/json:\x10application/jsonZ{\n" +
+	"\x18\x1a\x16.bondexchange.v1.Errorr\x86\x01\n" +
+	"\x83\x01\n" +
+	"\x0fIdempotency-Key\x12lA canonical UUIDv4 nonce bound into the operation assertion; per-event leases coordinate overlapping drains.\x18\x01(\x01\x82\xd3\xe4\x93\x02(:\x01*\"#/event-publications:publish-pendingB\xea\x02\x92A\x91\x02\x12T\n" +
+	"\x11Bond Exchange API\x128REST and gRPC API for publishing and buying sale offers.2\x052.0.02\x10application/json:\x10application/jsonZ{\n" +
 	"y\n" +
 	"\x12OperationAssertion\x12c\b\x02\x12NA Bearer JWT bound to the operation and deterministic protobuf request digest.\x1a\rAuthorization \x02b\x18\n" +
 	"\x16\n" +

@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -16,60 +15,64 @@ import (
 
 const buyQuery = `
 WITH inserted_purchase AS (
-  INSERT INTO bond_exchange.purchases (sale_offer_id, buyer_id)
-  SELECT sale_offer.id, buyer.id
+  INSERT INTO bond_exchange.purchases (sale_offer_uuid, buyer_uuid)
+  SELECT sale_offer.uuid_id, buyer.uuid_id
   FROM bond_exchange.sale_offers AS sale_offer
   CROSS JOIN bond_exchange.users AS buyer
-  WHERE sale_offer.id = $1 AND buyer.id = $2
-  ON CONFLICT (sale_offer_id) DO NOTHING
-  RETURNING sale_offer_id, buyer_id, bought_at
+  WHERE sale_offer.uuid_id = $1 AND buyer.uuid_id = $2
+  ON CONFLICT (sale_offer_uuid) DO NOTHING
+  RETURNING uuid_id, sale_offer_uuid, buyer_uuid, bought_at
 )
 SELECT
-  sale_offer.id,
-  sale_offer.seller_id,
+  inserted_purchase.uuid_id,
+  sale_offer.uuid_id,
+  sale_offer.seller_uuid,
   sale_offer.bond_series,
   sale_offer.price,
   sale_offer.currency_code,
-  inserted_purchase.buyer_id,
+  inserted_purchase.buyer_uuid,
   inserted_purchase.bought_at
 FROM inserted_purchase
 JOIN bond_exchange.sale_offers AS sale_offer
-  ON sale_offer.id = inserted_purchase.sale_offer_id`
+  ON sale_offer.uuid_id = inserted_purchase.sale_offer_uuid`
 
 const classifyFailedBuyQuery = `
 SELECT
-  EXISTS (SELECT 1 FROM bond_exchange.users WHERE id = $1),
-  EXISTS (SELECT 1 FROM bond_exchange.sale_offers WHERE id = $2)`
+  EXISTS (SELECT 1 FROM bond_exchange.users WHERE uuid_id = $1),
+  EXISTS (SELECT 1 FROM bond_exchange.sale_offers WHERE uuid_id = $2)`
 
 const purchaseByOfferQuery = `
 SELECT
-  sale_offer.id,
-  sale_offer.seller_id,
+  purchase.uuid_id,
+  sale_offer.uuid_id,
+  sale_offer.seller_uuid,
   sale_offer.bond_series,
   sale_offer.price,
   sale_offer.currency_code,
-  purchase.buyer_id,
+  purchase.buyer_uuid,
   purchase.bought_at
 FROM bond_exchange.purchases AS purchase
 JOIN bond_exchange.sale_offers AS sale_offer
-  ON sale_offer.id = purchase.sale_offer_id
-WHERE purchase.sale_offer_id = $1`
+  ON sale_offer.uuid_id = purchase.sale_offer_uuid
+WHERE purchase.sale_offer_uuid = $1`
 
 const createSaleOfferQuery = `
 INSERT INTO bond_exchange.sale_offers
-  (id, seller_id, bond_series, price, currency_code)
-VALUES ($1, $2, $3, $4::numeric, $5)
-RETURNING id, seller_id, bond_series, price, currency_code`
+  (seller_uuid, bond_uuid, bond_series, price, currency_code)
+SELECT $1, bond.uuid_id, bond.series, $3::numeric, $4
+FROM bond_exchange.bonds AS bond
+WHERE bond.series = $2
+RETURNING uuid_id, seller_uuid, bond_series, price, currency_code`
 
 const activeOffersQuery = `
 SELECT id, seller_id, bond_series, price, currency_code
-FROM bond_exchange.active_offers
+FROM bond_exchange.active_offers_v2
 WHERE bond_series = $1
 ORDER BY id`
 
 const activeBondSeriesQuery = `
 SELECT DISTINCT bond_series
-FROM bond_exchange.active_offers
+FROM bond_exchange.active_offers_v2
 ORDER BY bond_series`
 
 type Store struct {
@@ -83,18 +86,18 @@ func (store *Store) ResolvePrincipal(
 ) (exchange.Principal, error) {
 	var principal exchange.Principal
 	err := store.pool.QueryRow(ctx, `
-SELECT id, client_class
+SELECT uuid_id, client_class
 FROM bond_exchange.principals AS principal
 WHERE issuer = $1
   AND subject = $2
   AND NOT EXISTS (
     SELECT 1
     FROM bond_exchange.principal_suspensions AS suspension
-    WHERE suspension.principal_id = principal.id
+    WHERE suspension.principal_uuid = principal.uuid_id
       AND NOT EXISTS (
         SELECT 1
         FROM bond_exchange.principal_reinstatements AS reinstatement
-        WHERE reinstatement.suspension_id = suspension.id
+        WHERE reinstatement.suspension_uuid = suspension.uuid_id
       )
   )`, issuer, subject).Scan(&principal.ID, &principal.ClientClass)
 	if err != nil {
@@ -145,8 +148,7 @@ func (store *Store) createSaleOfferOnce(
 	err = work.QueryRow(
 		ctx,
 		createSaleOfferQuery,
-		string(offer.ID),
-		string(offer.SellerID),
+		string(operation.Principal.ID),
 		string(offer.BondSeries),
 		offer.Price.String(),
 		string(offer.Currency),
@@ -160,6 +162,9 @@ func (store *Store) createSaleOfferOnce(
 	if err != nil {
 		_ = work.Rollback(ctx)
 		classified := classifyCreateSaleOfferError(err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			classified = exchange.ErrBondNotFound
+		}
 		if code, ok := safeOperationErrorCode(classified); ok {
 			if err := recordOperationRejection(ctx, tx, claimID, code); err != nil {
 				return exchange.SaleOffer{}, err
@@ -173,11 +178,11 @@ func (store *Store) createSaleOfferOnce(
 	if err := work.Commit(ctx); err != nil {
 		return exchange.SaleOffer{}, err
 	}
-	price, err := exchange.ParsePrice(priceText)
+	parsedPrice, err := exchange.ParsePrice(priceText)
 	if err != nil {
 		return exchange.SaleOffer{}, err
 	}
-	created.Price = price
+	created.Price = parsedPrice
 	if err := recordOperationSuccess(ctx, tx, claimID, string(created.ID)); err != nil {
 		return exchange.SaleOffer{}, err
 	}
@@ -243,6 +248,7 @@ func (store *Store) buyOnce(
 	}
 
 	var (
+		purchaseID   string
 		offerIDValue string
 		sellerID     string
 		bondSeries   string
@@ -252,6 +258,7 @@ func (store *Store) buyOnce(
 		boughtAt     time.Time
 	)
 	err = tx.QueryRow(ctx, buyQuery, string(offerID), string(operation.Principal.ID)).Scan(
+		&purchaseID,
 		&offerIDValue,
 		&sellerID,
 		&bondSeries,
@@ -266,6 +273,7 @@ func (store *Store) buyOnce(
 			return exchange.Purchase{}, parseErr
 		}
 		purchase := exchange.Purchase{
+			ID: exchange.PurchaseID(purchaseID),
 			Offer: exchange.SaleOffer{
 				ID:         exchange.OfferID(offerIDValue),
 				SellerID:   exchange.UserID(sellerID),
@@ -421,8 +429,8 @@ func authorize(ctx context.Context, tx pgx.Tx, access exchange.AccessContext, pe
 	err := tx.QueryRow(ctx, `
 SELECT EXISTS (
   SELECT 1
-  FROM bond_exchange.effective_principal_permissions
-  WHERE principal_id = $1 AND permission_id = $2
+  FROM bond_exchange.effective_principal_permissions_v2
+  WHERE principal_id = $1 AND permission_code = $2
 )`, access.Principal.ID, permission).Scan(&allowed)
 	if err != nil {
 		return err
@@ -438,15 +446,13 @@ func claimOperation(
 	tx pgx.Tx,
 	operation exchange.MutationContext,
 ) (string, bool, error) {
-	claimID := operationClaimID(operation)
 	var inserted string
 	err := tx.QueryRow(ctx, `
 INSERT INTO bond_exchange.operation_claims
-  (id, principal_id, client_id, operation, idempotency_key, request_digest, assertion_digest)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (principal_id, client_id, operation, idempotency_key) DO NOTHING
-RETURNING id`,
-		claimID,
+  (principal_uuid, client_id, operation, idempotency_nonce, request_digest, assertion_digest)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (principal_uuid, client_id, operation, idempotency_nonce) DO NOTHING
+RETURNING uuid_id`,
 		operation.Principal.ID,
 		operation.Principal.ClientID,
 		operation.Operation,
@@ -455,7 +461,7 @@ RETURNING id`,
 		operation.AssertionDigest[:],
 	).Scan(&inserted)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return claimID, false, nil
+		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
@@ -463,24 +469,10 @@ RETURNING id`,
 	return inserted, true, nil
 }
 
-func operationClaimID(operation exchange.MutationContext) string {
-	digest := sha256.New()
-	for _, part := range []string{
-		string(operation.Principal.ID),
-		operation.Principal.ClientID,
-		operation.Operation,
-		operation.IdempotencyKey,
-	} {
-		_, _ = digest.Write([]byte(part))
-		_, _ = digest.Write([]byte{0})
-	}
-	return hex.EncodeToString(digest.Sum(nil))
-}
-
 func recordOperationSuccess(ctx context.Context, tx pgx.Tx, claimID string, resourceID string) error {
 	_, err := tx.Exec(ctx, `
 INSERT INTO bond_exchange.operation_results
-  (claim_id, outcome, resource_id)
+  (claim_uuid, outcome, resource_uuid)
 VALUES ($1, 'succeeded', $2)`, claimID, resourceID)
 	return err
 }
@@ -488,7 +480,7 @@ VALUES ($1, 'succeeded', $2)`, claimID, resourceID)
 func recordOperationRejection(ctx context.Context, tx pgx.Tx, claimID string, safeErrorCode string) error {
 	_, err := tx.Exec(ctx, `
 INSERT INTO bond_exchange.operation_results
-  (claim_id, outcome, safe_error_code)
+  (claim_uuid, outcome, safe_error_code)
 VALUES ($1, 'rejected', $2)`, claimID, safeErrorCode)
 	return err
 }
@@ -515,9 +507,9 @@ func (store *Store) replayCreatedOffer(
 	var offer exchange.SaleOffer
 	var priceText string
 	err = store.pool.QueryRow(ctx, `
-SELECT id, seller_id, bond_series, price, currency_code
+SELECT uuid_id, seller_uuid, bond_series, price, currency_code
 FROM bond_exchange.sale_offers
-WHERE id = $1`, resourceID).Scan(
+WHERE uuid_id = $1`, resourceID).Scan(
 		&offer.ID,
 		&offer.SellerID,
 		&offer.BondSeries,
@@ -539,13 +531,13 @@ func (store *Store) replayResource(
 	var outcome, safeErrorCode string
 	var requestDigest []byte
 	err := store.pool.QueryRow(ctx, `
-SELECT result.resource_id, result.outcome, COALESCE(result.safe_error_code, ''), claim.request_digest
+SELECT result.resource_uuid, result.outcome, COALESCE(result.safe_error_code, ''), claim.request_digest
 FROM bond_exchange.operation_claims AS claim
-JOIN bond_exchange.operation_results AS result ON result.claim_id = claim.id
-WHERE claim.principal_id = $1
+JOIN bond_exchange.operation_results AS result ON result.claim_uuid = claim.uuid_id
+WHERE claim.principal_uuid = $1
   AND claim.client_id = $2
   AND claim.operation = $3
-  AND claim.idempotency_key = $4
+  AND claim.idempotency_nonce = $4
 	`,
 		operation.Principal.ID,
 		operation.Principal.ClientID,
@@ -653,6 +645,7 @@ func scanPurchase(row rowScanner) (exchange.Purchase, error) {
 	var purchase exchange.Purchase
 	var priceText string
 	err := row.Scan(
+		&purchase.ID,
 		&purchase.Offer.ID,
 		&purchase.Offer.SellerID,
 		&purchase.Offer.BondSeries,
@@ -680,9 +673,9 @@ func classifyCreateSaleOfferError(err error) error {
 	switch databaseError.ConstraintName {
 	case "sale_offers_pkey":
 		return exchange.ErrOfferAlreadyExists
-	case "sale_offers_seller_id_fkey":
+	case "sale_offers_seller_id_fkey", "sale_offers_seller_uuid_fkey":
 		return exchange.ErrSellerNotFound
-	case "sale_offers_bond_series_fkey":
+	case "sale_offers_bond_series_fkey", "sale_offers_bond_uuid_fkey":
 		return exchange.ErrBondNotFound
 	default:
 		return err

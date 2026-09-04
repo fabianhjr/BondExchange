@@ -29,8 +29,9 @@ REST and gRPC are internal interfaces over the same stateless application
 adapter. Every operation requires one short-lived signed JWT assertion from a
 configured federated issuer. The assertion contains one authorization detail
 of type `urn:bond-exchange:operation:v1`, exactly one action, the SHA-256 digest
-of the deterministic protobuf request, and, for a mutation, the same
-idempotency key carried in transport metadata. The service accepts EdDSA and
+of the deterministic protobuf request, and, for a mutation, the same canonical
+UUIDv4 idempotency nonce carried in transport metadata. The JWT `jti` is also a
+UUIDv4 nonce. The service accepts EdDSA and
 ES256 by default, selects a configured public JWK by `kid`, and validates the
 issuer, audience, subject, identifier, issued-at time, expiry, and maximum
 five-minute assertion lifetime. It never accepts identity from the request
@@ -40,7 +41,7 @@ The federated `(issuer, subject)` resolves to an append-only PostgreSQL
 principal classified as `human` or `automated`. Effective permissions are
 derived from append-only role grants and revocations. Authorization and a
 mutation execute in one database transaction. Operation claims are scoped by
-principal, client, operation, and idempotency key; a successful exact retry
+principal, client, operation, and UUIDv4 idempotency nonce; a successful exact retry
 returns the original result, while reuse for another request is rejected.
 
 Sale-offer and purchase responses deliberately omit seller and buyer
@@ -89,16 +90,16 @@ are offline fixtures with the token replaced by `<REDACTED>`; live capture is
 an explicit developer task, rejects credential reflection in the response,
 and is not invoked by CI.
 
-Successful offer creation and buying atomically record only an integration
-event's immutable source-table name, source ID, schema version, and completion
+Successful offer creation and buying atomically record an integration event
+UUIDv7 plus only its immutable source-table name, source UUID, schema version, and completion
 time. Versioned loaders reconstruct minimized payloads in memory and do not
 include buyer, seller, assertion, issuer-subject, request, or credential data.
 Publication occurs after commit, is at least once, and uses per-destination
-leases. Publisher failures and panics are contained and cannot change a
-committed domain result. Consumers must deduplicate by `(table_name, id)`.
+UUIDv4 lease nonces. Publisher failures and panics are contained and cannot
+change a committed domain result. Consumers must deduplicate by event UUID.
 
 There is no automatic event recovery process. `PublishPendingEvents` requires
-an operation-bound assertion, `events.publish`, and an idempotency key; it
+an operation-bound assertion, `events.publish`, and a UUIDv4 idempotency nonce; it
 attempts pending deliveries only when explicitly invoked and returns aggregate
 counts rather than event data. The repository configures no concrete publisher.
 Destination authentication, transport security, secrets, allowlists, payload
@@ -119,7 +120,7 @@ panics are logged without request or credential contents.
 | --- | --- | --- |
 | AD-1 | `Buy` means a binding order/reservation; settlement is pending and unchanged. | The current name `purchase` can be over-read as settled ownership, so API and domain documentation must retain the qualification. |
 | AD-2 | Principals explicitly distinguish human and automated clients. | One authorization model serves both classes; external assurance and factor policy can differ by class. |
-| AD-3/4 | A federated assertion is bound to one operation, canonical request, audience, and idempotency key. | Clients must obtain a fresh assertion whenever the request or operation changes; retries may use a fresh assertion only with the original key and request. |
+| AD-3/4 | A federated assertion is bound to one operation, canonical request, audience, and UUIDv4 idempotency nonce. | Clients must obtain a fresh assertion whenever the request or operation changes; retries may use a fresh assertion only with the original nonce and request. |
 | AD-5 | PostgreSQL-backed RBAC uses immutable grants, revocations, suspensions, and reinstatements. | Effective access is a derived view; administration requires append-only provisioning until an admin API is designed. |
 | AD-6 | REST and gRPC are internal and both enforce the same application controls. | Internal status does not justify bypassing authentication; network reachability is still a pending deployment control. |
 | AD-7 | Complete offer books use streaming semantics and a stable database snapshot. | Slow readers retain a database connection and snapshot; per-principal concurrency limits remain pending. |
@@ -131,6 +132,7 @@ panics are logged without request or credential contents.
 | AD-13 | Runtime gRPC reflection is absent; clients use a versioned descriptor set. | Operators lose live discovery and must select an artifact matching the deployed API. |
 | AD-14 | Integration events persist only immutable source references and use immediate best-effort delivery with explicit manual recovery. | Source loaders must remain compatible for the retention period, delivery is at least once, and pending events can remain indefinitely without operator action. |
 | AD-15 | Banxico SIE responses and exact exchange-rate revisions are durable; PostgreSQL leases and cooldowns coordinate on-demand fetches. | Durable provenance grows over time, stale latest values are possible during refresh failures, and a crash before import commit can cause a repeated upstream request. |
+| AD-16 | PostgreSQL 18 generates and enforces UUIDv7 table identities; UUIDv4 is reserved for idempotency, assertion, and lease nonces. | UUIDv7 reveals approximate creation time, and the rolling compatibility graph must remain synchronized until its later contract migration. |
 
 ## Pending non-code and deployment decisions
 

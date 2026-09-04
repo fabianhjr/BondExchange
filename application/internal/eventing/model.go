@@ -26,6 +26,7 @@ type SourceRef struct {
 }
 
 type Envelope struct {
+	ID            string    `json:"id"`
 	Source        SourceRef `json:"source"`
 	Type          string    `json:"type"`
 	SchemaVersion uint16    `json:"schema_version"`

@@ -40,11 +40,11 @@ run_attack() {
   local name="$4"
   local attack_duration="$duration"
   local attack_rate="$rate"
-  local generated_count=$((request_count + rate + workers))
+  local generated_count="$request_count"
   if (( request_count == 1 )); then
     attack_duration="1s"
     attack_rate=1
-    generated_count=2
+    generated_count=1
   fi
   set +o pipefail
   "$load_targets" "$private_key" "$base_url" "$scenario" "$generated_count" "$prefix" \
@@ -82,6 +82,18 @@ echo "Creating $count distinct offers at $rate requests/s with at most $workers 
 run_attack create "$count" load-offer create
 require_status create "$count" 201
 
+offers_token="$($demo_auth token "$private_key" demo-buyer offers.list - '{"bond":"DEMO2026"}')"
+curl --fail --silent \
+  --header "Authorization: Bearer $offers_token" \
+  "$base_url/active-offers?bond=DEMO2026" \
+  >"$artifact_root/created-offers.json-seq"
+jq --seq --raw-output 'select(.offer.price == "101.25") | .offer.id' \
+  "$artifact_root/created-offers.json-seq" >"$artifact_root/created-offer-ids.txt"
+if [[ "$(wc -l <"$artifact_root/created-offer-ids.txt")" -ne "$count" ]]; then
+  echo "could not discover all generated UUIDv7 offer IDs" >&2
+  exit 1
+fi
+
 echo "Listing the populated DEMO2026 offer book"
 run_attack list-offers "$count" list-offers list-offers
 require_status list-offers "$count" 200
@@ -91,15 +103,26 @@ run_attack list-series "$count" list-series list-series
 require_status list-series "$count" 200
 
 echo "Buying each generated offer exactly once"
-run_attack buy "$count" load-offer buy
+run_attack buy "$count" "@$artifact_root/created-offer-ids.txt" buy
 require_status buy "$count" 201
 
 echo "Creating one offer for a contended buy"
 run_attack create 1 contended-offer contended-setup
 require_status contended-setup 1 201
 
+curl --fail --silent \
+  --header "Authorization: Bearer $offers_token" \
+  "$base_url/active-offers?bond=DEMO2026" \
+  >"$artifact_root/contended-offer.json-seq"
+jq --seq --raw-output 'select(.offer.price == "101.25") | .offer.id' \
+  "$artifact_root/contended-offer.json-seq" >"$artifact_root/contended-offer-id.txt"
+if [[ "$(wc -l <"$artifact_root/contended-offer-id.txt")" -ne 1 ]]; then
+  echo "could not discover the contended UUIDv7 offer ID" >&2
+  exit 1
+fi
+
 echo "Sending $count independent buy operations for one offer"
-run_attack contended-buy "$count" contended-offer contended-buy
+run_attack contended-buy "$count" "@$artifact_root/contended-offer-id.txt" contended-buy
 jq --exit-status \
   --argjson request_count "$count" '
     .requests == $request_count
@@ -107,13 +130,12 @@ jq --exit-status \
     and ((.status_codes["404"] // 0) == ($request_count - 1))
   ' "$artifact_root/contended-buy.json" >/dev/null
 
-offers_token="$($demo_auth token "$private_key" demo-buyer offers.list - '{"bond":"DEMO2026"}')"
 curl --fail --silent \
   --header "Authorization: Bearer $offers_token" \
   "$base_url/active-offers?bond=DEMO2026" \
   >"$BOND_EXCHANGE_TEST_RUNTIME_ROOT/load-final-offers.json-seq"
 jq --seq --slurp --exit-status '
-  ([.[] | select(.offer) | .offer.id] == ["demo-offer-1", "demo-offer-2"])
+  ([.[] | select(.offer) | .offer.id] == ["01991a20-0000-7000-8000-000000000101", "01991a20-0000-7000-8000-000000000102"])
   and (.[-1].complete.offer_count == "2")
 ' "$BOND_EXCHANGE_TEST_RUNTIME_ROOT/load-final-offers.json-seq" >/dev/null
 

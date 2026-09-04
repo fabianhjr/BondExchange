@@ -21,6 +21,13 @@ type resolverStub struct {
 	err       error
 }
 
+const (
+	testPrincipalID = "019535d9-3df7-79fb-b466-fa907fa17f9e"
+	testAssertionID = "41db1265-8bc1-4ab3-992f-885799a4af1d"
+	testNonce       = "d9428888-122b-4c26-9f08-2a3f4a5b6c7d"
+	otherTestNonce  = "6ba7b810-9dad-41d1-80b4-00c04fd430c8"
+)
+
 func (resolver resolverStub) ResolvePrincipal(context.Context, string, string) (exchange.Principal, error) {
 	return resolver.principal, resolver.err
 }
@@ -29,7 +36,7 @@ func TestJWTAuthenticatorBindsPrincipalOperationRequestAndIdempotencyKey(t *test
 	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
 	authenticator, privateKey := newTestAuthenticator(t, now)
 	request := []byte("canonical protobuf request")
-	key := "idempotency-key-123"
+	key := testNonce
 	token := signAssertion(t, privateKey, standardClaims(now), operationClaims{
 		ClientID: "automated-client-1",
 		AuthorizationDetails: []authorizationDetails{{
@@ -45,7 +52,7 @@ func TestJWTAuthenticatorBindsPrincipalOperationRequestAndIdempotencyKey(t *test
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
 	}
-	if result.AccessContext.Principal.ID != "principal-1" ||
+	if result.AccessContext.Principal.ID != testPrincipalID ||
 		result.AccessContext.Principal.ClientID != "automated-client-1" ||
 		result.AccessContext.Operation != exchange.OperationBuy ||
 		result.IdempotencyKey != key {
@@ -60,7 +67,7 @@ func TestJWTAuthenticatorRejectsAssertionReuseOutsideExactOperation(t *testing.T
 	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
 	authenticator, privateKey := newTestAuthenticator(t, now)
 	request := []byte("request-a")
-	key := "idempotency-key-123"
+	key := testNonce
 	token := signAssertion(t, privateKey, standardClaims(now), operationClaims{
 		ClientID: "human-client-1",
 		AuthorizationDetails: []authorizationDetails{{
@@ -79,7 +86,7 @@ func TestJWTAuthenticatorRejectsAssertionReuseOutsideExactOperation(t *testing.T
 	}{
 		{name: "other operation", operation: exchange.OperationCreateSaleOffer, request: request, key: key},
 		{name: "other request", operation: exchange.OperationBuy, request: []byte("request-b"), key: key},
-		{name: "other idempotency key", operation: exchange.OperationBuy, request: request, key: "idempotency-key-456"},
+		{name: "other idempotency key", operation: exchange.OperationBuy, request: request, key: otherTestNonce},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := authenticator.Authenticate(incomingContext(token, test.key), test.operation, test.request, true)
@@ -94,7 +101,7 @@ func TestJWTAuthenticatorRejectsInvalidEnvelopeAndClaims(t *testing.T) {
 	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
 	authenticator, privateKey := newTestAuthenticator(t, now)
 	request := []byte("request")
-	key := "idempotency-key-123"
+	key := testNonce
 	validOperation := operationClaims{
 		ClientID: "client-1",
 		AuthorizationDetails: []authorizationDetails{{
@@ -108,7 +115,7 @@ func TestJWTAuthenticatorRejectsInvalidEnvelopeAndClaims(t *testing.T) {
 		claims   jwt.Claims
 		metadata metadata.MD
 	}{
-		{name: "expired", claims: jwt.Claims{Issuer: "https://issuer.test", Subject: "subject-1", Audience: jwt.Audience{"bond-exchange"}, ID: "assertion-1", IssuedAt: jwt.NewNumericDate(now.Add(-10 * time.Minute)), Expiry: jwt.NewNumericDate(now.Add(-5 * time.Minute))}},
+		{name: "expired", claims: jwt.Claims{Issuer: "https://issuer.test", Subject: "subject-1", Audience: jwt.Audience{"bond-exchange"}, ID: testAssertionID, IssuedAt: jwt.NewNumericDate(now.Add(-10 * time.Minute)), Expiry: jwt.NewNumericDate(now.Add(-5 * time.Minute))}},
 		{name: "wrong audience", claims: func() jwt.Claims { value := standardClaims(now); value.Audience = jwt.Audience{"other"}; return value }()},
 		{name: "missing bearer", claims: standardClaims(now), metadata: metadata.Pairs(IdempotencyMetadata, key)},
 		{name: "multiple bearer", claims: standardClaims(now), metadata: metadata.MD{AuthorizationMetadata: {"Bearer placeholder", "Bearer duplicate"}, IdempotencyMetadata: {key}}},
@@ -165,7 +172,7 @@ func TestJWTAuthenticatorRejectsMalformedClaims(t *testing.T) {
 	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
 	authenticator, privateKey := newTestAuthenticator(t, now)
 	request := []byte("request")
-	key := "idempotency-key-123"
+	key := testNonce
 	validDetail := authorizationDetails{
 		Type: AuthorizationType, Actions: []string{exchange.OperationBuy},
 		RequestSHA256: requestDigest(request), IdempotencyKey: key,
@@ -247,7 +254,7 @@ func TestJWTAuthenticatorRejectsResolverFailureAndMalformedBearer(t *testing.T) 
 	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
 	authenticator, privateKey := newTestAuthenticator(t, now)
 	request := []byte("request")
-	key := "idempotency-key-123"
+	key := testNonce
 	operation := operationClaims{ClientID: "client", AuthorizationDetails: []authorizationDetails{{
 		Type: AuthorizationType, Actions: []string{exchange.OperationBuy}, RequestSHA256: requestDigest(request), IdempotencyKey: key,
 	}}}
@@ -268,7 +275,7 @@ func TestJWTAuthenticatorRejectsUnknownKeyAlgorithmMismatchAndBadSignature(t *te
 	t.Parallel()
 	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
 	request := []byte("request")
-	key := "idempotency-key-123"
+	key := testNonce
 	operation := operationClaims{ClientID: "client", AuthorizationDetails: []authorizationDetails{{
 		Type: AuthorizationType, Actions: []string{exchange.OperationBuy}, RequestSHA256: requestDigest(request), IdempotencyKey: key,
 	}}}
@@ -310,7 +317,7 @@ func TestAuthenticationTextAndIdempotencyBoundaries(t *testing.T) {
 		t.Fatal("claim text validation accepted a control character or rejected valid text")
 	}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{
-		IdempotencyMetadata: {"idempotency-key-1", "idempotency-key-2"},
+		IdempotencyMetadata: {testNonce, otherTestNonce},
 	})
 	if _, err := requestIdempotencyKey(ctx, true); !errors.Is(err, exchange.ErrInvalidIdempotencyKey) {
 		t.Fatalf("duplicate idempotency metadata error = %v", err)
@@ -327,7 +334,7 @@ func newTestAuthenticator(t *testing.T, now time.Time) (*JWTAuthenticator, ed255
 		Issuer: "https://issuer.test", Audience: "bond-exchange", Now: func() time.Time { return now },
 		Keys:       jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: publicKey, KeyID: "test-key", Use: "sig", Algorithm: string(jose.EdDSA)}}},
 		Algorithms: []jose.SignatureAlgorithm{jose.EdDSA},
-	}, resolverStub{principal: exchange.Principal{ID: "principal-1", ClientClass: exchange.ClientClassAutomated}})
+	}, resolverStub{principal: exchange.Principal{ID: testPrincipalID, ClientClass: exchange.ClientClassAutomated}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +343,7 @@ func newTestAuthenticator(t *testing.T, now time.Time) (*JWTAuthenticator, ed255
 
 func standardClaims(now time.Time) jwt.Claims {
 	return jwt.Claims{
-		Issuer: "https://issuer.test", Subject: "subject-1", Audience: jwt.Audience{"bond-exchange"}, ID: "assertion-1",
+		Issuer: "https://issuer.test", Subject: "subject-1", Audience: jwt.Audience{"bond-exchange"}, ID: testAssertionID,
 		IssuedAt: jwt.NewNumericDate(now.Add(-time.Minute)), Expiry: jwt.NewNumericDate(now.Add(time.Minute)),
 	}
 }

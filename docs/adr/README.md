@@ -32,3 +32,4 @@ Alternatives considered sections.
 - [ADR-0014: Persist and coordinate Banxico SIE exchange rates](0014-persist-and-coordinate-banxico-sie-exchange-rates.md)
 - [ADR-0015: Place the Go module under `application/`](0015-place-go-module-under-application.md)
 - [ADR-0016: Use readable HTTP scenarios and generated load targets](0016-use-readable-http-scenarios-and-generated-load.md)
+- [ADR-0017: Use PostgreSQL 18, UUIDv7 identities, and UUIDv4 nonces](0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md)

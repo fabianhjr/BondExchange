@@ -200,7 +200,9 @@ func TestSIEStoreLeaseFailureCooldownAndDuplicatePersistence(t *testing.T) {
 	if err != nil || states[unit.Key].Ready {
 		t.Fatalf("initial state = %#v, %v", states, err)
 	}
-	claimed, err := store.Claim(ctx, []exchangerates.WorkUnit{unit}, "lease-one", time.Minute, false)
+	leaseOne := testNonce("lease-one")
+	leaseTwo := testNonce("lease-two")
+	claimed, err := store.Claim(ctx, []exchangerates.WorkUnit{unit}, leaseOne, time.Minute, false)
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("first claim = %#v, %v", claimed, err)
 	}
@@ -208,17 +210,18 @@ func TestSIEStoreLeaseFailureCooldownAndDuplicatePersistence(t *testing.T) {
 	if err != nil || states[unit.Key].LeaseUntil.IsZero() {
 		t.Fatalf("leased state = %#v, %v", states, err)
 	}
-	claimed, err = store.Claim(ctx, []exchangerates.WorkUnit{unit}, "lease-two", time.Minute, false)
+	claimed, err = store.Claim(ctx, []exchangerates.WorkUnit{unit}, leaseTwo, time.Minute, false)
 	if err != nil || len(claimed) != 0 {
 		t.Fatalf("overlapping claim = %#v, %v", claimed, err)
 	}
 	if err := store.Fail(ctx, "wrong", []exchangerates.WorkUnit{unit}, "provider_error", 0); err == nil {
 		t.Fatal("failure with wrong lease succeeded")
 	}
-	if err := store.Fail(ctx, "lease-one", []exchangerates.WorkUnit{unit}, "provider_error", 0); err != nil {
+	if err := store.Fail(ctx, leaseOne, []exchangerates.WorkUnit{unit}, "provider_error", 0); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err = store.Claim(ctx, []exchangerates.WorkUnit{unit}, "lease-three", time.Minute, false)
+	leaseThree := testNonce("lease-three")
+	claimed, err = store.Claim(ctx, []exchangerates.WorkUnit{unit}, leaseThree, time.Minute, false)
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("claim after failure = %#v, %v", claimed, err)
 	}
@@ -234,7 +237,7 @@ func TestSIEStoreLeaseFailureCooldownAndDuplicatePersistence(t *testing.T) {
 	if err := store.Complete(ctx, "wrong", claimed, request, result, time.Hour); err == nil {
 		t.Fatal("completion with wrong lease succeeded")
 	}
-	if err := store.Complete(ctx, "lease-three", claimed, request, result, time.Hour); err != nil {
+	if err := store.Complete(ctx, leaseThree, claimed, request, result, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	states, err = store.States(ctx, []exchangerates.WorkUnit{unit})
@@ -250,11 +253,12 @@ func TestSIEStoreLeaseFailureCooldownAndDuplicatePersistence(t *testing.T) {
 		t.Fatalf("missing latest = %#v, %v", missing, err)
 	}
 
-	claimed, err = store.Claim(ctx, []exchangerates.WorkUnit{unit}, "lease-four", time.Minute, true)
+	leaseFour := testNonce("lease-four")
+	claimed, err = store.Claim(ctx, []exchangerates.WorkUnit{unit}, leaseFour, time.Minute, true)
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("forced claim = %#v, %v", claimed, err)
 	}
-	if err := store.Complete(ctx, "lease-four", claimed, request, result, time.Hour); err != nil {
+	if err := store.Complete(ctx, leaseFour, claimed, request, result, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	var imports, observations int
@@ -302,15 +306,16 @@ func TestSIEStoreRejectsInvalidCompletionAndPropagatesClosedPoolErrors(t *testin
 			Value:    decimal.NewFromInt(19),
 		}},
 	}
-	if err := store.Complete(context.Background(), "lease", nil, request, validResult, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
+	lease := testNonce("lease")
+	if err := store.Complete(context.Background(), lease, nil, request, validResult, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
 		t.Fatalf("empty completion error = %v", err)
 	}
 	invalidJSON := validResult
 	invalidJSON.Response = json.RawMessage(`{`)
-	if err := store.Complete(context.Background(), "lease", []exchangerates.WorkUnit{unit}, request, invalidJSON, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
+	if err := store.Complete(context.Background(), lease, []exchangerates.WorkUnit{unit}, request, invalidJSON, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
 		t.Fatalf("invalid JSON error = %v", err)
 	}
-	claimed, err := store.Claim(context.Background(), []exchangerates.WorkUnit{unit}, "lease", time.Minute, false)
+	claimed, err := store.Claim(context.Background(), []exchangerates.WorkUnit{unit}, lease, time.Minute, false)
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("invalid-completion claim = %#v, %v", claimed, err)
 	}
@@ -320,15 +325,15 @@ func TestSIEStoreRejectsInvalidCompletionAndPropagatesClosedPoolErrors(t *testin
 		Date:     time.Now(),
 		Value:    decimal.NewFromInt(19),
 	}}
-	if err := store.Complete(context.Background(), "lease", claimed, request, unknownSeries, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
+	if err := store.Complete(context.Background(), lease, claimed, request, unknownSeries, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
 		t.Fatalf("unknown observation series error = %v", err)
 	}
 	invalidValue := validResult
 	invalidValue.Observations[0].Value = decimal.Zero
-	if err := store.Complete(context.Background(), "lease", claimed, request, invalidValue, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
+	if err := store.Complete(context.Background(), lease, claimed, request, invalidValue, time.Hour); !errors.Is(err, exchangerates.ErrInvalidObservation) {
 		t.Fatalf("invalid observation value error = %v", err)
 	}
-	if err := store.Fail(context.Background(), "lease", claimed, "invalid_test", 0); err != nil {
+	if err := store.Fail(context.Background(), lease, claimed, "invalid_test", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := scanRate(rowScannerFunc(func(...any) error { return errors.New("scan") })); err == nil {

@@ -26,6 +26,12 @@ type storeStub struct {
 	operation    AccessContext
 }
 
+const (
+	testUserID  = "019535d9-3df7-79fb-b466-fa907fa17f9e"
+	testOfferID = "019535d9-3df7-79fb-b466-fa907fa17f9f"
+	testNonce   = "41db1265-8bc1-4ab3-992f-885799a4af1d"
+)
+
 func (store *storeStub) Buy(_ context.Context, operation MutationContext, offer OfferID) (Purchase, error) {
 	store.operation = operation.AccessContext
 	store.buyBuyer = operation.Principal.ID
@@ -33,7 +39,11 @@ func (store *storeStub) Buy(_ context.Context, operation MutationContext, offer 
 	return store.buyValue, store.buyError
 }
 
-func (store *storeStub) CreateSaleOffer(_ context.Context, operation MutationContext, offer SaleOffer) (SaleOffer, error) {
+func (store *storeStub) CreateSaleOffer(
+	_ context.Context,
+	operation MutationContext,
+	offer SaleOffer,
+) (SaleOffer, error) {
 	store.operation = operation.AccessContext
 	store.createdInput = offer
 	return store.createdValue, store.createError
@@ -65,7 +75,7 @@ func (store *storeStub) ActiveBondSeries(_ context.Context, access AccessContext
 
 func testAccess(operation string) AccessContext {
 	return AccessContext{
-		Principal: Principal{ID: "buyer", ClientID: "test-client", ClientClass: ClientClassHuman},
+		Principal: Principal{ID: testUserID, ClientID: "test-client", ClientClass: ClientClassHuman},
 		Operation: operation,
 	}
 }
@@ -73,21 +83,21 @@ func testAccess(operation string) AccessContext {
 func TestServiceBuy(t *testing.T) {
 	t.Parallel()
 
-	expected := Purchase{BuyerID: "buyer", BoughtAt: time.Unix(1, 0)}
+	expected := Purchase{BuyerID: testUserID, BoughtAt: time.Unix(1, 0)}
 	store := &storeStub{buyValue: expected}
-	actual, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), "idempotency-key-1", "offer")
+	actual, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID)
 	if err != nil || !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("Buy() = %#v, %v", actual, err)
 	}
-	if store.buyBuyer != "buyer" || store.buyOffer != "offer" {
+	if store.buyBuyer != testUserID || store.buyOffer != testOfferID {
 		t.Fatalf("store received buyer %q and offer %q", store.buyBuyer, store.buyOffer)
 	}
 
 	store.buyError = ErrOfferUnavailable
-	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), "idempotency-key-1", "offer"); !errors.Is(err, ErrOfferUnavailable) {
+	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID); !errors.Is(err, ErrOfferUnavailable) {
 		t.Fatalf("Buy() store error = %v", err)
 	}
-	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), "idempotency-key-1", ""); !errors.Is(err, ErrInvalidOfferID) {
+	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, ""); !errors.Is(err, ErrInvalidOfferID) {
 		t.Fatalf("Buy() offer error = %v", err)
 	}
 }
@@ -95,13 +105,12 @@ func TestServiceBuy(t *testing.T) {
 func TestServiceCreateSaleOffer(t *testing.T) {
 	t.Parallel()
 
-	expected := SaleOffer{ID: "offer-1", SellerID: "seller-1", BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "USD"}
+	expected := SaleOffer{ID: testOfferID, SellerID: testUserID, BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "USD"}
 	store := &storeStub{createdValue: expected}
 	created, err := NewService(store).CreateSaleOffer(
 		context.Background(),
 		testAccess(OperationCreateSaleOffer),
-		"idempotency-key-1",
-		"offer-1",
+		testNonce,
 		"bnd",
 		"100.25",
 		"USD",
@@ -109,8 +118,8 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(created, expected) {
 		t.Fatalf("CreateSaleOffer() = %#v, %v", created, err)
 	}
-	if store.createdInput.ID != "offer-1" ||
-		store.createdInput.SellerID != "buyer" ||
+	if store.createdInput.ID != "" ||
+		store.createdInput.SellerID != testUserID ||
 		store.createdInput.BondSeries != "BND" ||
 		!store.createdInput.Price.Equal(decimal.RequireFromString("100.25")) ||
 		store.createdInput.Currency != "USD" {
@@ -118,29 +127,26 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 	}
 
 	store.createError = ErrOfferAlreadyExists
-	if _, err := NewService(store).CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), "idempotency-key-1", "offer-1", "BND", "1", "USD"); !errors.Is(err, ErrOfferAlreadyExists) {
+	if _, err := NewService(store).CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), testNonce, "BND", "1", "USD"); !errors.Is(err, ErrOfferAlreadyExists) {
 		t.Fatalf("CreateSaleOffer() store error = %v", err)
 	}
 
 	for _, test := range []struct {
 		name     string
-		id       string
 		bond     string
 		price    string
 		currency string
 		want     error
 	}{
-		{name: "offer ID", bond: "BND", price: "1", currency: "USD", want: ErrInvalidOfferID},
-		{name: "bond", id: "offer", bond: "!", price: "1", currency: "USD", want: ErrInvalidBondSeries},
-		{name: "price", id: "offer", bond: "BND", price: "0", currency: "USD", want: ErrInvalidPrice},
-		{name: "currency", id: "offer", bond: "BND", price: "1", want: ErrInvalidCurrencyCode},
+		{name: "bond", bond: "!", price: "1", currency: "USD", want: ErrInvalidBondSeries},
+		{name: "price", bond: "BND", price: "0", currency: "USD", want: ErrInvalidPrice},
+		{name: "currency", bond: "BND", price: "1", want: ErrInvalidCurrencyCode},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := NewService(&storeStub{}).CreateSaleOffer(
 				context.Background(),
 				testAccess(OperationCreateSaleOffer),
-				"idempotency-key-1",
-				test.id,
+				testNonce,
 				test.bond,
 				test.price,
 				test.currency,
@@ -155,7 +161,7 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 func TestServiceActiveOffers(t *testing.T) {
 	t.Parallel()
 
-	store := &storeStub{offers: []SaleOffer{{ID: "offer-2"}}}
+	store := &storeStub{offers: []SaleOffer{{ID: testOfferID}}}
 	service := NewService(store)
 	var offers []SaleOffer
 	err := service.StreamActiveOffers(context.Background(), testAccess(OperationListActiveOffers), "bnd", func(offer SaleOffer) error {
@@ -200,16 +206,16 @@ func TestServiceRejectsInvalidOperationContextAndIdempotency(t *testing.T) {
 	t.Parallel()
 	service := NewService(&storeStub{})
 	invalid := testAccess("other.operation")
-	if _, err := service.Buy(context.Background(), invalid, "idempotency-key-1", "offer"); !errors.Is(err, ErrInvalidOperation) {
+	if _, err := service.Buy(context.Background(), invalid, testNonce, testOfferID); !errors.Is(err, ErrInvalidOperation) {
 		t.Fatalf("Buy() operation error = %v", err)
 	}
-	if _, err := service.Buy(context.Background(), testAccess(OperationBuy), "short", "offer"); !errors.Is(err, ErrInvalidIdempotencyKey) {
+	if _, err := service.Buy(context.Background(), testAccess(OperationBuy), "short", testOfferID); !errors.Is(err, ErrInvalidIdempotencyKey) {
 		t.Fatalf("Buy() idempotency error = %v", err)
 	}
-	if _, err := service.CreateSaleOffer(context.Background(), invalid, "idempotency-key-1", "offer", "BND", "1", "USD"); !errors.Is(err, ErrInvalidOperation) {
+	if _, err := service.CreateSaleOffer(context.Background(), invalid, testNonce, "BND", "1", "USD"); !errors.Is(err, ErrInvalidOperation) {
 		t.Fatalf("CreateSaleOffer() operation error = %v", err)
 	}
-	if _, err := service.CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), "short", "offer", "BND", "1", "USD"); !errors.Is(err, ErrInvalidIdempotencyKey) {
+	if _, err := service.CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), "short", "BND", "1", "USD"); !errors.Is(err, ErrInvalidIdempotencyKey) {
 		t.Fatalf("CreateSaleOffer() idempotency error = %v", err)
 	}
 	if err := service.StreamActiveOffers(context.Background(), invalid, "BND", func(SaleOffer) error { return nil }); !errors.Is(err, ErrInvalidOperation) {

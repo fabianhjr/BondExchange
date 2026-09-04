@@ -31,7 +31,6 @@ type applicationStub struct {
 	series         []exchange.BondSeries
 	seriesErr      error
 	buyOffer       string
-	createID       string
 	createBond     string
 	createPrice    string
 	createCurrency string
@@ -59,12 +58,10 @@ func (application *applicationStub) CreateSaleOffer(
 	_ context.Context,
 	_ exchange.AccessContext,
 	_ string,
-	id string,
 	bond string,
 	price string,
 	currency string,
 ) (exchange.SaleOffer, error) {
-	application.createID = id
 	application.createBond = bond
 	application.createPrice = price
 	application.createCurrency = currency
@@ -298,12 +295,12 @@ func TestCreateSaleOfferHandler(t *testing.T) {
 		handler,
 		http.MethodPost,
 		"/sale-offers",
-		`{"id":"offer-2","bond_series":"bnd1","price":"99.75","currency_code":"USD"}`,
+		`{"bond_series":"bnd1","price":"99.75","currency_code":"USD"}`,
 	)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if application.createID != "offer-2" || application.createBond != "bnd1" || application.createPrice != "99.75" ||
+	if application.createBond != "bnd1" || application.createPrice != "99.75" ||
 		application.createCurrency != "USD" {
 		t.Fatalf("application create input = %#v", application)
 	}

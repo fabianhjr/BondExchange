@@ -12,12 +12,13 @@ import (
 )
 
 func (store *Store) LoadEvent(ctx context.Context, ref eventing.SourceRef) (eventing.Envelope, error) {
+	var envelopeID string
 	var version uint16
 	var completedAt time.Time
 	err := store.pool.QueryRow(ctx, `
-SELECT schema_version, completed_at
+SELECT uuid_id, schema_version, completed_at
 FROM bond_exchange.integration_events
-WHERE table_name = $1 AND id = $2`, ref.TableName, ref.ID).Scan(&version, &completedAt)
+WHERE table_name = $1 AND source_uuid = $2`, ref.TableName, ref.ID).Scan(&envelopeID, &version, &completedAt)
 	if err != nil {
 		return eventing.Envelope{}, err
 	}
@@ -26,6 +27,7 @@ WHERE table_name = $1 AND id = $2`, ref.TableName, ref.ID).Scan(&version, &compl
 	}
 
 	envelope := eventing.Envelope{
+		ID:            envelopeID,
 		Source:        ref,
 		SchemaVersion: version,
 		CompletedAt:   completedAt,
@@ -35,9 +37,9 @@ WHERE table_name = $1 AND id = $2`, ref.TableName, ref.ID).Scan(&version, &compl
 		var payload eventing.SaleOfferCreated
 		var priceText string
 		err = store.pool.QueryRow(ctx, `
-SELECT id, bond_series, price::text, currency_code
+SELECT uuid_id, bond_series, price::text, currency_code
 FROM bond_exchange.sale_offers
-WHERE id = $1`, ref.ID).Scan(
+WHERE uuid_id = $1`, ref.ID).Scan(
 			&payload.ID,
 			&payload.BondSeries,
 			&priceText,
@@ -57,15 +59,15 @@ WHERE id = $1`, ref.ID).Scan(
 		var priceText string
 		err = store.pool.QueryRow(ctx, `
 SELECT
-  purchase.sale_offer_id,
+  purchase.sale_offer_uuid,
   sale_offer.bond_series,
   sale_offer.price::text,
   sale_offer.currency_code,
   purchase.bought_at
 FROM bond_exchange.purchases AS purchase
 JOIN bond_exchange.sale_offers AS sale_offer
-  ON sale_offer.id = purchase.sale_offer_id
-WHERE purchase.sale_offer_id = $1`, ref.ID).Scan(
+  ON sale_offer.uuid_id = purchase.sale_offer_uuid
+WHERE purchase.uuid_id = $1`, ref.ID).Scan(
 			&payload.SaleOfferID,
 			&payload.BondSeries,
 			&priceText,
@@ -101,12 +103,14 @@ func (store *Store) ClaimEvent(
 	var attempt int
 	err := store.pool.QueryRow(ctx, `
 INSERT INTO bond_exchange.integration_event_deliveries
-  (destination_id, table_name, id, attempt_count, lease_token, lease_until)
-VALUES ($1, $2, $3, 1, $4, transaction_timestamp() + ($5 * interval '1 microsecond'))
-ON CONFLICT (destination_id, table_name, id) DO UPDATE
+  (destination_id, event_uuid, attempt_count, lease_nonce, lease_until)
+SELECT $1, event.uuid_id, 1, $4, transaction_timestamp() + ($5 * interval '1 microsecond')
+FROM bond_exchange.integration_events AS event
+WHERE event.table_name = $2 AND event.source_uuid = $3
+ON CONFLICT (destination_id, event_uuid) DO UPDATE
 SET
   attempt_count = bond_exchange.integration_event_deliveries.attempt_count + 1,
-  lease_token = EXCLUDED.lease_token,
+  lease_nonce = EXCLUDED.lease_nonce,
   lease_until = EXCLUDED.lease_until
 WHERE bond_exchange.integration_event_deliveries.delivered_at IS NULL
   AND (
@@ -135,12 +139,15 @@ UPDATE bond_exchange.integration_event_deliveries
 SET
   delivered_at = transaction_timestamp(),
   lease_token = NULL,
+  lease_nonce = NULL,
   lease_until = NULL,
   last_error_class = NULL
 WHERE destination_id = $1
-  AND table_name = $2
-  AND id = $3
-  AND lease_token = $4
+  AND event_uuid = (
+    SELECT uuid_id FROM bond_exchange.integration_events
+    WHERE table_name = $2 AND source_uuid = $3
+  )
+  AND lease_nonce = $4
   AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseToken)
 	if err != nil {
 		return err
@@ -163,13 +170,16 @@ func (store *Store) MarkEventFailed(
 UPDATE bond_exchange.integration_event_deliveries
 SET
   lease_token = NULL,
+  lease_nonce = NULL,
   lease_until = NULL,
   next_attempt_at = transaction_timestamp() + ($5 * interval '1 microsecond'),
   last_error_class = $6
 WHERE destination_id = $1
-  AND table_name = $2
-  AND id = $3
-  AND lease_token = $4
+  AND event_uuid = (
+    SELECT uuid_id FROM bond_exchange.integration_events
+    WHERE table_name = $2 AND source_uuid = $3
+  )
+  AND lease_nonce = $4
   AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseToken, retryAfter.Microseconds(), errorClass)
 	if err != nil {
 		return err
@@ -187,16 +197,18 @@ func (store *Store) PendingEvents(
 	limit int,
 ) ([]eventing.SourceRef, error) {
 	rows, err := store.pool.Query(ctx, `
-SELECT event.table_name, event.id
+SELECT event.table_name, event.source_uuid
 FROM bond_exchange.integration_events AS event
 LEFT JOIN bond_exchange.integration_event_deliveries AS delivery
   ON delivery.destination_id = $1
-  AND delivery.table_name = event.table_name
-  AND delivery.id = event.id
+  AND delivery.event_uuid = event.uuid_id
 WHERE delivery.delivered_at IS NULL
   AND (delivery.lease_until IS NULL OR delivery.lease_until <= transaction_timestamp())
-  AND (event.table_name, event.id) > ($2, $3)
-ORDER BY event.table_name, event.id
+  AND (event.table_name, event.source_uuid) > (
+    $2,
+    COALESCE(NULLIF($3, '')::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+  )
+ORDER BY event.table_name, event.source_uuid
 LIMIT $4`, destinationID, after.TableName, after.ID, limit)
 	if err != nil {
 		return nil, err
@@ -220,8 +232,7 @@ SELECT count(*)
 FROM bond_exchange.integration_events AS event
 LEFT JOIN bond_exchange.integration_event_deliveries AS delivery
   ON delivery.destination_id = $1
-  AND delivery.table_name = event.table_name
-  AND delivery.id = event.id
+  AND delivery.event_uuid = event.uuid_id
 WHERE delivery.delivered_at IS NULL`, destinationID).Scan(&count)
 	return count, err
 }

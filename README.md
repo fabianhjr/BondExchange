@@ -23,24 +23,26 @@ at the top level.
 
 The Go server is stateless, so multiple instances can serve requests
 concurrently. They share PostgreSQL as the concurrency and durable-idempotency
-authority. Users, bonds, sale offers, binding orders/reservations, principals,
+authority. Every table has a database-generated UUIDv7 primary key; UUIDv4 is
+reserved for request and lease nonces. Users, bonds, sale offers, binding orders/reservations, principals,
 RBAC changes, and operation results are append-only facts. A unique purchase
-key guarantees that only one buyer wins a race for an offer. A database view
+constraint on the offer UUID guarantees that only one buyer wins a race for an offer. A database view
 derives the currently active offers.
 
 Successful offer creation and buying also append minimal integration-event
-references in the same transaction. A reference contains only the immutable
-source table and row ID, its event-schema version, and completion time; payloads
+references in the same transaction. An event has its own UUIDv7 and contains
+only the immutable source table and source UUID, its event-schema version, and completion time; payloads
 are reconstructed from the source fact in memory. After commit the application
 makes one bounded delivery attempt to each configured destination. Delivery is
-at least once and consumers must deduplicate by `(table_name, id)`. There is no
+at least once and consumers must deduplicate by the event UUID. There is no
 automatic retry worker or startup drain; an authorized operator can explicitly
 retry pending events. This repository currently configures no concrete event
 publisher, so no event leaves the service.
 
 Both internal transports require a short-lived federated JWT assertion bound
 to one operation and the deterministic protobuf request digest. Domain
-mutations and manual event recovery also require an idempotency key. PostgreSQL
+mutations and manual event recovery also require a canonical UUIDv4 idempotency
+nonce. PostgreSQL
 resolves the federated identity and derives permissions from append-only RBAC
 grants and revocations. Buyer and seller identifiers come only from that
 authenticated principal and are omitted from API responses.
@@ -82,8 +84,8 @@ and `demo-buyer`, bonds `DEMO2026` and `DEMO2027`, and three active offers.
 The REST server listens on `127.0.0.1:8080` and the gRPC server listens on
 `127.0.0.1:9090` by default. Set `BOND_EXCHANGE_ADDRESS` and
 `BOND_EXCHANGE_GRPC_ADDRESS` to change the respective listener addresses. To
-use a persistent or externally managed
-database instead, supply its `DATABASE_URL` explicitly and start only the
+use a persistent or externally managed PostgreSQL 18 database instead, supply
+its `DATABASE_URL` explicitly and start only the
 server:
 
 ```console
@@ -105,9 +107,10 @@ schema ownership belongs to a separate migration role.
 
 Available endpoints are:
 
-- `POST /buys` with `{"sale_offer_id":"offer-1"}`;
+- `POST /buys` with a UUIDv7, for example
+  `{"sale_offer_id":"01991a20-0000-7000-8000-000000000101"}`;
 - `POST /sale-offers` with
-  `{"id":"offer-2","bond_series":"BND2026","price":"99.75","currency_code":"USD"}`;
+  `{"bond_series":"BND2026","price":"99.75","currency_code":"USD"}`;
 - `GET /active-offers?bond=BND2026`, which streams every active offer and a
   terminal count as `application/json-seq`;
 - `GET /active-bond-series`, which returns every bond series having an active
@@ -139,8 +142,8 @@ request JSON exactly matches the request being sent. For example:
 
 ```console
 KEY=/path/printed/by/devenv/private.jwk
-IDEMPOTENCY_KEY=demo-buy-key-0000001
-REQUEST='{"sale_offer_id":"demo-offer-1"}'
+IDEMPOTENCY_KEY=00000000-0000-4000-8000-000000000021
+REQUEST='{"sale_offer_id":"01991a20-0000-7000-8000-000000000101"}'
 TOKEN="$(go -C application run ./cmd/demo-auth token "$KEY" demo-buyer purchases.buy "$IDEMPOTENCY_KEY" "$REQUEST")"
 curl --header "Authorization: Bearer $TOKEN" \
   --header "Idempotency-Key: $IDEMPOTENCY_KEY" \
@@ -150,7 +153,10 @@ curl --header "Authorization: Bearer $TOKEN" \
 
 Read operations also need an assertion but omit the idempotency header and use
 `-` as the helper's idempotency argument. Assertions expire after two minutes
-in the demo and after at most five minutes at the server boundary.
+in the demo and after at most five minutes at the server boundary. Mutation
+clients generate a fresh random UUIDv4 for a new operation and retain that
+nonce with the exact request for retries. PostgreSQL generates resource UUIDv7
+values; create clients must use the returned ID rather than supplying one.
 
 Bond-series input is canonicalized to uppercase at the service boundary. Its
 canonical stored form is 3–40 uppercase ASCII letters or digits.
@@ -228,8 +234,9 @@ devenv tasks run security:check
 ```
 
 `integration:test` starts the complete disposable server and runs the readable
-sale-offer lifecycle in
-[`tests/integration/http/sale-offer-lifecycle.hurl`](tests/integration/http/sale-offer-lifecycle.hurl).
+[`create`](tests/integration/http/sale-offer-create.hurl) and
+[`post-create lifecycle`](tests/integration/http/sale-offer-lifecycle.hurl)
+scenarios.
 It covers active-series and active-offer listings, sale-offer creation, buying,
 idempotent retry, and removal from the active book. `integration:load-smoke`
 uses generated request-bound assertions to exercise distinct creates and buys,

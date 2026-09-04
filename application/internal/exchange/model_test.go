@@ -11,19 +11,19 @@ import (
 func TestIdentifierParsing(t *testing.T) {
 	t.Parallel()
 
-	if user, err := ParseUserID("user-1"); err != nil || user != "user-1" {
+	if user, err := ParseUserID(testUserID); err != nil || user != testUserID {
 		t.Fatalf("ParseUserID() = %q, %v", user, err)
 	}
 	if _, err := ParseUserID(""); !errors.Is(err, ErrInvalidUserID) {
 		t.Fatalf("ParseUserID(empty) error = %v", err)
 	}
-	if offer, err := ParseOfferID("offer-1"); err != nil || offer != "offer-1" {
+	if offer, err := ParseOfferID(testOfferID); err != nil || offer != testOfferID {
 		t.Fatalf("ParseOfferID() = %q, %v", offer, err)
 	}
 	if _, err := ParseOfferID(""); !errors.Is(err, ErrInvalidOfferID) {
 		t.Fatalf("ParseOfferID(empty) error = %v", err)
 	}
-	for _, invalid := range []string{strings.Repeat("x", 129), "user\nname", "user\x7f"} {
+	for _, invalid := range []string{strings.Repeat("x", 129), "user\nname", "41db1265-8bc1-4ab3-992f-885799a4af1d"} {
 		if _, err := ParseUserID(invalid); !errors.Is(err, ErrInvalidUserID) {
 			t.Fatalf("ParseUserID(%q) error = %v", invalid, err)
 		}
@@ -101,12 +101,12 @@ func TestPriceAndCurrencyParsing(t *testing.T) {
 
 func TestIdempotencyKeyValidation(t *testing.T) {
 	t.Parallel()
-	for _, valid := range []string{"idempotency-key-1", strings.Repeat("x", 128)} {
+	for _, valid := range []string{testNonce} {
 		if !IsValidIdempotencyKey(valid) {
 			t.Fatalf("valid key %q was rejected", valid)
 		}
 	}
-	for _, invalid := range []string{"short", strings.Repeat("x", 129), "idempotency key 1", "idempotency-key\x7f"} {
+	for _, invalid := range []string{"short", strings.Repeat("x", 129), testOfferID, strings.ToUpper(testNonce)} {
 		if IsValidIdempotencyKey(invalid) {
 			t.Fatalf("invalid key %q was accepted", invalid)
 		}

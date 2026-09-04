@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -59,10 +60,27 @@ func TestDemoAuthSupportsPendingEventRecovery(t *testing.T) {
 		filepath.Join(directory, "private.jwk"),
 		"demo-buyer",
 		exchange.OperationPublishPendingEvents,
-		"event-recovery-key-0001",
+		"00000000-0000-4000-8000-000000000031",
 		`{"destination_id":"security"}`,
 		time.Now().UTC(),
 	); err != nil {
+		t.Fatalf("issueToken() error = %v", err)
+	}
+}
+
+func TestDemoAuthRejectsNonUUIDMutationNonce(t *testing.T) {
+	directory := t.TempDir()
+	if err := initialize(directory); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := issueToken(
+		filepath.Join(directory, "private.jwk"),
+		"demo-buyer",
+		exchange.OperationBuy,
+		"not-a-uuid",
+		`{"sale_offer_id":"01991a20-0000-7000-8000-000000000101"}`,
+		time.Now().UTC(),
+	); !errors.Is(err, exchange.ErrInvalidIdempotencyKey) {
 		t.Fatalf("issueToken() error = %v", err)
 	}
 }

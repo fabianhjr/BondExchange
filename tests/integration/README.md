@@ -11,10 +11,13 @@ Run the executable request/response example with:
 devenv tasks run integration:test
 ```
 
-[`http/sale-offer-lifecycle.hurl`](http/sale-offer-lifecycle.hurl) is intended
-to be read as API documentation. It discovers and lists seeded offers, creates
-an offer, observes it in the active book, buys it, demonstrates an idempotent
-retry, and shows that a new buy can no longer acquire it. The REST offer list is
+[`http/sale-offer-create.hurl`](http/sale-offer-create.hurl) and
+[`http/sale-offer-lifecycle.hurl`](http/sale-offer-lifecycle.hurl) are intended
+to be read as API documentation. The first creates an offer with a UUIDv4
+idempotency nonce and captures its PostgreSQL-generated UUIDv7. The second
+discovers and lists seeded offers, observes the created offer in the active
+book, buys it, demonstrates an idempotent retry, and shows that a new buy can
+no longer acquire it. The REST offer list is
 an RFC 7464 JSON Text Sequence, so the runner also parses every frame with
 `jq --seq` and verifies ordering and the terminal count.
 
@@ -43,10 +46,10 @@ The load runner creates unique authenticated targets for these scenarios:
 
 | Scenario | Required result |
 | --- | --- |
-| Create | Every unique sale offer returns `201`. |
+| Create | Every independently idempotent request returns `201` with a distinct UUIDv7. |
 | List offers | Every request consumes the populated JSON-seq book and returns `200`. |
 | List series | Every discovery request returns `200`. |
-| Buy | Every generated offer is bought once with `201`. |
+| Buy | The runner discovers every generated UUIDv7 and buys each offer once with `201`. |
 | Contended buy | Exactly one request returns `201`; every other request returns `404`. |
 
 Binary Vegeta results and JSON/text summaries are written to

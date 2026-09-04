@@ -1,6 +1,8 @@
 package exchange
 
-import "context"
+import (
+	"context"
+)
 
 type Store interface {
 	Buy(ctx context.Context, operation MutationContext, offerID OfferID) (Purchase, error)
@@ -40,7 +42,6 @@ func (service *Service) CreateSaleOffer(
 	ctx context.Context,
 	access AccessContext,
 	idempotencyKey string,
-	id string,
 	bond string,
 	price string,
 	currency string,
@@ -50,10 +51,6 @@ func (service *Service) CreateSaleOffer(
 	}
 	if !IsValidIdempotencyKey(idempotencyKey) {
 		return SaleOffer{}, ErrInvalidIdempotencyKey
-	}
-	offerID, err := ParseOfferID(id)
-	if err != nil {
-		return SaleOffer{}, err
 	}
 	bondSeries, err := ParseBondSeries(bond)
 	if err != nil {
@@ -71,7 +68,6 @@ func (service *Service) CreateSaleOffer(
 		AccessContext:  access,
 		IdempotencyKey: idempotencyKey,
 	}, SaleOffer{
-		ID:         offerID,
 		SellerID:   access.Principal.ID,
 		BondSeries: bondSeries,
 		Price:      offerPrice,

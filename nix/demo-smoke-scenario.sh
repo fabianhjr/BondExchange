@@ -41,8 +41,8 @@ curl --fail --silent \
   | tr '\036' '\n' >"$test_root/offers.json"
 jq -se '([.[] | select(.offer)] | length == 2) and (.[-1].complete.offer_count == "2")' "$test_root/offers.json" >/dev/null
 
-create_key="demo-create-key-0001"
-create_request='{"id":"demo-smoke-offer","bond_series":"DEMO2026","price":"97.125","currency_code":"USD"}'
+create_key="00000000-0000-4000-8000-000000000011"
+create_request='{"bond_series":"DEMO2026","price":"97.125","currency_code":"USD"}'
 create_token="$(issue_token demo-seller offers.create "$create_key" "$create_request")"
 create_status="$(curl --silent --output "$test_root/create.json" --write-out '%{http_code}' \
   --header 'Content-Type: application/json' \
@@ -54,10 +54,14 @@ if [[ "$create_status" != 201 ]]; then
   echo "create sale offer returned HTTP $create_status" >&2
   exit 1
 fi
-jq -e '.offer.id == "demo-smoke-offer"' "$test_root/create.json" >/dev/null
+offer_id="$(jq --raw-output '.offer.id' "$test_root/create.json")"
+if [[ ! "$offer_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+  echo "create did not return a canonical UUIDv7 offer ID" >&2
+  exit 1
+fi
 
-buy_key="demo-buy-key-0000001"
-buy_request='{"sale_offer_id":"demo-smoke-offer"}'
+buy_key="00000000-0000-4000-8000-000000000012"
+buy_request="{\"sale_offer_id\":\"$offer_id\"}"
 buy_token="$(issue_token demo-buyer purchases.buy "$buy_key" "$buy_request")"
 buy_status="$(curl --silent --output "$test_root/buy.json" --write-out '%{http_code}' \
   --header 'Content-Type: application/json' \
@@ -69,9 +73,9 @@ if [[ "$buy_status" != 201 ]]; then
   echo "buy returned HTTP $buy_status" >&2
   exit 1
 fi
-jq -e '.offer.id == "demo-smoke-offer"' "$test_root/buy.json" >/dev/null
+jq --exit-status --arg offer_id "$offer_id" '.offer.id == $offer_id' "$test_root/buy.json" >/dev/null
 
-publish_key="demo-publish-key-0001"
+publish_key="00000000-0000-4000-8000-000000000013"
 publish_request='{}'
 publish_token="$(issue_token demo-buyer events.publish-pending "$publish_key" "$publish_request")"
 publish_status="$(curl --silent --output "$test_root/publish.json" --write-out '%{http_code}' \

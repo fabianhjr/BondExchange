@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-09-03
 
+ADR-0017 amends creation identity: PostgreSQL now generates the sale-offer
+UUIDv7, and the caller no longer supplies an offer ID. The remaining publishing
+and discovery decisions stay accepted.
+
 ## Context
 
 The initial API could buy offers and list active offers with an optional bond
@@ -26,15 +30,16 @@ uses JSON Text Sequences and gRPC uses server streaming.
 
 Add `ListActiveBondSeries`, exposed as `GET /active-bond-series`, to return each
 bond series represented by at least one active offer exactly once and in
-lexicographic order. Derive both reads from the existing `active_offers` view.
+lexicographic order. Derive both reads from the UUID-backed `active_offers_v2` view.
 
 Add `CreateSaleOffer`, exposed as `POST /sale-offers`. A caller supplies the
-offer ID, bond series, exact decimal price string, and currency code; the
+bond series, exact decimal price string, and currency code; the
 seller is the authenticated principal and cannot be assigned in the request.
-The application validates and canonicalizes those values, then inserts the
-offer as an append-only fact. Sellers and bonds continue to be provisioned
-outside this API. The database primary key resolves concurrent creation of the
-same ID, and foreign keys establish whether its seller and bond exist.
+The application validates and canonicalizes those values, then PostgreSQL
+generates a UUIDv7 and inserts the offer as an append-only fact. Sellers and
+bonds continue to be provisioned outside this API. UUID foreign keys establish
+whether its seller and bond exist, while the UUIDv4 mutation nonce handles
+exact retries.
 
 Model sale-offer creation as a new TLA+ state transition. An offer ID can never
 be reused after creation, including after purchase. Keep listing and series
@@ -52,10 +57,10 @@ discovery as derived reads rather than transport or SQL behavior in the model.
 - Heavily offered bonds do not require one in-memory response, but slow clients
   retain a database snapshot and connection. Pagination or a maximum count
   requires a later explicit contract change rather than implicit truncation.
-- Offer creation preserves stateless servers and append-only facts. Duplicate
-  IDs are reported as conflicts without process-local locking.
-- No database schema migration is required; the existing table, constraints,
-  view, and `(bond_series, id)` index support the behavior.
+- Offer creation preserves stateless servers and append-only facts. Clients
+  retain the returned UUIDv7 rather than selecting a resource identity.
+- The UUID migration provides the database default, constraints, UUID view,
+  relationship graph, and `(bond_series, uuid_id)` index for this behavior.
 
 ## Alternatives considered
 

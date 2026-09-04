@@ -3,6 +3,8 @@ package exchange
 import (
 	"crypto/sha256"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -27,7 +29,7 @@ var (
 	ErrUnauthenticated       = errors.New("authentication required")
 	ErrPermissionDenied      = errors.New("operation not permitted")
 	ErrInvalidOperation      = errors.New("invalid operation authorization")
-	ErrInvalidIdempotencyKey = errors.New("idempotency key must contain 16-128 visible ASCII characters")
+	ErrInvalidIdempotencyKey = errors.New("idempotency key must be a canonical UUIDv4 nonce")
 	ErrIdempotencyConflict   = errors.New("idempotency key was already used for another operation")
 )
 
@@ -60,13 +62,5 @@ type MutationContext struct {
 }
 
 func IsValidIdempotencyKey(value string) bool {
-	if len(value) < 16 || len(value) > 128 {
-		return false
-	}
-	for index := 0; index < len(value); index++ {
-		if value[index] < 0x21 || value[index] > 0x7e {
-			return false
-		}
-	}
-	return true
+	return isCanonicalUUIDVersion(value, uuid.Version(4))
 }

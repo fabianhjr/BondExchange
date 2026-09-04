@@ -2,13 +2,13 @@ package eventing
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const pendingBatchSize = 100
@@ -200,11 +200,8 @@ func retryDelay(attempt int, ref SourceRef) time.Duration {
 }
 
 func newLeaseToken() (string, error) {
-	var token [16]byte
-	if _, err := rand.Read(token[:]); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(token[:]), nil
+	token, err := uuid.NewRandom()
+	return token.String(), err
 }
 
 func (dispatcher *Dispatcher) destinationIDs() []string {

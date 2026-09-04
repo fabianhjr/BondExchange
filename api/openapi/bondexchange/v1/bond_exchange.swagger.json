@@ -3,7 +3,7 @@
   "info": {
     "title": "Bond Exchange API",
     "description": "REST and gRPC API for publishing and buying sale offers.",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "tags": [
     {
@@ -119,7 +119,7 @@
           },
           {
             "name": "Idempotency-Key",
-            "description": "A 16-128 character key bound into the operation assertion.",
+            "description": "A canonical UUIDv4 nonce bound into the operation assertion.",
             "in": "header",
             "required": true,
             "type": "string"
@@ -165,7 +165,7 @@
           },
           {
             "name": "Idempotency-Key",
-            "description": "A 16-128 character key bound into the operation assertion; per-event leases coordinate overlapping drains.",
+            "description": "A canonical UUIDv4 nonce bound into the operation assertion; per-event leases coordinate overlapping drains.",
             "in": "header",
             "required": true,
             "type": "string"
@@ -223,7 +223,7 @@
             }
           },
           "409": {
-            "description": "The sale-offer ID already exists.",
+            "description": "The generated sale-offer ID collided with an existing resource.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
@@ -246,7 +246,7 @@
           },
           {
             "name": "Idempotency-Key",
-            "description": "A 16-128 character key bound into the operation assertion.",
+            "description": "A canonical UUIDv4 nonce bound into the operation assertion.",
             "in": "header",
             "required": true,
             "type": "string"
@@ -263,7 +263,8 @@
       "type": "object",
       "properties": {
         "sale_offer_id": {
-          "type": "string"
+          "type": "string",
+          "description": "Canonical UUIDv7 returned by the service when the offer was created."
         }
       },
       "required": [
@@ -300,9 +301,6 @@
     "bondexchange.v1.CreateSaleOfferRequest": {
       "type": "object",
       "properties": {
-        "id": {
-          "type": "string"
-        },
         "bond_series": {
           "type": "string",
           "description": "Bond series to sell. The service canonicalizes this value to uppercase."
@@ -316,7 +314,6 @@
         }
       },
       "required": [
-        "id",
         "bond_series",
         "price",
         "currency_code"
@@ -413,7 +410,8 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "description": "PostgreSQL-generated canonical UUIDv7."
         },
         "bond_series": {
           "type": "string"
