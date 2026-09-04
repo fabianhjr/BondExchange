@@ -246,7 +246,8 @@ BOND_EXCHANGE_LOAD_WORKERS=40 \
 ```
 
 Each resulting load phase is limited to 90 seconds so its short-lived demo
-assertions remain valid.
+assertions remain valid. The manual task defaults to 1,000 operations per main
+phase; the correctness-gated smoke profile uses 120.
 
 Vegeta reports are written under `.artifacts/integration-load/`. They are
 repeatable local baselines rather than production service objectives; the

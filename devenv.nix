@@ -389,7 +389,7 @@ in
   tasks."integration:load-smoke" = {
     description = "Run a small correctness-gated generated HTTP workload";
     exec = ''
-      BOND_EXCHANGE_LOAD_COUNT=12 \
+      BOND_EXCHANGE_LOAD_COUNT=120 \
       BOND_EXCHANGE_LOAD_RATE=12 \
       BOND_EXCHANGE_LOAD_WORKERS=12 \
         ${integrationLoad}/bin/bond-exchange-integration-load
