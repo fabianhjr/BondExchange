@@ -6,11 +6,12 @@ import (
 )
 
 const (
-	OperationBuy              = "purchases.buy"
-	OperationCreateSaleOffer  = "offers.create"
-	OperationListActiveOffers = "offers.list"
-	OperationListBondSeries   = "bond-series.list"
-	OperationCheckHealth      = "health.read"
+	OperationBuy                  = "purchases.buy"
+	OperationCreateSaleOffer      = "offers.create"
+	OperationListActiveOffers     = "offers.list"
+	OperationListBondSeries       = "bond-series.list"
+	OperationCheckHealth          = "health.read"
+	OperationPublishPendingEvents = "events.publish-pending"
 )
 
 const (
@@ -19,6 +20,7 @@ const (
 	PermissionListActiveOffers = "offers.list"
 	PermissionListBondSeries   = "offers.list"
 	PermissionCheckHealth      = "health.read"
+	PermissionPublishEvents    = "events.publish"
 )
 
 var (

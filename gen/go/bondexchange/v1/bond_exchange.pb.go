@@ -513,6 +513,119 @@ func (x *CheckHealthResponse) GetStatus() string {
 	return ""
 }
 
+type PublishPendingEventsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Stable configured destination identifier. Empty selects every destination.
+	DestinationId string `protobuf:"bytes,1,opt,name=destination_id,json=destinationId,proto3" json:"destination_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishPendingEventsRequest) Reset() {
+	*x = PublishPendingEventsRequest{}
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishPendingEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishPendingEventsRequest) ProtoMessage() {}
+
+func (x *PublishPendingEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishPendingEventsRequest.ProtoReflect.Descriptor instead.
+func (*PublishPendingEventsRequest) Descriptor() ([]byte, []int) {
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *PublishPendingEventsRequest) GetDestinationId() string {
+	if x != nil {
+		return x.DestinationId
+	}
+	return ""
+}
+
+type PublishPendingEventsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Attempted     uint64                 `protobuf:"varint,1,opt,name=attempted,proto3" json:"attempted,omitempty"`
+	Delivered     uint64                 `protobuf:"varint,2,opt,name=delivered,proto3" json:"delivered,omitempty"`
+	Failed        uint64                 `protobuf:"varint,3,opt,name=failed,proto3" json:"failed,omitempty"`
+	Remaining     uint64                 `protobuf:"varint,4,opt,name=remaining,proto3" json:"remaining,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishPendingEventsResponse) Reset() {
+	*x = PublishPendingEventsResponse{}
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishPendingEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishPendingEventsResponse) ProtoMessage() {}
+
+func (x *PublishPendingEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishPendingEventsResponse.ProtoReflect.Descriptor instead.
+func (*PublishPendingEventsResponse) Descriptor() ([]byte, []int) {
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PublishPendingEventsResponse) GetAttempted() uint64 {
+	if x != nil {
+		return x.Attempted
+	}
+	return 0
+}
+
+func (x *PublishPendingEventsResponse) GetDelivered() uint64 {
+	if x != nil {
+		return x.Delivered
+	}
+	return 0
+}
+
+func (x *PublishPendingEventsResponse) GetFailed() uint64 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
+}
+
+func (x *PublishPendingEventsResponse) GetRemaining() uint64 {
+	if x != nil {
+		return x.Remaining
+	}
+	return 0
+}
+
 type SaleOffer struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -526,7 +639,7 @@ type SaleOffer struct {
 
 func (x *SaleOffer) Reset() {
 	*x = SaleOffer{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -538,7 +651,7 @@ func (x *SaleOffer) String() string {
 func (*SaleOffer) ProtoMessage() {}
 
 func (x *SaleOffer) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -551,7 +664,7 @@ func (x *SaleOffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaleOffer.ProtoReflect.Descriptor instead.
 func (*SaleOffer) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{10}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SaleOffer) GetId() string {
@@ -592,7 +705,7 @@ type BuyResponse struct {
 
 func (x *BuyResponse) Reset() {
 	*x = BuyResponse{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -604,7 +717,7 @@ func (x *BuyResponse) String() string {
 func (*BuyResponse) ProtoMessage() {}
 
 func (x *BuyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -617,7 +730,7 @@ func (x *BuyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuyResponse.ProtoReflect.Descriptor instead.
 func (*BuyResponse) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{11}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *BuyResponse) GetOffer() *SaleOffer {
@@ -644,7 +757,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -656,7 +769,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -669,7 +782,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{12}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Error) GetError() string {
@@ -718,7 +831,14 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x12CheckHealthRequest\"=\n" +
 	"\x13CheckHealthResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status:\x0e\x92A\v\n" +
-	"\t\xd2\x01\x06status\"\xba\x01\n" +
+	"\t\xd2\x01\x06status\"D\n" +
+	"\x1bPublishPendingEventsRequest\x12%\n" +
+	"\x0edestination_id\x18\x01 \x01(\tR\rdestinationId\"\x90\x01\n" +
+	"\x1cPublishPendingEventsResponse\x12\x1c\n" +
+	"\tattempted\x18\x01 \x01(\x04R\tattempted\x12\x1c\n" +
+	"\tdelivered\x18\x02 \x01(\x04R\tdelivered\x12\x16\n" +
+	"\x06failed\x18\x03 \x01(\x04R\x06failed\x12\x1c\n" +
+	"\tremaining\x18\x04 \x01(\x04R\tremaining\"\xba\x01\n" +
 	"\tSaleOffer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vbond_series\x18\x03 \x01(\tR\n" +
@@ -733,7 +853,7 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error:\r\x92A\n" +
 	"\n" +
-	"\b\xd2\x01\x05error2\xfb\x0f\n" +
+	"\b\xd2\x01\x05error2\xcf\x14\n" +
 	"\x13BondExchangeService\x12\xc7\x03\n" +
 	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x84\x03\x92A\xf0\x02JC\n" +
 	"\x03201\x12<\n" +
@@ -793,7 +913,19 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x03503\x12:\n" +
 	"\x1cThe database is unavailable.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\n" +
-	"\x12\b/healthzB\xde\x02\x92A\x91\x02\x12T\n" +
+	"\x12\b/healthz\x12\xd1\x04\n" +
+	"\x14PublishPendingEvents\x12,.bondexchange.v1.PublishPendingEventsRequest\x1a-.bondexchange.v1.PublishPendingEventsResponse\"\xdb\x03\x92A\xa9\x03Jf\n" +
+	"\x03200\x12_\n" +
+	"*The visible pending events were attempted.\x121\n" +
+	"/\x1a-.bondexchange.v1.PublishPendingEventsResponseJ^\n" +
+	"\x03400\x12W\n" +
+	"9The destination is invalid or no publisher is configured.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJX\n" +
+	"\x03500\x12Q\n" +
+	"3The server could not complete the recovery attempt.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Errorr\x84\x01\n" +
+	"\x81\x01\n" +
+	"\x0fIdempotency-Key\x12jA 16-128 character key bound into the operation assertion; per-event leases coordinate overlapping drains.\x18\x01(\x01\x82\xd3\xe4\x93\x02(:\x01*\"#/event-publications:publish-pendingB\xde\x02\x92A\x91\x02\x12T\n" +
 	"\x11Bond Exchange API\x128REST and gRPC API for publishing and buying sale offers.2\x051.0.02\x10application/json:\x10application/jsonZ{\n" +
 	"y\n" +
 	"\x12OperationAssertion\x12c\b\x02\x12NA Bearer JWT bound to the operation and deterministic protobuf request digest.\x1a\rAuthorization \x02b\x18\n" +
@@ -812,7 +944,7 @@ func file_bondexchange_v1_bond_exchange_proto_rawDescGZIP() []byte {
 	return file_bondexchange_v1_bond_exchange_proto_rawDescData
 }
 
-var file_bondexchange_v1_bond_exchange_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_bondexchange_v1_bond_exchange_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_bondexchange_v1_bond_exchange_proto_goTypes = []any{
 	(*BuyRequest)(nil),                   // 0: bondexchange.v1.BuyRequest
 	(*CreateSaleOfferRequest)(nil),       // 1: bondexchange.v1.CreateSaleOfferRequest
@@ -824,29 +956,33 @@ var file_bondexchange_v1_bond_exchange_proto_goTypes = []any{
 	(*ListActiveBondSeriesResponse)(nil), // 7: bondexchange.v1.ListActiveBondSeriesResponse
 	(*CheckHealthRequest)(nil),           // 8: bondexchange.v1.CheckHealthRequest
 	(*CheckHealthResponse)(nil),          // 9: bondexchange.v1.CheckHealthResponse
-	(*SaleOffer)(nil),                    // 10: bondexchange.v1.SaleOffer
-	(*BuyResponse)(nil),                  // 11: bondexchange.v1.BuyResponse
-	(*Error)(nil),                        // 12: bondexchange.v1.Error
-	(*timestamppb.Timestamp)(nil),        // 13: google.protobuf.Timestamp
+	(*PublishPendingEventsRequest)(nil),  // 10: bondexchange.v1.PublishPendingEventsRequest
+	(*PublishPendingEventsResponse)(nil), // 11: bondexchange.v1.PublishPendingEventsResponse
+	(*SaleOffer)(nil),                    // 12: bondexchange.v1.SaleOffer
+	(*BuyResponse)(nil),                  // 13: bondexchange.v1.BuyResponse
+	(*Error)(nil),                        // 14: bondexchange.v1.Error
+	(*timestamppb.Timestamp)(nil),        // 15: google.protobuf.Timestamp
 }
 var file_bondexchange_v1_bond_exchange_proto_depIdxs = []int32{
-	10, // 0: bondexchange.v1.CreateSaleOfferResponse.offer:type_name -> bondexchange.v1.SaleOffer
-	10, // 1: bondexchange.v1.ListActiveOffersResponse.offer:type_name -> bondexchange.v1.SaleOffer
+	12, // 0: bondexchange.v1.CreateSaleOfferResponse.offer:type_name -> bondexchange.v1.SaleOffer
+	12, // 1: bondexchange.v1.ListActiveOffersResponse.offer:type_name -> bondexchange.v1.SaleOffer
 	5,  // 2: bondexchange.v1.ListActiveOffersResponse.complete:type_name -> bondexchange.v1.ListActiveOffersComplete
-	10, // 3: bondexchange.v1.BuyResponse.offer:type_name -> bondexchange.v1.SaleOffer
-	13, // 4: bondexchange.v1.BuyResponse.bought_at:type_name -> google.protobuf.Timestamp
+	12, // 3: bondexchange.v1.BuyResponse.offer:type_name -> bondexchange.v1.SaleOffer
+	15, // 4: bondexchange.v1.BuyResponse.bought_at:type_name -> google.protobuf.Timestamp
 	0,  // 5: bondexchange.v1.BondExchangeService.Buy:input_type -> bondexchange.v1.BuyRequest
 	1,  // 6: bondexchange.v1.BondExchangeService.CreateSaleOffer:input_type -> bondexchange.v1.CreateSaleOfferRequest
 	3,  // 7: bondexchange.v1.BondExchangeService.ListActiveOffers:input_type -> bondexchange.v1.ListActiveOffersRequest
 	6,  // 8: bondexchange.v1.BondExchangeService.ListActiveBondSeries:input_type -> bondexchange.v1.ListActiveBondSeriesRequest
 	8,  // 9: bondexchange.v1.BondExchangeService.CheckHealth:input_type -> bondexchange.v1.CheckHealthRequest
-	11, // 10: bondexchange.v1.BondExchangeService.Buy:output_type -> bondexchange.v1.BuyResponse
-	2,  // 11: bondexchange.v1.BondExchangeService.CreateSaleOffer:output_type -> bondexchange.v1.CreateSaleOfferResponse
-	4,  // 12: bondexchange.v1.BondExchangeService.ListActiveOffers:output_type -> bondexchange.v1.ListActiveOffersResponse
-	7,  // 13: bondexchange.v1.BondExchangeService.ListActiveBondSeries:output_type -> bondexchange.v1.ListActiveBondSeriesResponse
-	9,  // 14: bondexchange.v1.BondExchangeService.CheckHealth:output_type -> bondexchange.v1.CheckHealthResponse
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
+	10, // 10: bondexchange.v1.BondExchangeService.PublishPendingEvents:input_type -> bondexchange.v1.PublishPendingEventsRequest
+	13, // 11: bondexchange.v1.BondExchangeService.Buy:output_type -> bondexchange.v1.BuyResponse
+	2,  // 12: bondexchange.v1.BondExchangeService.CreateSaleOffer:output_type -> bondexchange.v1.CreateSaleOfferResponse
+	4,  // 13: bondexchange.v1.BondExchangeService.ListActiveOffers:output_type -> bondexchange.v1.ListActiveOffersResponse
+	7,  // 14: bondexchange.v1.BondExchangeService.ListActiveBondSeries:output_type -> bondexchange.v1.ListActiveBondSeriesResponse
+	9,  // 15: bondexchange.v1.BondExchangeService.CheckHealth:output_type -> bondexchange.v1.CheckHealthResponse
+	11, // 16: bondexchange.v1.BondExchangeService.PublishPendingEvents:output_type -> bondexchange.v1.PublishPendingEventsResponse
+	11, // [11:17] is the sub-list for method output_type
+	5,  // [5:11] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -867,7 +1003,7 @@ func file_bondexchange_v1_bond_exchange_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bondexchange_v1_bond_exchange_proto_rawDesc), len(file_bondexchange_v1_bond_exchange_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

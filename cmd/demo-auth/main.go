@@ -142,6 +142,8 @@ func requestMessage(operation string) (proto.Message, error) {
 		return &bondexchangev1.ListActiveBondSeriesRequest{}, nil
 	case exchange.OperationCheckHealth:
 		return &bondexchangev1.CheckHealthRequest{}, nil
+	case exchange.OperationPublishPendingEvents:
+		return &bondexchangev1.PublishPendingEventsRequest{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported operation %q", operation)
 	}

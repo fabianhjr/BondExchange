@@ -135,6 +135,21 @@ if [[ "$buy_status" != 201 ]]; then
 fi
 jq -e '.offer.id == "demo-smoke-offer"' "$smoke_root/buy.json" >/dev/null
 
+publish_key="demo-publish-key-0001"
+publish_request='{}'
+publish_token="$(issue_token demo-buyer events.publish-pending "$publish_key" "$publish_request")"
+publish_status="$(curl --silent --output "$smoke_root/publish.json" --write-out '%{http_code}' \
+  --header 'Content-Type: application/json' \
+  --header "Authorization: Bearer $publish_token" \
+  --header "Idempotency-Key: $publish_key" \
+  --data "$publish_request" \
+  "http://$rest_address/event-publications:publish-pending")"
+if [[ "$publish_status" != 400 ]]; then
+  echo "manual event publication without a configured publisher returned HTTP $publish_status" >&2
+  exit 1
+fi
+jq -e '.error == "no event publishers are configured"' "$smoke_root/publish.json" >/dev/null
+
 kill -TERM "$demo_pid"
 set +e
 wait "$demo_pid"

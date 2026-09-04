@@ -9,6 +9,9 @@ The security-fact migration is
 [`migrations/20260903000000_append_only_security.sql`](migrations/20260903000000_append_only_security.sql).
 The reflection-permission retirement is
 [`migrations/20260903120000_retire_reflection_permission.sql`](migrations/20260903120000_retire_reflection_permission.sql).
+Minimal integration-event references and their delivery coordination are added
+by
+[`migrations/20260903130000_add_integration_event_references.sql`](migrations/20260903130000_add_integration_event_references.sql).
 
 The `bond_exchange.monetary_amount` domain is based on PostgreSQL
 `numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
@@ -64,6 +67,33 @@ exact retry can use a fresh assertion and recover the original resource; using
 the same scope for another request is rejected. These tables intentionally
 retain audit history and have no destructive down migration.
 
+An `AFTER INSERT` trigger on successful operation results maps `offers.create`
+to `(sale_offers, offer_id)` and `purchases.buy` to
+`(purchases, sale_offer_id)`. It appends that composite source reference, event
+schema version, and completion time to `integration_events` in the mutation's
+transaction. Rejections and unrelated operations append nothing. The table has
+no event ID, sequence, serialized payload, or copied domain columns. Event data
+is reconstructed through fixed, versioned queries against the immutable source
+facts immediately before publication. The narrowly scoped trigger function runs
+as its migration owner with a fixed system search path, so applying the expand
+migration does not require a previously deployed exchange writer to gain a new
+table privilege.
+
+`integration_event_deliveries` is mutable operational coordination rather than
+a domain-fact table. Its primary key adds a stable destination ID to the source
+reference. Short leases coordinate overlapping immediate and operator-triggered
+attempts; delivery acknowledgement, attempt count, next-attempt time, and a
+sanitized error class are the only retained delivery data. External calls occur
+after the claiming transaction commits. A crash after destination acceptance
+but before acknowledgement can cause a duplicate, so consumers deduplicate by
+the composite source reference. Runtime `UPDATE` privilege is required only on
+this delivery table; integration events and all domain facts remain append-only.
+
+The application attempts publication once after each successful mutation. It
+does not scan pending events on startup or run a scheduled worker. An authorized
+API operation performs an explicit recovery scan. With no configured concrete
+publisher, references accumulate without delivery.
+
 Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema
 source of truth, so automatic schema dumps are disabled.
@@ -103,6 +133,7 @@ forward migration when a lossless rollback is not possible.
 
 Statement-level triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` on domain
 fact tables as defense in depth. Production runtime roles should not own the
-schema and should be granted only the `SELECT` and `INSERT` privileges their
-queries require. Migrations and exceptional recovery use a separately
-controlled owner.
+schema. Exchange writers need only the `SELECT` and `INSERT` privileges their
+queries require; a configured event publisher additionally needs narrowly
+scoped `UPDATE` on `integration_event_deliveries`. Migrations and exceptional
+recovery use a separately controlled owner.

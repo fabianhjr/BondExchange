@@ -237,6 +237,52 @@ service BondExchangeService {
       }
     };
   }
+
+  // PublishPendingEvents explicitly retries pending integration-event deliveries.
+  // No automatic startup or scheduled drain invokes this operation.
+  rpc PublishPendingEvents(PublishPendingEventsRequest) returns (PublishPendingEventsResponse) {
+    option (google.api.http) = {
+      post: "/event-publications:publish-pending"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Idempotency-Key"
+          description: "A 16-128 character key bound into the operation assertion; per-event leases coordinate overlapping drains."
+          type: STRING
+          required: true
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "The visible pending events were attempted."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.PublishPendingEventsResponse"}
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "The destination is invalid or no publisher is configured."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "The server could not complete the recovery attempt."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+    };
+  }
 }
 
 message BuyRequest {
@@ -316,6 +362,18 @@ message CheckHealthResponse {
   };
 
   string status = 1;
+}
+
+message PublishPendingEventsRequest {
+  // Stable configured destination identifier. Empty selects every destination.
+  string destination_id = 1;
+}
+
+message PublishPendingEventsResponse {
+  uint64 attempted = 1;
+  uint64 delivered = 2;
+  uint64 failed = 3;
+  uint64 remaining = 4;
 }
 
 message SaleOffer {

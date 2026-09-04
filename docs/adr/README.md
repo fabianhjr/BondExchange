@@ -26,3 +26,4 @@ Alternatives considered sections.
 - [ADR-0008: Use isolated PostgreSQL lifecycles for tests and demos](0008-use-isolated-postgresql-lifecycles.md)
 - [ADR-0009: Bind federated authorization to idempotent operations](0009-bind-federated-authorization-to-idempotent-operations.md)
 - [ADR-0010: Replace runtime gRPC reflection with a versioned descriptor set](0010-replace-runtime-reflection-with-descriptor-set.md)
+- [ADR-0011: Use minimal transactional references for integration events](0011-use-minimal-transactional-event-references.md)

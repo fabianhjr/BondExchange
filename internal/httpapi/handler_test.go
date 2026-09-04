@@ -12,6 +12,7 @@ import (
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1"
 	"github.com/fabianhjr/BondExchange/internal/authn"
+	"github.com/fabianhjr/BondExchange/internal/eventing"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/fabianhjr/BondExchange/internal/rpcapi"
 	"github.com/shopspring/decimal"
@@ -35,6 +36,9 @@ type applicationStub struct {
 	createCurrency string
 	bond           string
 	panicBuy       bool
+	publishSummary eventing.Summary
+	publishErr     error
+	destinationID  string
 }
 
 func (application *applicationStub) Buy(
@@ -86,6 +90,15 @@ func (application *applicationStub) StreamActiveOffers(
 
 func (application *applicationStub) ActiveBondSeries(context.Context, exchange.AccessContext) ([]exchange.BondSeries, error) {
 	return application.series, application.seriesErr
+}
+
+func (application *applicationStub) PublishPendingEvents(
+	_ context.Context,
+	_ exchange.AccessContext,
+	destinationID string,
+) (eventing.Summary, error) {
+	application.destinationID = destinationID
+	return application.publishSummary, application.publishErr
 }
 
 type healthStub struct{ err error }
@@ -346,6 +359,37 @@ func TestHealthHandler(t *testing.T) {
 	)
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unhealthy status = %d", response.Code)
+	}
+}
+
+func TestPublishPendingEventsHandler(t *testing.T) {
+	t.Parallel()
+	application := &applicationStub{publishSummary: eventing.Summary{
+		Attempted: 4,
+		Delivered: 3,
+		Failed:    1,
+		Remaining: 1,
+	}}
+	handler := newHandler(t, application, healthStub{})
+	response := performRequest(
+		handler,
+		http.MethodPost,
+		"/event-publications:publish-pending",
+		`{"destination_id":"security"}`,
+	)
+	if response.Code != http.StatusOK || application.destinationID != "security" {
+		t.Fatalf("response = %d %s, destination = %q", response.Code, response.Body.String(), application.destinationID)
+	}
+	for _, expected := range []string{`"attempted":"4"`, `"delivered":"3"`, `"failed":"1"`, `"remaining":"1"`} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("body %s does not contain %s", response.Body.String(), expected)
+		}
+	}
+
+	application.publishErr = eventing.ErrNoPublishers
+	response = performRequest(handler, http.MethodPost, "/event-publications:publish-pending", `{}`)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("no-publisher status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1"
 	"github.com/fabianhjr/BondExchange/internal/authn"
+	"github.com/fabianhjr/BondExchange/internal/eventing"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/fabianhjr/BondExchange/internal/httpapi"
 	postgresstore "github.com/fabianhjr/BondExchange/internal/postgres"
@@ -70,7 +71,12 @@ func run() error {
 	if err := store.Ping(ctx); err != nil {
 		return err
 	}
-	service := exchange.NewService(store)
+	exchangeService := exchange.NewService(store)
+	dispatcher, err := eventing.NewDispatcher(store, nil, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	service := eventing.NewApplication(exchangeService, store, dispatcher)
 	jwtAuthenticator, err := loadAuthenticator(store)
 	if err != nil {
 		return err

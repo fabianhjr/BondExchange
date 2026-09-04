@@ -69,9 +69,10 @@ current gates either accept or do not cover.
   constraints and every sanctioned writer agree with the documented domain,
   including a safe plan for any pre-existing nonconforming facts.
 
-### F-005 — Append-only operational data has no lifecycle policy (P1)
+### F-005 — Append-only and event-delivery data has no lifecycle policy (P1)
 
-- **Evidence:** Operation claims/results, RBAC facts, and domain facts grow
+- **Evidence:** Operation claims/results, RBAC facts, domain facts, minimal
+  integration-event references, and per-destination delivery records grow
   without deletion. [`docs/security/ASVS.md`](docs/security/ASVS.md) leaves
   capacity, retention, protected backups, immutable log storage, and erasure
   semantics to future deployment and legal decisions.
@@ -213,3 +214,19 @@ current gates either accept or do not cover.
   focused process tests for invalid configuration, listener failures, startup,
   and graceful/forced shutdown, with an explicit decision on whether command
   packages belong in quality metrics.
+
+### F-017 — Integration-event recovery is manual and has no destination (P2)
+
+- **Evidence:** Successful mutations record durable event references and make
+  one immediate attempt per configured destination, but the repository ships
+  no concrete publisher. There is deliberately no startup sweep, scheduled
+  retry, or background worker; only an authorized operator can invoke
+  `PublishPendingEvents`.
+- **Impact:** No event leaves the service in the checked-in configuration, and
+  a crash or publisher failure can leave events pending indefinitely unless an
+  operator detects the backlog and explicitly retries it. At-least-once
+  recovery can also produce duplicates after an ambiguous acknowledgement.
+- **Complete when:** A reviewed destination adapter, authenticated transport,
+  payload approval, consumer deduplication, backlog monitoring, and tested
+  recovery runbook are deployed, or an ADR deliberately accepts database-only
+  event retention and removes the outbound-delivery claim.

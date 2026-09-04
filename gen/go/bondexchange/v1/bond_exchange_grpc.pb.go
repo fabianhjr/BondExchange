@@ -24,6 +24,7 @@ const (
 	BondExchangeService_ListActiveOffers_FullMethodName     = "/bondexchange.v1.BondExchangeService/ListActiveOffers"
 	BondExchangeService_ListActiveBondSeries_FullMethodName = "/bondexchange.v1.BondExchangeService/ListActiveBondSeries"
 	BondExchangeService_CheckHealth_FullMethodName          = "/bondexchange.v1.BondExchangeService/CheckHealth"
+	BondExchangeService_PublishPendingEvents_FullMethodName = "/bondexchange.v1.BondExchangeService/PublishPendingEvents"
 )
 
 // BondExchangeServiceClient is the client API for BondExchangeService service.
@@ -43,6 +44,9 @@ type BondExchangeServiceClient interface {
 	ListActiveBondSeries(ctx context.Context, in *ListActiveBondSeriesRequest, opts ...grpc.CallOption) (*ListActiveBondSeriesResponse, error)
 	// CheckHealth reports whether the server can reach its database.
 	CheckHealth(ctx context.Context, in *CheckHealthRequest, opts ...grpc.CallOption) (*CheckHealthResponse, error)
+	// PublishPendingEvents explicitly retries pending integration-event deliveries.
+	// No automatic startup or scheduled drain invokes this operation.
+	PublishPendingEvents(ctx context.Context, in *PublishPendingEventsRequest, opts ...grpc.CallOption) (*PublishPendingEventsResponse, error)
 }
 
 type bondExchangeServiceClient struct {
@@ -112,6 +116,16 @@ func (c *bondExchangeServiceClient) CheckHealth(ctx context.Context, in *CheckHe
 	return out, nil
 }
 
+func (c *bondExchangeServiceClient) PublishPendingEvents(ctx context.Context, in *PublishPendingEventsRequest, opts ...grpc.CallOption) (*PublishPendingEventsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishPendingEventsResponse)
+	err := c.cc.Invoke(ctx, BondExchangeService_PublishPendingEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BondExchangeServiceServer is the server API for BondExchangeService service.
 // All implementations must embed UnimplementedBondExchangeServiceServer
 // for forward compatibility.
@@ -129,6 +143,9 @@ type BondExchangeServiceServer interface {
 	ListActiveBondSeries(context.Context, *ListActiveBondSeriesRequest) (*ListActiveBondSeriesResponse, error)
 	// CheckHealth reports whether the server can reach its database.
 	CheckHealth(context.Context, *CheckHealthRequest) (*CheckHealthResponse, error)
+	// PublishPendingEvents explicitly retries pending integration-event deliveries.
+	// No automatic startup or scheduled drain invokes this operation.
+	PublishPendingEvents(context.Context, *PublishPendingEventsRequest) (*PublishPendingEventsResponse, error)
 	mustEmbedUnimplementedBondExchangeServiceServer()
 }
 
@@ -153,6 +170,9 @@ func (UnimplementedBondExchangeServiceServer) ListActiveBondSeries(context.Conte
 }
 func (UnimplementedBondExchangeServiceServer) CheckHealth(context.Context, *CheckHealthRequest) (*CheckHealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CheckHealth not implemented")
+}
+func (UnimplementedBondExchangeServiceServer) PublishPendingEvents(context.Context, *PublishPendingEventsRequest) (*PublishPendingEventsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PublishPendingEvents not implemented")
 }
 func (UnimplementedBondExchangeServiceServer) mustEmbedUnimplementedBondExchangeServiceServer() {}
 func (UnimplementedBondExchangeServiceServer) testEmbeddedByValue()                             {}
@@ -258,6 +278,24 @@ func _BondExchangeService_CheckHealth_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BondExchangeService_PublishPendingEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishPendingEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BondExchangeServiceServer).PublishPendingEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BondExchangeService_PublishPendingEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BondExchangeServiceServer).PublishPendingEvents(ctx, req.(*PublishPendingEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BondExchangeService_ServiceDesc is the grpc.ServiceDesc for BondExchangeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -280,6 +318,10 @@ var BondExchangeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckHealth",
 			Handler:    _BondExchangeService_CheckHealth_Handler,
+		},
+		{
+			MethodName: "PublishPendingEvents",
+			Handler:    _BondExchangeService_PublishPendingEvents_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
