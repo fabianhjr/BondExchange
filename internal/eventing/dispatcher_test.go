@@ -301,3 +301,84 @@ func TestRetryDelayIsBounded(t *testing.T) {
 		t.Fatalf("capped delay = %s", last)
 	}
 }
+
+func TestDispatcherAbortsOnClaimEventError(t *testing.T) {
+	t.Parallel()
+	events := []Envelope{
+		testEvent(TablePurchases, "offer-1"),
+		testEvent(TableSaleOffers, "offer-2"),
+	}
+	store := newStoreFake(events...)
+	store.claimErr = errors.New("claim error")
+	publisher := &publisherFake{}
+	dispatcher, err := NewDispatcher(store, []Destination{{ID: "sink", Publisher: publisher}}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := dispatcher.PublishPending(context.Background(), "sink")
+	if err == nil {
+		t.Fatal("expected error from ClaimEvent but got nil")
+	}
+	if !errors.Is(err, store.claimErr) {
+		t.Fatalf("expected claim error but got: %v", err)
+	}
+	if summary.Attempted != 0 || summary.Failed != 0 {
+		t.Fatalf("expected no attempts/failures on pre-claim error, got summary: %#v", summary)
+	}
+}
+
+func TestDispatcherHandlesLoadEventErrorAsPostClaimFailure(t *testing.T) {
+	t.Parallel()
+	events := []Envelope{
+		testEvent(TablePurchases, "offer-1"),
+		testEvent(TableSaleOffers, "offer-2"),
+	}
+	store := newStoreFake(events...)
+	store.loadErr = errors.New("load error")
+	publisher := &publisherFake{}
+	dispatcher, err := NewDispatcher(store, []Destination{{ID: "sink", Publisher: publisher}}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := dispatcher.PublishPending(context.Background(), "sink")
+	if err != nil {
+		t.Fatalf("expected no error from PublishPending on individual load error, got: %v", err)
+	}
+	if summary.Attempted != 2 || summary.Failed != 2 {
+		t.Fatalf("expected summary to count both as attempted/failed, got: %#v", summary)
+	}
+}
+
+type storeWithLoadDeadlineCheck struct {
+	*storeFake
+	t *testing.T
+}
+
+func (s *storeWithLoadDeadlineCheck) LoadEvent(ctx context.Context, ref SourceRef) (Envelope, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		s.t.Error("expected LoadEvent context to have a deadline, but it does not")
+	} else {
+		remaining := time.Until(deadline)
+		if remaining > time.Second || remaining < 10*time.Millisecond {
+			s.t.Errorf("expected LoadEvent context deadline to be close to 1 second from now, got remaining time: %v", remaining)
+		}
+	}
+	return s.storeFake.LoadEvent(ctx, ref)
+}
+
+func TestDispatcherLoadEventHasTimeout(t *testing.T) {
+	t.Parallel()
+	event := testEvent(TableSaleOffers, "offer-1")
+	fakeStore := newStoreFake(event)
+	store := &storeWithLoadDeadlineCheck{
+		storeFake: fakeStore,
+		t:         t,
+	}
+	publisher := &publisherFake{}
+	dispatcher, err := NewDispatcher(store, []Destination{{ID: "sink", Publisher: publisher}}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dispatcher.Publish(context.Background(), event.Source)
+}

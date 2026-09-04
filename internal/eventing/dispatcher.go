@@ -48,7 +48,7 @@ func errorsForConfiguration(message string) error {
 
 func (dispatcher *Dispatcher) Publish(ctx context.Context, ref SourceRef) {
 	for _, destinationID := range dispatcher.destinationIDs() {
-		if _, err := dispatcher.publishOne(ctx, destinationID, ref, false); err != nil {
+		if _, _, err := dispatcher.publishOne(ctx, destinationID, ref, false); err != nil {
 			slog.WarnContext(ctx, "integration event remains pending",
 				"event", "integration_event.delivery",
 				"destination_id", destinationID,
@@ -82,8 +82,11 @@ func (dispatcher *Dispatcher) PublishPending(ctx context.Context, destinationID 
 			claimedAny := false
 			for _, ref := range refs {
 				after = ref
-				delivered, err := dispatcher.publishOne(ctx, selected, ref, true)
+				delivered, attempted, err := dispatcher.publishOne(ctx, selected, ref, true)
 				if err != nil {
+					if !attempted {
+						return summary, err
+					}
 					summary.Attempted++
 					summary.Failed++
 					claimedAny = true
@@ -113,29 +116,32 @@ func (dispatcher *Dispatcher) publishOne(
 	destinationID string,
 	ref SourceRef,
 	force bool,
-) (bool, error) {
+) (bool, bool, error) {
 	leaseToken, err := newLeaseToken()
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	attempt, claimed, err := dispatcher.store.ClaimEvent(
 		ctx, destinationID, ref, leaseToken, dispatcher.leasePeriod, force,
 	)
-	if err != nil || !claimed {
-		return false, err
+	if err != nil {
+		return false, false, err
 	}
-	event, err := dispatcher.store.LoadEvent(ctx, ref)
+	if !claimed {
+		return false, false, nil
+	}
+	publishContext, cancel := context.WithTimeout(ctx, dispatcher.publishLimit)
+	defer cancel()
+	event, err := dispatcher.store.LoadEvent(publishContext, ref)
 	loadFailed := err != nil
 	if err == nil {
-		publishContext, cancel := context.WithTimeout(ctx, dispatcher.publishLimit)
 		err = safelyPublish(publishContext, dispatcher.destinations[destinationID], event)
-		cancel()
 	}
 	if err == nil {
 		if err := dispatcher.store.MarkEventDelivered(ctx, destinationID, ref, leaseToken); err != nil {
-			return false, err
+			return false, true, err
 		}
-		return true, nil
+		return true, true, nil
 	}
 	errorClass := "publisher_error"
 	if loadFailed {
@@ -153,9 +159,9 @@ func (dispatcher *Dispatcher) publishOne(
 		errorClass,
 		retryDelay(attempt, ref),
 	); markErr != nil {
-		return false, markErr
+		return false, true, markErr
 	}
-	return false, err
+	return false, true, err
 }
 
 func safelyPublish(ctx context.Context, publisher Publisher, event Envelope) (err error) {
