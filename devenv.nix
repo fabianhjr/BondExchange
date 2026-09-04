@@ -198,6 +198,12 @@ let
     runtimeInputs = [ pkgs.gawk ];
     text = builtins.readFile ./nix/asvs-profile-check.sh;
   };
+
+  uuidContractReadiness = pkgs.writeShellApplication {
+    name = "bond-exchange-uuid-contract-readiness";
+    runtimeInputs = [ pkgs.postgresql_18 ];
+    text = builtins.readFile ./nix/uuid-contract-readiness.sh;
+  };
 in
 {
   packages = [
@@ -224,6 +230,7 @@ in
     demo
     integrationCheck
     integrationLoad
+    uuidContractReadiness
   ];
 
   env = {
@@ -237,6 +244,11 @@ in
   tasks."db:migrate" = {
     description = "Validate migrations against a fresh temporary PostgreSQL database";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres true";
+  };
+
+  tasks."db:uuid-contract-readiness" = {
+    description = "Verify UUID/text graph consistency before the contract migration";
+    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${uuidContractReadiness}/bin/bond-exchange-uuid-contract-readiness";
   };
 
   tasks."dev:check" = {

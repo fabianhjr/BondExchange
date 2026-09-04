@@ -155,6 +155,21 @@ rollback, the migrated compatibility graph permits the previous application to
 run on PostgreSQL 18; do not downgrade the data directory or use the migration's
 non-destructive down section as a rollback mechanism.
 
+Before removing the rolling-compatibility graph, run:
+
+```console
+devenv tasks run db:uuid-contract-readiness
+```
+
+Against production, run `bond-exchange-uuid-contract-readiness` with an
+explicit `DATABASE_URL` during a quiescent lease window. The gate rejects any
+text/UUID relationship drift or active event-delivery/SIE lease and reports
+the historical aliases that require lossless archival. Database checks cannot
+prove writer retirement: release evidence must also show that pre-UUID
+binaries and direct-SQL writers are retired, their credentials are revoked,
+query logs no longer use compatibility columns or views, and backup restore
+has been rehearsed.
+
 Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema
 source of truth, so automatic schema dumps are disabled.
