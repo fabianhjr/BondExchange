@@ -24,7 +24,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
 
@@ -96,9 +95,6 @@ func run() error {
 		grpc.StreamInterceptor(recoverStreamPanic),
 	)
 	bondexchangev1.RegisterBondExchangeServiceServer(grpcServer, apiServer)
-	if os.Getenv("BOND_EXCHANGE_ENABLE_REFLECTION") == "true" {
-		reflection.Register(grpcServer)
-	}
 
 	httpListener, err := net.Listen("tcp", restAddress)
 	if err != nil {

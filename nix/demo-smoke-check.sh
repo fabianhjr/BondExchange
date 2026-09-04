@@ -77,7 +77,13 @@ if (( healthy != 1 )); then
 fi
 jq -e '.status == "ok"' "$smoke_root/health.json" >/dev/null
 
+if grpcurl -plaintext "$grpc_address" list >"$smoke_root/reflection.txt" 2>&1; then
+  echo "demo server unexpectedly exposes gRPC reflection" >&2
+  exit 1
+fi
+
 grpcurl -plaintext \
+  -protoset "$project_root/api/descriptors/bondexchange.protoset" \
   -H "Authorization: Bearer $health_token" \
   -d '{}' \
   "$grpc_address" \

@@ -7,6 +7,8 @@ The decimal-price migration is
 [`migrations/20260902000000_use_decimal_prices.sql`](migrations/20260902000000_use_decimal_prices.sql).
 The security-fact migration is
 [`migrations/20260903000000_append_only_security.sql`](migrations/20260903000000_append_only_security.sql).
+The reflection-permission retirement is
+[`migrations/20260903120000_retire_reflection_permission.sql`](migrations/20260903120000_retire_reflection_permission.sql).
 
 The `bond_exchange.monetary_amount` domain is based on PostgreSQL
 `numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
@@ -48,6 +50,12 @@ Roles and permissions have append-only grant and revocation tables, and
 `effective_principal_permissions` derives current access while excluding
 revoked grants and suspended principals. A reinstatement references exactly
 one suspension rather than modifying it.
+
+Runtime gRPC reflection was removed after the initial security facts were
+recorded. The original `reflection.use` permission and operator grant remain as
+immutable history; the later migration appends their revocation, so the
+initial operator grant is no longer effective. Operators use the versioned API
+descriptor set instead.
 
 Mutation idempotency uses `operation_claims`, uniquely scoped by principal,
 client ID, operation, and idempotency key. The claim keeps SHA-256 request and

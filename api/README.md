@@ -10,7 +10,9 @@ Generated artifacts are committed so building and consuming the repository do
 not require generation:
 
 - Go protobuf, gRPC, and REST gateway bindings are under `../gen/go/`;
-- the Swagger 2.0 document is under `openapi/`; and
+- the Swagger 2.0 document is under `openapi/`;
+- `descriptors/bondexchange.protoset` is a `FileDescriptorSet` for tools that
+  would otherwise depend on runtime gRPC reflection; and
 - `buf.lock` pins the Google API and gRPC-Gateway schema dependencies by
   content digest.
 
@@ -24,6 +26,11 @@ devenv tasks run api:check
 The Nix/devenv environment pins Buf, protoc, all Go code-generation plugins,
 and `grpcurl`. `api:check` also runs before the Go checks and the complete
 `devenv test` gate.
+
+The server does not expose gRPC reflection. Invoke repository-versioned RPCs
+with `grpcurl -protoset descriptors/bondexchange.protoset` from this directory,
+or use the corresponding absolute path from elsewhere. Supplying the
+descriptor explicitly makes the client-selected contract version auditable.
 
 The generated REST gateway is registered directly against the in-process gRPC
 service implementation. REST requests therefore do not make a loopback network

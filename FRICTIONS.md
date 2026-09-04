@@ -122,18 +122,6 @@ current gates either accept or do not cover.
   rotation with a tested overlap procedure, or bounded, failure-safe key and
   issuer refresh is implemented and tested.
 
-### F-009 — The reflection permission is not an enforcement point (P2)
-
-- **Evidence:** The database grants operators `reflection.use`, but enabling
-  `BOND_EXCHANGE_ENABLE_REFLECTION=true` registers the standard gRPC reflection
-  service for the entire listener. Only panic interceptors wrap that service;
-  the application authenticator and RBAC check are not applied to reflection.
-- **Impact:** The flag is an environment-wide exposure switch, not the
-  per-principal authorization suggested by the permission model.
-- **Complete when:** Reflection is protected by an authenticated authorization
-  layer, or the unused permission is removed and documentation clearly assigns
-  all access control to a separately protected diagnostic listener or network.
-
 ### F-010 — There is no orchestration-friendly liveness endpoint (P2)
 
 - **Evidence:** `CheckHealth` requires a short-lived operation-bound assertion,

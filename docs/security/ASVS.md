@@ -65,7 +65,8 @@ duplicate-key rejection at every JSON object depth, a single top-level JSON
 object, exact query cardinality, canonical identifiers, exact decimals,
 three-letter uppercase currency codes, 64 KiB message/body limits, HTTP
 read/header/idle timeouts, a refreshed 30-second streaming write deadline,
-bounded PostgreSQL connections, and no production reflection by default.
+bounded PostgreSQL connections, and no runtime gRPC reflection. A checked-in
+descriptor set supports offline tooling without exposing service discovery.
 Unexpected errors and panics produce generic responses.
 
 Security events are JSON logs with source-code location and the operation,
@@ -92,6 +93,7 @@ panics are logged without request or credential contents.
 | AD-10 | Domain, RBAC, and operation facts are append-only; response minimization protects user identity. | Audit records cannot satisfy erasure semantics without a future legal and architectural decision. |
 | AD-11 | Logs are structured JSON and enrich automatic OpenTelemetry context. | Automatic instrumentation and the collector are runtime concerns; telemetry data must be classified and protected. |
 | AD-12 | Expected domain failures stay detailed unless detail would enable identity or credential enumeration. | Authentication and authorization failures are generic; unexpected failures never expose database, token, or stack details. |
+| AD-13 | Runtime gRPC reflection is absent; clients use a versioned descriptor set. | Operators lose live discovery and must select an artifact matching the deployed API. |
 
 ## Pending non-code and deployment decisions
 

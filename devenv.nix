@@ -190,9 +190,13 @@ in
   };
 
   tasks."api:generate" = {
-    description = "Generate Go, gRPC-Gateway, and Swagger artifacts from Proto3";
+    description = "Generate Go, gRPC-Gateway, Swagger, and descriptor artifacts from Proto3";
     cwd = "./api";
-    exec = "buf generate";
+    exec = ''
+      buf generate
+      mkdir -p descriptors
+      buf build --as-file-descriptor-set -o descriptors/bondexchange.protoset
+    '';
   };
 
   tasks."api:update-deps" = {
@@ -205,13 +209,13 @@ in
     description = "Lint Proto3 and verify that generated API artifacts are current";
     exec = ''
       snapshot_api() {
-        find gen/go api/openapi -type f -print0 2>/dev/null \
+        find gen/go api/openapi api/descriptors -type f -print0 2>/dev/null \
           | sort -z \
           | xargs -0 sha256sum
       }
       before="$(snapshot_api)"
       buf lint api
-      (cd api && buf generate)
+      (cd api && buf generate && mkdir -p descriptors && buf build --as-file-descriptor-set -o descriptors/bondexchange.protoset)
       after="$(snapshot_api)"
       if [ "$before" != "$after" ]; then
         echo "Generated API artifacts were stale; review and commit the regenerated files."

@@ -21,7 +21,6 @@ go run ./cmd/demo-auth init "$auth_root"
 export BOND_EXCHANGE_ASSERTION_ISSUER="https://demo-issuer.invalid"
 export BOND_EXCHANGE_ASSERTION_AUDIENCE="bond-exchange-demo"
 export BOND_EXCHANGE_ASSERTION_JWKS_FILE="$auth_root/public.jwks"
-export BOND_EXCHANGE_ENABLE_REFLECTION="true"
 
 echo "Bond Exchange demo is ready when GET http://$rest_display/healthz returns healthy."
 echo "REST: http://$rest_display  gRPC: $grpc_display"

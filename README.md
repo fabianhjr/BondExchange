@@ -34,6 +34,8 @@ from API responses.
 is the transport contract. Buf generates Go messages, gRPC server/client
 bindings, the REST gateway, and the checked-in
 [`Swagger 2.0 artifact`](api/openapi/bondexchange/v1/bond_exchange.swagger.json).
+It also produces a versioned
+[`FileDescriptorSet`](api/descriptors/bondexchange.protoset) for gRPC tooling.
 One application adapter implements the generated service and calls the domain
 service; both the native gRPC server and the in-process REST gateway use that
 adapter. Transport types do not enter the domain or PostgreSQL packages.
@@ -97,9 +99,11 @@ The matching native gRPC methods are:
 - `bondexchange.v1.BondExchangeService/ListActiveBondSeries`; and
 - `bondexchange.v1.BondExchangeService/CheckHealth`.
 
-Server reflection is disabled by default. Set
-`BOND_EXCHANGE_ENABLE_REFLECTION=true` only for an explicitly authorized
-internal diagnostic environment.
+The server does not register gRPC reflection. Tools such as `grpcurl` must use
+the versioned descriptor set explicitly, for example with
+`-protoset api/descriptors/bondexchange.protoset`. This keeps schema discovery
+offline and prevents a runtime introspection endpoint from bypassing the
+application authorization model.
 
 The disposable demo generates an ephemeral signing key and prints its path.
 Use the development-only `demo-auth` helper to create an assertion whose
@@ -147,8 +151,8 @@ devenv tasks run security:check
 
 After editing the Proto3 source, regenerate every checked-in API artifact with
 `devenv tasks run api:generate`. `api:check` lints the contract and fails when
-the generated Go or Swagger output was stale. Remote schema dependencies are
-content-addressed in `api/buf.lock`; update that lock intentionally with
+the generated Go, Swagger, or descriptor output was stale. Remote schema
+dependencies are content-addressed in `api/buf.lock`; update that lock intentionally with
 `devenv tasks run api:update-deps`.
 
 Coverage must be at least 90%, and mutation-test efficacy must be at least 80%.
