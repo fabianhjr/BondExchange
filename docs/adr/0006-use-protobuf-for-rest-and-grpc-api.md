@@ -34,11 +34,11 @@ devenv test graph and Go CI. Contract changes begin in Proto3; generated files
 are not edited directly.
 
 Implement the generated service in an internal adapter that depends on
-`internal/exchange`. Register the same adapter with a native gRPC server and
-directly with the generated REST gateway, avoiding a loopback call from REST to
-gRPC. Keep the existing REST paths, snake-case JSON names, success statuses,
-and error envelope. Map domain errors to canonical gRPC status codes before the
-gateway maps them to HTTP statuses.
+`application/internal/exchange`. Register the same adapter with a native gRPC
+server and directly with the generated REST gateway, avoiding a loopback call
+from REST to gRPC. Keep the existing REST paths, snake-case JSON names, success
+statuses, and error envelope. Map domain errors to canonical gRPC status codes
+before the gateway maps them to HTTP statuses.
 
 Run the internal REST and gRPC interfaces on separate configurable listeners.
 Keep `BOND_EXCHANGE_ADDRESS` for REST and add
@@ -64,7 +64,8 @@ deployment-boundary decision for the current server.
 - Proto3 compatibility rules and stable field numbers constrain later API
   evolution.
 - The Proto3 schema describes transport encoding only. Domain behavior remains
-  in `internal/exchange`, and the TLA+ model remains transport-agnostic.
+  in `application/internal/exchange`, and the TLA+ model remains
+  transport-agnostic.
 
 ## Alternatives considered
 

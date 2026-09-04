@@ -9,7 +9,8 @@ codes and schemas match the running service.
 Generated artifacts are committed so building and consuming the repository do
 not require generation:
 
-- Go protobuf, gRPC, and REST gateway bindings are under `../gen/go/`;
+- Go protobuf, gRPC, and REST gateway bindings are under
+  `../application/gen/go/`;
 - the Swagger 2.0 document is under `openapi/`;
 - `descriptors/bondexchange.protoset` is a `FileDescriptorSet` for tools that
   would otherwise depend on runtime gRPC reflection; and

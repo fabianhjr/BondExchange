@@ -16,6 +16,11 @@ the other development tools. They do not need to be installed globally.
 
 ## Architecture
 
+The Go module and its commands, internal packages, generated bindings, and Go
+tool configuration live under [`application/`](application/). Repository-wide
+API, database, specification, documentation, and development orchestration stay
+at the top level.
+
 The Go server is stateless, so multiple instances can serve requests
 concurrently. They share PostgreSQL as the concurrency and durable-idempotency
 authority. Users, bonds, sale offers, binding orders/reservations, principals,
@@ -86,7 +91,7 @@ DATABASE_URL=postgresql://user:password@localhost/bond_exchange \
 BOND_EXCHANGE_ASSERTION_ISSUER=https://issuer.example \
 BOND_EXCHANGE_ASSERTION_AUDIENCE=bond-exchange \
 BOND_EXCHANGE_ASSERTION_JWKS_FILE=/run/secrets/issuer.jwks \
-  devenv shell go run ./cmd/server
+  devenv shell go -C application run ./cmd/server
 ```
 
 The JWKS must contain public EdDSA or ES256 signature keys with unique `kid`
@@ -136,7 +141,7 @@ request JSON exactly matches the request being sent. For example:
 KEY=/path/printed/by/devenv/private.jwk
 IDEMPOTENCY_KEY=demo-buy-key-0000001
 REQUEST='{"sale_offer_id":"demo-offer-1"}'
-TOKEN="$(go run ./cmd/demo-auth token "$KEY" demo-buyer purchases.buy "$IDEMPOTENCY_KEY" "$REQUEST")"
+TOKEN="$(go -C application run ./cmd/demo-auth token "$KEY" demo-buyer purchases.buy "$IDEMPOTENCY_KEY" "$REQUEST")"
 curl --header "Authorization: Bearer $TOKEN" \
   --header "Idempotency-Key: $IDEMPOTENCY_KEY" \
   --header 'Content-Type: application/json' \
@@ -158,9 +163,10 @@ remains explicit in `currency_code`.
 
 ## Banxico SIE exchange rates
 
-`internal/exchangerates` owns provider-neutral types and the on-demand fetch
-workflow. `internal/sie` is the fixed-origin HTTPS adapter for
-`https://www.banxico.org.mx`, and `internal/postgres/exchange_rates.go` provides
+`application/internal/exchangerates` owns provider-neutral types and the
+on-demand fetch workflow. `application/internal/sie` is the fixed-origin HTTPS
+adapter for `https://www.banxico.org.mx`, and
+`application/internal/postgres/exchange_rates.go` provides
 durable observations, coverage, leases, and provider-wide cooldown state. A
 caller supplies an explicit mapping from each SIE series ID to its base and
 quote currencies; titles returned by Banxico are not used to infer quote
@@ -187,7 +193,8 @@ The production origin is not configurable. Callers may inject an HTTP
 transport for tests.
 
 Offline parser tests replay the fixtures under
-`internal/sie/testdata/recordings`. The checked-in `.example.json` fixture is
+`application/internal/sie/testdata/recordings`. The checked-in `.example.json`
+fixture is
 derived from Banxico's published documentation and is clearly labeled as such.
 To capture two real interactions—a latest FIX observation and a fixed
 historical range—into a sanitized cassette, run:
@@ -230,18 +237,19 @@ dependencies are content-addressed in `api/buf.lock`; update that lock intention
 
 `go:check` verifies `gofmt` and runs the pinned golangci-lint standard set plus
 the curated correctness, security, context, resource-lifecycle, logging, test,
-and dependency-direction checks in `.golangci.yml`. Suppressions must identify
-one or more specific linters and explain why the flagged construct is safe.
+and dependency-direction checks in `application/.golangci.yml`. Suppressions
+must identify one or more specific linters and explain why the flagged
+construct is safe.
 Coverage and mutation-test efficacy must each be at least 95%.
-Both gates measure the implementation under `internal/`; the thin server
-entrypoint under `cmd/` is compiled and statically analyzed but excluded from
-those scores.
+Both gates measure the implementation under `application/internal/`; the thin
+server entrypoint under `application/cmd/` is compiled and statically analyzed
+but excluded from those scores.
 Every database-dependent task creates its own migrated PostgreSQL cluster on a
 private Unix socket and removes it on success, failure, or interruption. This
 makes repeated and parallel task invocations independent and avoids requiring a
-manually managed database. A raw `go test` outside these tasks may skip the
-PostgreSQL integration package when `BOND_EXCHANGE_TEST_DATABASE_URL` is not
-set.
+manually managed database. A raw `go test` from `application/` outside these
+tasks may skip the PostgreSQL integration package when
+`BOND_EXCHANGE_TEST_DATABASE_URL` is not set.
 
 Reports and the golangci-lint cache are written to `.artifacts/`. `devenv test`
 runs Nix and shell checks, Go formatting and static analysis, API artifact
