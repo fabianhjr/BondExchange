@@ -42,7 +42,7 @@
     },
     "/active-offers": {
       "get": {
-        "summary": "ListActiveOffers returns every active sale offer for one required bond series.",
+        "summary": "ListActiveOffers streams every active sale offer from one database snapshot.",
         "operationId": "BondExchangeService_ListActiveOffers",
         "responses": {
           "200": {
@@ -80,7 +80,7 @@
     },
     "/buys": {
       "post": {
-        "summary": "Buy purchases one currently active sale offer for a buyer.",
+        "summary": "Buy places a binding order or reservation for one currently active sale offer.\nSettlement, payment, custody, and ownership transfer are outside this API.",
         "operationId": "BondExchangeService_Buy",
         "responses": {
           "201": {
@@ -96,7 +96,7 @@
             }
           },
           "404": {
-            "description": "The buyer or active offer was not found.",
+            "description": "The active offer is unavailable.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
@@ -116,6 +116,13 @@
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.BuyRequest"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "description": "A 16-128 character key bound into the operation assertion.",
+            "in": "header",
+            "required": true,
+            "type": "string"
           }
         ],
         "tags": [
@@ -148,7 +155,7 @@
     },
     "/sale-offers": {
       "post": {
-        "summary": "CreateSaleOffer publishes a new sale offer for an existing seller and bond series.",
+        "summary": "CreateSaleOffer publishes a new sale offer for the authenticated principal.",
         "operationId": "BondExchangeService_CreateSaleOffer",
         "responses": {
           "201": {
@@ -164,7 +171,7 @@
             }
           },
           "404": {
-            "description": "The seller or bond series does not exist.",
+            "description": "The bond series does not exist.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
@@ -190,6 +197,13 @@
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.CreateSaleOfferRequest"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "description": "A 16-128 character key bound into the operation assertion.",
+            "in": "header",
+            "required": true,
+            "type": "string"
           }
         ],
         "tags": [
@@ -202,15 +216,11 @@
     "bondexchange.v1.BuyRequest": {
       "type": "object",
       "properties": {
-        "buyer_id": {
-          "type": "string"
-        },
         "sale_offer_id": {
           "type": "string"
         }
       },
       "required": [
-        "buyer_id",
         "sale_offer_id"
       ]
     },
@@ -220,9 +230,6 @@
         "offer": {
           "$ref": "#/definitions/bondexchange.v1.SaleOffer"
         },
-        "buyer_id": {
-          "type": "string"
-        },
         "bought_at": {
           "type": "string",
           "format": "date-time"
@@ -230,7 +237,6 @@
       },
       "required": [
         "offer",
-        "buyer_id",
         "bought_at"
       ]
     },
@@ -251,9 +257,6 @@
         "id": {
           "type": "string"
         },
-        "seller_id": {
-          "type": "string"
-        },
         "bond_series": {
           "type": "string",
           "description": "Bond series to sell. The service canonicalizes this value to uppercase."
@@ -268,7 +271,6 @@
       },
       "required": [
         "id",
-        "seller_id",
         "bond_series",
         "price",
         "currency_code"
@@ -311,28 +313,30 @@
         "bond_series"
       ]
     },
+    "bondexchange.v1.ListActiveOffersComplete": {
+      "type": "object",
+      "properties": {
+        "offer_count": {
+          "type": "string",
+          "format": "uint64"
+        }
+      }
+    },
     "bondexchange.v1.ListActiveOffersResponse": {
       "type": "object",
       "properties": {
-        "offers": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/bondexchange.v1.SaleOffer"
-          }
+        "offer": {
+          "$ref": "#/definitions/bondexchange.v1.SaleOffer"
+        },
+        "complete": {
+          "$ref": "#/definitions/bondexchange.v1.ListActiveOffersComplete"
         }
-      },
-      "required": [
-        "offers"
-      ]
+      }
     },
     "bondexchange.v1.SaleOffer": {
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
-        },
-        "seller_id": {
           "type": "string"
         },
         "bond_series": {
@@ -348,11 +352,23 @@
       },
       "required": [
         "id",
-        "seller_id",
         "bond_series",
         "price",
         "currency_code"
       ]
     }
-  }
+  },
+  "securityDefinitions": {
+    "OperationAssertion": {
+      "type": "apiKey",
+      "description": "A Bearer JWT bound to the operation and deterministic protobuf request digest.",
+      "name": "Authorization",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "OperationAssertion": []
+    }
+  ]
 }

@@ -8,13 +8,14 @@
 The current bond exchange is deliberately small: sale offers for bonds belong
 to users, and a user may buy one existing active offer. Its central correctness
 risk is behavioral: several users may attempt to buy the same offer, but the
-offer must produce at most one completed purchase, that purchase must identify
-its buyer, and the offer must no longer be active.
+offer must produce at most one binding order/reservation fact, that fact must
+identify its buyer, and the offer must no longer be active.
 
-The current model intentionally excludes buy offers, cancellation, matching,
-balances, holdings, ownership transfer, settlement, retries, and failure
-handling. Those behaviors are future scope only if introduced by an explicit
-system decision.
+The model intentionally excludes buy offers, cancellation, matching, balances,
+holdings, ownership transfer, settlement, and failure handling. It models
+successful idempotent retries and operation authorization, but not transport
+or identity-provider mechanics. Excluded behaviors are future scope only if
+introduced by an explicit system decision.
 
 At this stage, the system design is expected to change frequently. The formal
 method should therefore support high-level abstraction, nondeterministic
@@ -49,7 +50,8 @@ defined relationship to the TLA+ specification.
 - Nondeterministic buyer and offer choices can be explored independently of a
   particular implementation schedule.
 - The current model checks type correctness, unique active and purchased offer
-  IDs, and disjoint active and purchased offers.
+  IDs, disjoint active and purchased offers, unique idempotency scopes, and
+  authorization of completed operations.
 - Future safety or liveness properties can share the model when their domain
   behavior is intentionally introduced.
 - TLC produces concrete counterexample traces that support iterative design.

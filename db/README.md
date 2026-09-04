@@ -5,6 +5,8 @@ facts. The initial migration is
 [`migrations/20260901000000_append_only_exchange.sql`](migrations/20260901000000_append_only_exchange.sql).
 The decimal-price migration is
 [`migrations/20260902000000_use_decimal_prices.sql`](migrations/20260902000000_use_decimal_prices.sql).
+The security-fact migration is
+[`migrations/20260903000000_append_only_security.sql`](migrations/20260903000000_append_only_security.sql).
 
 The `bond_exchange.monetary_amount` domain is based on PostgreSQL
 `numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
@@ -16,7 +18,9 @@ rounding is not intended. The Go adapter converts the database's exact decimal
 text to `decimal.Decimal`; it never passes monetary values through binary
 floating point.
 
-A purchase contains the buyer and uses its sale-offer ID as the primary key.
+A purchase records the buyer's binding order or reservation and uses its
+sale-offer ID as the primary key. Settlement, payment, custody, ownership
+transfer, expiry, and cancellation are not represented and remain pending.
 Concurrent inserts for the same offer therefore have one winner even when they
 come from different server instances. The losing requests are reported as an
 unavailable offer, while the original offer row remains as history.
@@ -36,6 +40,21 @@ key serializes concurrent attempts to publish the same ID, while foreign keys
 require the seller and bond series to have been provisioned already. Creation
 does not require a schema migration because the existing append-only table
 already contains the complete sale-offer fact.
+
+Federated identities are linked to internal users by the unique
+`(issuer, subject)` pair in `principals`; the API never accepts that user ID as
+operation input. `client_class` distinguishes human and automated principals.
+Roles and permissions have append-only grant and revocation tables, and
+`effective_principal_permissions` derives current access while excluding
+revoked grants and suspended principals. A reinstatement references exactly
+one suspension rather than modifying it.
+
+Mutation idempotency uses `operation_claims`, uniquely scoped by principal,
+client ID, operation, and idempotency key. The claim keeps SHA-256 request and
+assertion digests, and `operation_results` stores the immutable outcome. An
+exact retry can use a fresh assertion and recover the original resource; using
+the same scope for another request is rejected. These tables intentionally
+retain audit history and have no destructive down migration.
 
 Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema

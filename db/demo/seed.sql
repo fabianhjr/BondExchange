@@ -5,6 +5,18 @@ VALUES
   ('demo-seller'),
   ('demo-buyer');
 
+INSERT INTO bond_exchange.principals (id, issuer, subject, client_class)
+VALUES
+  ('demo-seller', 'https://demo-issuer.invalid', 'demo-seller', 'human'),
+  ('demo-buyer', 'https://demo-issuer.invalid', 'demo-buyer', 'human');
+
+INSERT INTO bond_exchange.principal_role_grants
+  (id, principal_id, role_id, reason)
+VALUES
+  ('demo-seller-trader', 'demo-seller', 'trader', 'Disposable demo access.'),
+  ('demo-buyer-trader', 'demo-buyer', 'trader', 'Disposable demo access.'),
+  ('demo-buyer-operator', 'demo-buyer', 'operator', 'Disposable demo health access.');
+
 INSERT INTO bond_exchange.bonds (series)
 VALUES
   ('DEMO2026'),

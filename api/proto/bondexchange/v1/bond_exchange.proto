@@ -15,17 +15,43 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   }
   consumes: "application/json"
   produces: "application/json"
+  security_definitions: {
+    security: {
+      key: "OperationAssertion"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "A Bearer JWT bound to the operation and deterministic protobuf request digest."
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "OperationAssertion"
+      value: {}
+    }
+  }
 };
 
 // BondExchangeService exposes the bond-sale application over gRPC and REST.
 service BondExchangeService {
-  // Buy purchases one currently active sale offer for a buyer.
+  // Buy places a binding order or reservation for one currently active sale offer.
+  // Settlement, payment, custody, and ownership transfer are outside this API.
   rpc Buy(BuyRequest) returns (BuyResponse) {
     option (google.api.http) = {
       post: "/buys"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Idempotency-Key"
+          description: "A 16-128 character key bound into the operation assertion."
+          type: STRING
+          required: true
+        }
+      }
       responses: {
         key: "201"
         value: {
@@ -47,7 +73,7 @@ service BondExchangeService {
       responses: {
         key: "404"
         value: {
-          description: "The buyer or active offer was not found."
+          description: "The active offer is unavailable."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }
@@ -65,13 +91,21 @@ service BondExchangeService {
     };
   }
 
-  // CreateSaleOffer publishes a new sale offer for an existing seller and bond series.
+  // CreateSaleOffer publishes a new sale offer for the authenticated principal.
   rpc CreateSaleOffer(CreateSaleOfferRequest) returns (CreateSaleOfferResponse) {
     option (google.api.http) = {
       post: "/sale-offers"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Idempotency-Key"
+          description: "A 16-128 character key bound into the operation assertion."
+          type: STRING
+          required: true
+        }
+      }
       responses: {
         key: "201"
         value: {
@@ -93,7 +127,7 @@ service BondExchangeService {
       responses: {
         key: "404"
         value: {
-          description: "The seller or bond series does not exist."
+          description: "The bond series does not exist."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }
@@ -120,8 +154,8 @@ service BondExchangeService {
     };
   }
 
-  // ListActiveOffers returns every active sale offer for one required bond series.
-  rpc ListActiveOffers(ListActiveOffersRequest) returns (ListActiveOffersResponse) {
+  // ListActiveOffers streams every active sale offer from one database snapshot.
+  rpc ListActiveOffers(ListActiveOffersRequest) returns (stream ListActiveOffersResponse) {
     option (google.api.http) = {get: "/active-offers"};
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
       responses: {
@@ -207,20 +241,22 @@ service BondExchangeService {
 
 message BuyRequest {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    json_schema: {required: ["buyer_id", "sale_offer_id"]}
+    json_schema: {required: ["sale_offer_id"]}
   };
 
-  string buyer_id = 1;
+  reserved 1;
+  reserved "buyer_id";
   string sale_offer_id = 2;
 }
 
 message CreateSaleOfferRequest {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    json_schema: {required: ["id", "seller_id", "bond_series", "price", "currency_code"]}
+    json_schema: {required: ["id", "bond_series", "price", "currency_code"]}
   };
 
   string id = 1;
-  string seller_id = 2;
+  reserved 2;
+  reserved "seller_id";
   // Bond series to sell. The service canonicalizes this value to uppercase.
   string bond_series = 3;
   // Exact positive decimal monetary amount encoded as a string.
@@ -249,10 +285,17 @@ message ListActiveOffersRequest {
 
 message ListActiveOffersResponse {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    json_schema: {required: ["offers"]}
+    json_schema: {}
   };
 
-  repeated SaleOffer offers = 1;
+  oneof event {
+    SaleOffer offer = 1;
+    ListActiveOffersComplete complete = 2;
+  }
+}
+
+message ListActiveOffersComplete {
+  uint64 offer_count = 1;
 }
 
 message ListActiveBondSeriesRequest {}
@@ -277,11 +320,12 @@ message CheckHealthResponse {
 
 message SaleOffer {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    json_schema: {required: ["id", "seller_id", "bond_series", "price", "currency_code"]}
+    json_schema: {required: ["id", "bond_series", "price", "currency_code"]}
   };
 
   string id = 1;
-  string seller_id = 2;
+  reserved 2;
+  reserved "seller_id";
   string bond_series = 3;
   // Exact decimal monetary amount encoded as a string.
   string price = 4;
@@ -290,11 +334,12 @@ message SaleOffer {
 
 message BuyResponse {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    json_schema: {required: ["offer", "buyer_id", "bought_at"]}
+    json_schema: {required: ["offer", "bought_at"]}
   };
 
   SaleOffer offer = 1;
-  string buyer_id = 2;
+  reserved 2;
+  reserved "buyer_id";
   google.protobuf.Timestamp bought_at = 3;
 }
 

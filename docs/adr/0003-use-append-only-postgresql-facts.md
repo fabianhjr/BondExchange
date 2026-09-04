@@ -10,12 +10,12 @@ same sale offer concurrently. A lock held by one server process cannot
 coordinate the others, so concurrency must be resolved by shared durable
 state.
 
-The domain distinguishes active sale offers from completed purchases. Keeping
-the facts that an offer existed and was purchased is useful for audit and
+The domain distinguishes active sale offers from binding order/reservation
+facts. Keeping the facts that an offer existed and was reserved is useful for audit and
 diagnosis, while destructive mutation would discard that history.
 
 The TLA+ specification remains an implementation-independent description of
-active offers, completed purchases, and their transitions. This record owns
+active offers, purchase facts, and their transitions. This record owns
 the mapping between that abstract state and its PostgreSQL representation.
 
 ## Decision
@@ -71,8 +71,9 @@ query-plan evidence.
   the proportion of purchased offers grows; a materialized or mutable
   projection would require a later decision with different consistency and
   mutation trade-offs.
-- Buyer identity makes the completed purchase attributable, but does not by
-  itself define request-level idempotency or authentication.
+- Buyer identity makes the binding order/reservation attributable.
+  Request-level authentication and idempotency are defined by ADR-0009 and the
+  append-only security migration.
 
 ## Alternatives considered
 

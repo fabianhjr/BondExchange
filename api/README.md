@@ -1,7 +1,7 @@
 # Transport API
 
 `proto/bondexchange/v1/bond_exchange.proto` is the source of truth for the
-server's public RPC messages, gRPC methods, REST routes, success responses, and
+server's internal RPC messages, gRPC methods, REST routes, success responses, and
 documented REST errors. It uses `google.api.http` annotations to generate the
 REST gateway and gRPC-Gateway OpenAPI annotations to make the Swagger response
 codes and schemas match the running service.
@@ -32,8 +32,18 @@ listener. The adapter maps domain errors to canonical gRPC codes; the REST
 gateway maps those codes to HTTP statuses while retaining the existing
 `{"error":"..."}` JSON error shape.
 
+Every method requires one `Authorization: Bearer <assertion>` metadata value.
+Mutations additionally require exactly one `Idempotency-Key`. Identity fields
+are not part of request messages: the operation-bound assertion resolves the
+principal used as buyer or seller. Assertion content and validation are
+documented in [`../docs/security/ASVS.md`](../docs/security/ASVS.md).
+
 The API publishes sale offers with `POST /sale-offers`, lists every active
 offer for one required bond series with `GET /active-offers?bond=...`, and
 discovers all series currently having active offers with
-`GET /active-bond-series`. Active-offer listing is deliberately unpaginated;
-the removed protobuf field numbers and names are reserved against reuse.
+`GET /active-bond-series`. Active-offer listing is deliberately unbounded but
+server-streamed. gRPC uses its native stream; a strict custom REST adapter uses
+RFC 7464 JSON Text Sequences because direct in-process gRPC-Gateway
+registration does not implement server streams. Both emit one offer per event
+and a terminal count. Removed pagination and identity field numbers and names
+are reserved against reuse.

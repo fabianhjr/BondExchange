@@ -7,6 +7,12 @@ on:
       - "devenv.nix"
       - "devenv.yaml"
       - "devenv.lock"
+      - "api/proto/**"
+      - "db/migrations/**"
+      - "docs/adr/**"
+      - "docs/security/**"
+      - "internal/exchange/**"
+      - "internal/postgres/**"
       - "spec/tla/**"
   push:
     branches:
@@ -16,6 +22,12 @@ on:
       - "devenv.nix"
       - "devenv.yaml"
       - "devenv.lock"
+      - "api/proto/**"
+      - "db/migrations/**"
+      - "docs/adr/**"
+      - "docs/security/**"
+      - "internal/exchange/**"
+      - "internal/postgres/**"
       - "spec/tla/**"
   workflow_dispatch:
 

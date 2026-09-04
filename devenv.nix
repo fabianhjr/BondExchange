@@ -70,7 +70,9 @@ let
       pkgs.coreutils
       pkgs.curl
       pkgs.grpcurl
+      pkgs.go
       pkgs.jq
+      pkgs.stdenv.cc
       demo
     ];
     text = builtins.readFile ./nix/demo-smoke-check.sh;
@@ -119,6 +121,12 @@ let
       gremlins unleash
     '';
   };
+
+  asvsProfileCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-asvs-profile-check";
+    runtimeInputs = [ pkgs.gawk ];
+    text = builtins.readFile ./nix/asvs-profile-check.sh;
+  };
 in
 {
   packages = [
@@ -135,6 +143,7 @@ in
     pkgs.protoc-gen-go
     pkgs.protoc-gen-go-grpc
     pkgs.shellcheck
+    pkgs.govulncheck
     tlaPlus
     gremlins
     postgresHarness
@@ -232,6 +241,23 @@ in
     after = [
       "demo:smoke"
       "go:coverage"
+    ];
+    before = [ "devenv:enterTest" ];
+  };
+
+  tasks."security:check" = {
+    description = "Validate ASVS evidence, inventory Go modules, and scan Go vulnerabilities";
+    exec = ''
+      mkdir -p .artifacts
+      ${asvsProfileCheck}/bin/bond-exchange-asvs-profile-check
+      go list -m -json all > .artifacts/go-modules.json
+      govulncheck ./...
+      go test ./internal/authn ./internal/httpapi ./internal/postgres ./internal/rpcapi
+    '';
+    after = [
+      "api:check"
+      "db:migrate"
+      "spec:check"
     ];
     before = [ "devenv:enterTest" ];
   };

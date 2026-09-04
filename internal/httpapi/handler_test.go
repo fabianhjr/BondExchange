@@ -3,15 +3,19 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	bondexchangev1 "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1"
+	"github.com/fabianhjr/BondExchange/internal/authn"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/fabianhjr/BondExchange/internal/rpcapi"
 	"github.com/shopspring/decimal"
+	"google.golang.org/grpc/metadata"
 )
 
 type applicationStub struct {
@@ -21,59 +25,86 @@ type applicationStub struct {
 	createErr      error
 	offers         []exchange.SaleOffer
 	listErr        error
+	listErrAfter   bool
 	series         []exchange.BondSeries
 	seriesErr      error
-	buyer          string
 	buyOffer       string
 	createID       string
-	createSeller   string
 	createBond     string
 	createPrice    string
 	createCurrency string
 	bond           string
+	panicBuy       bool
 }
 
 func (application *applicationStub) Buy(
 	_ context.Context,
-	buyer string,
+	_ exchange.AccessContext,
+	_ string,
 	offer string,
 ) (exchange.Purchase, error) {
-	application.buyer = buyer
+	if application.panicBuy {
+		panic("test panic")
+	}
 	application.buyOffer = offer
 	return application.purchase, application.buyErr
 }
 
 func (application *applicationStub) CreateSaleOffer(
 	_ context.Context,
+	_ exchange.AccessContext,
+	_ string,
 	id string,
-	seller string,
 	bond string,
 	price string,
 	currency string,
 ) (exchange.SaleOffer, error) {
 	application.createID = id
-	application.createSeller = seller
 	application.createBond = bond
 	application.createPrice = price
 	application.createCurrency = currency
 	return application.created, application.createErr
 }
 
-func (application *applicationStub) ActiveOffers(
+func (application *applicationStub) StreamActiveOffers(
 	_ context.Context,
+	_ exchange.AccessContext,
 	bond string,
-) ([]exchange.SaleOffer, error) {
+	yield func(exchange.SaleOffer) error,
+) error {
 	application.bond = bond
-	return application.offers, application.listErr
+	if application.listErr != nil && !application.listErrAfter {
+		return application.listErr
+	}
+	for _, offer := range application.offers {
+		if err := yield(offer); err != nil {
+			return err
+		}
+	}
+	return application.listErr
 }
 
-func (application *applicationStub) ActiveBondSeries(context.Context) ([]exchange.BondSeries, error) {
+func (application *applicationStub) ActiveBondSeries(context.Context, exchange.AccessContext) ([]exchange.BondSeries, error) {
 	return application.series, application.seriesErr
 }
 
 type healthStub struct{ err error }
 
-func (health healthStub) Ping(context.Context) error { return health.err }
+func (health healthStub) Ping(context.Context) error                                      { return health.err }
+func (health healthStub) Authorize(context.Context, exchange.AccessContext, string) error { return nil }
+
+type authenticatorStub struct{}
+
+func (authenticatorStub) Authenticate(_ context.Context, operation string, _ []byte, idempotent bool) (authn.Result, error) {
+	result := authn.Result{AccessContext: exchange.AccessContext{
+		Principal: exchange.Principal{ID: "principal-1", ClientID: "client-1"},
+		Operation: operation,
+	}}
+	if idempotent {
+		result.IdempotencyKey = "idempotency-key-1"
+	}
+	return result, nil
+}
 
 func TestBuyHandler(t *testing.T) {
 	t.Parallel()
@@ -92,28 +123,32 @@ func TestBuyHandler(t *testing.T) {
 	application := &applicationStub{purchase: purchase}
 	handler := newHandler(t, application, healthStub{})
 
-	response := performRequest(handler, http.MethodPost, "/buys", `{"buyer_id":"buyer-1","sale_offer_id":"offer-1"}`)
+	response := performRequest(handler, http.MethodPost, "/buys", `{"sale_offer_id":"offer-1"}`)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if application.buyer != "buyer-1" || application.buyOffer != "offer-1" {
-		t.Fatalf("application received buyer %q and offer %q", application.buyer, application.buyOffer)
+	if application.buyOffer != "offer-1" {
+		t.Fatalf("application received offer %q", application.buyOffer)
 	}
 	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
 		t.Fatalf("Content-Type = %q", contentType)
 	}
+	if contentType := response.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
+		t.Fatalf("Content-Type = %q", contentType)
+	}
 	for _, expected := range []string{
 		`"id":"offer-1"`,
-		`"seller_id":"seller-1"`,
 		`"bond_series":"BND1"`,
 		`"price":"100.25"`,
 		`"currency_code":"USD"`,
-		`"buyer_id":"buyer-1"`,
 		`"bought_at":"2026-09-01T00:00:00Z"`,
 	} {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("body %s does not contain %s", response.Body.String(), expected)
 		}
+	}
+	if strings.Contains(response.Body.String(), "buyer_id") || strings.Contains(response.Body.String(), "seller_id") {
+		t.Fatalf("response exposed user identity: %s", response.Body.String())
 	}
 
 	tests := []struct {
@@ -123,10 +158,13 @@ func TestBuyHandler(t *testing.T) {
 		status int
 	}{
 		{name: "malformed", body: `{`, status: http.StatusBadRequest},
-		{name: "unknown field", body: `{"buyer_id":"buyer","sale_offer_id":"offer","extra":true}`, status: http.StatusBadRequest},
-		{name: "two objects", body: `{"buyer_id":"buyer","sale_offer_id":"offer"} {}`, status: http.StatusBadRequest},
+		{name: "identity field rejected", body: `{"buyer_id":"buyer","sale_offer_id":"offer"}`, status: http.StatusBadRequest},
+		{name: "unknown field", body: `{"sale_offer_id":"offer","extra":true}`, status: http.StatusBadRequest},
+		{name: "duplicate field", body: `{"sale_offer_id":"offer-a","sale_offer_id":"offer-b"}`, status: http.StatusBadRequest},
+		{name: "nested duplicate field", body: `{"sale_offer_id":"offer","extra":{"a":1,"a":2}}`, status: http.StatusBadRequest},
+		{name: "two objects", body: `{"sale_offer_id":"offer"} {}`, status: http.StatusBadRequest},
 		{name: "invalid buyer", body: `{}`, err: exchange.ErrInvalidUserID, status: http.StatusBadRequest},
-		{name: "missing buyer", body: `{}`, err: exchange.ErrBuyerNotFound, status: http.StatusNotFound},
+		{name: "missing buyer", body: `{}`, err: exchange.ErrBuyerNotFound, status: http.StatusInternalServerError},
 		{name: "unavailable", body: `{}`, err: exchange.ErrOfferUnavailable, status: http.StatusNotFound},
 		{name: "internal", body: `{}`, err: errors.New("boom"), status: http.StatusInternalServerError},
 	}
@@ -165,6 +203,39 @@ func TestActiveOffersHandler(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `"price":"100.25"`) {
 		t.Fatalf("body = %s", response.Body.String())
 	}
+	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json-seq") {
+		t.Fatalf("stream Content-Type = %q", contentType)
+	}
+	if !strings.Contains(response.Body.String(), `"complete":{"offer_count":"1"}`) {
+		t.Fatalf("stream completion missing from %q", response.Body.String())
+	}
+	response = performRequest(handler, http.MethodGet, "/active-offers?bond=A&bond=B", "")
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("polluted query status = %d", response.Code)
+	}
+	response = performRequest(handler, http.MethodPost, "/active-offers?bond=BND", `{}`)
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("unsupported stream method status = %d", response.Code)
+	}
+	response = performRequest(handler, http.MethodGet, "/active-offers", "")
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("missing query status = %d", response.Code)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/active-offers?bond=BND", strings.NewReader(`{}`))
+	request.ContentLength = -1
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("GET body status = %d", response.Code)
+	}
+
+	application.listErr = errors.New("stream failed")
+	application.listErrAfter = true
+	response = performRequest(handler, http.MethodGet, "/active-offers?bond=bnd", "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"error":"internal server error"`) {
+		t.Fatalf("midstream error response = %d, %q", response.Code, response.Body.String())
+	}
+	application.listErrAfter = false
 
 	for _, test := range []struct {
 		name   string
@@ -176,7 +247,7 @@ func TestActiveOffersHandler(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			application.listErr = test.err
-			response := performRequest(handler, http.MethodGet, "/active-offers", "")
+			response := performRequest(handler, http.MethodGet, "/active-offers?bond=bnd", "")
 			if response.Code != test.status {
 				t.Fatalf("status = %d, want %d", response.Code, test.status)
 			}
@@ -199,13 +270,12 @@ func TestCreateSaleOfferHandler(t *testing.T) {
 		handler,
 		http.MethodPost,
 		"/sale-offers",
-		`{"id":"offer-2","seller_id":"seller-1","bond_series":"bnd1","price":"99.75","currency_code":"USD"}`,
+		`{"id":"offer-2","bond_series":"bnd1","price":"99.75","currency_code":"USD"}`,
 	)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if application.createID != "offer-2" || application.createSeller != "seller-1" ||
-		application.createBond != "bnd1" || application.createPrice != "99.75" ||
+	if application.createID != "offer-2" || application.createBond != "bnd1" || application.createPrice != "99.75" ||
 		application.createCurrency != "USD" {
 		t.Fatalf("application create input = %#v", application)
 	}
@@ -221,7 +291,7 @@ func TestCreateSaleOfferHandler(t *testing.T) {
 		status int
 	}{
 		{name: "invalid", err: exchange.ErrInvalidPrice, status: http.StatusBadRequest},
-		{name: "missing seller", err: exchange.ErrSellerNotFound, status: http.StatusNotFound},
+		{name: "missing seller", err: exchange.ErrSellerNotFound, status: http.StatusInternalServerError},
 		{name: "missing bond", err: exchange.ErrBondNotFound, status: http.StatusNotFound},
 		{name: "duplicate", err: exchange.ErrOfferAlreadyExists, status: http.StatusConflict},
 		{name: "internal", err: errors.New("boom"), status: http.StatusInternalServerError},
@@ -279,9 +349,92 @@ func TestHealthHandler(t *testing.T) {
 	}
 }
 
+func TestJSONStructureValidation(t *testing.T) {
+	t.Parallel()
+	for _, valid := range []string{
+		`{}`,
+		`{"object":{"key":"value"},"array":[1,true,null,{"nested":[]}]}`,
+	} {
+		if err := validateSingleJSONObject([]byte(valid)); err != nil {
+			t.Fatalf("valid JSON %s error = %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{
+		`[]`,
+		`{"a":1} {"b":2}`,
+		`{"a":[1,2}`,
+		`{"a":{"b":1,"b":2}}`,
+	} {
+		if err := validateSingleJSONObject([]byte(invalid)); err == nil {
+			t.Fatalf("invalid JSON %s was accepted", invalid)
+		}
+	}
+}
+
+func TestRESTStreamInterfaceAndPanicRecovery(t *testing.T) {
+	t.Parallel()
+	recorder := httptest.NewRecorder()
+	stream := &activeOffersRESTStream{context: context.Background(), response: recorder}
+	if err := stream.SetHeader(metadata.Pairs("key", "value")); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.SendHeader(metadata.Pairs("key", "value")); err != nil {
+		t.Fatal(err)
+	}
+	stream.SetTrailer(metadata.Pairs("key", "value"))
+	if stream.Context() == nil {
+		t.Fatal("stream context is nil")
+	}
+	message := &bondexchangev1.ListActiveOffersResponse{
+		Event: &bondexchangev1.ListActiveOffersResponse_Complete{Complete: &bondexchangev1.ListActiveOffersComplete{}},
+	}
+	if err := stream.SendMsg(message); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.SendMsg(&bondexchangev1.BuyRequest{}); err == nil {
+		t.Fatal("SendMsg accepted wrong message type")
+	}
+	if err := stream.RecvMsg(nil); !errors.Is(err, io.EOF) {
+		t.Fatalf("RecvMsg() = %v", err)
+	}
+
+	handler := newHandler(t, &applicationStub{panicBuy: true}, healthStub{})
+	response := performRequest(handler, http.MethodPost, "/buys", `{"sale_offer_id":"offer-1"}`)
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "internal server error") {
+		t.Fatalf("panic response = %d, %s", response.Code, response.Body.String())
+	}
+}
+
+func TestRequestBodyLimitsAndMediaType(t *testing.T) {
+	t.Parallel()
+	handler := newHandler(t, &applicationStub{}, healthStub{})
+	request := httptest.NewRequest(http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
+	request.Header.Set("Content-Type", "text/plain")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("media type status = %d", response.Code)
+	}
+	request = httptest.NewRequest(http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
+	request.Header.Set("Content-Type", "application/jsonp")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("JSONP media type status = %d", response.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/buys", strings.NewReader(`{"value":"`+strings.Repeat("x", 70*1024)+`"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("large request status = %d", response.Code)
+	}
+}
+
 func newHandler(t *testing.T, application *applicationStub, health healthStub) http.Handler {
 	t.Helper()
-	handler, err := NewHandler(rpcapi.NewServer(application, health))
+	handler, err := NewHandler(rpcapi.NewServer(application, health, authenticatorStub{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,6 +443,11 @@ func newHandler(t *testing.T, application *applicationStub, health healthStub) h
 
 func performRequest(handler http.Handler, method string, target string, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer test")
+	if method == http.MethodPost {
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", "idempotency-key-1")
+	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response

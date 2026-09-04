@@ -32,12 +32,13 @@ const (
 //
 // BondExchangeService exposes the bond-sale application over gRPC and REST.
 type BondExchangeServiceClient interface {
-	// Buy purchases one currently active sale offer for a buyer.
+	// Buy places a binding order or reservation for one currently active sale offer.
+	// Settlement, payment, custody, and ownership transfer are outside this API.
 	Buy(ctx context.Context, in *BuyRequest, opts ...grpc.CallOption) (*BuyResponse, error)
-	// CreateSaleOffer publishes a new sale offer for an existing seller and bond series.
+	// CreateSaleOffer publishes a new sale offer for the authenticated principal.
 	CreateSaleOffer(ctx context.Context, in *CreateSaleOfferRequest, opts ...grpc.CallOption) (*CreateSaleOfferResponse, error)
-	// ListActiveOffers returns every active sale offer for one required bond series.
-	ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (*ListActiveOffersResponse, error)
+	// ListActiveOffers streams every active sale offer from one database snapshot.
+	ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListActiveOffersResponse], error)
 	// ListActiveBondSeries returns every bond series having at least one active offer.
 	ListActiveBondSeries(ctx context.Context, in *ListActiveBondSeriesRequest, opts ...grpc.CallOption) (*ListActiveBondSeriesResponse, error)
 	// CheckHealth reports whether the server can reach its database.
@@ -72,15 +73,24 @@ func (c *bondExchangeServiceClient) CreateSaleOffer(ctx context.Context, in *Cre
 	return out, nil
 }
 
-func (c *bondExchangeServiceClient) ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (*ListActiveOffersResponse, error) {
+func (c *bondExchangeServiceClient) ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListActiveOffersResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListActiveOffersResponse)
-	err := c.cc.Invoke(ctx, BondExchangeService_ListActiveOffers_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BondExchangeService_ServiceDesc.Streams[0], BondExchangeService_ListActiveOffers_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[ListActiveOffersRequest, ListActiveOffersResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BondExchangeService_ListActiveOffersClient = grpc.ServerStreamingClient[ListActiveOffersResponse]
 
 func (c *bondExchangeServiceClient) ListActiveBondSeries(ctx context.Context, in *ListActiveBondSeriesRequest, opts ...grpc.CallOption) (*ListActiveBondSeriesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -108,12 +118,13 @@ func (c *bondExchangeServiceClient) CheckHealth(ctx context.Context, in *CheckHe
 //
 // BondExchangeService exposes the bond-sale application over gRPC and REST.
 type BondExchangeServiceServer interface {
-	// Buy purchases one currently active sale offer for a buyer.
+	// Buy places a binding order or reservation for one currently active sale offer.
+	// Settlement, payment, custody, and ownership transfer are outside this API.
 	Buy(context.Context, *BuyRequest) (*BuyResponse, error)
-	// CreateSaleOffer publishes a new sale offer for an existing seller and bond series.
+	// CreateSaleOffer publishes a new sale offer for the authenticated principal.
 	CreateSaleOffer(context.Context, *CreateSaleOfferRequest) (*CreateSaleOfferResponse, error)
-	// ListActiveOffers returns every active sale offer for one required bond series.
-	ListActiveOffers(context.Context, *ListActiveOffersRequest) (*ListActiveOffersResponse, error)
+	// ListActiveOffers streams every active sale offer from one database snapshot.
+	ListActiveOffers(*ListActiveOffersRequest, grpc.ServerStreamingServer[ListActiveOffersResponse]) error
 	// ListActiveBondSeries returns every bond series having at least one active offer.
 	ListActiveBondSeries(context.Context, *ListActiveBondSeriesRequest) (*ListActiveBondSeriesResponse, error)
 	// CheckHealth reports whether the server can reach its database.
@@ -134,8 +145,8 @@ func (UnimplementedBondExchangeServiceServer) Buy(context.Context, *BuyRequest) 
 func (UnimplementedBondExchangeServiceServer) CreateSaleOffer(context.Context, *CreateSaleOfferRequest) (*CreateSaleOfferResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSaleOffer not implemented")
 }
-func (UnimplementedBondExchangeServiceServer) ListActiveOffers(context.Context, *ListActiveOffersRequest) (*ListActiveOffersResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListActiveOffers not implemented")
+func (UnimplementedBondExchangeServiceServer) ListActiveOffers(*ListActiveOffersRequest, grpc.ServerStreamingServer[ListActiveOffersResponse]) error {
+	return status.Error(codes.Unimplemented, "method ListActiveOffers not implemented")
 }
 func (UnimplementedBondExchangeServiceServer) ListActiveBondSeries(context.Context, *ListActiveBondSeriesRequest) (*ListActiveBondSeriesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListActiveBondSeries not implemented")
@@ -200,23 +211,16 @@ func _BondExchangeService_CreateSaleOffer_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BondExchangeService_ListActiveOffers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListActiveOffersRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _BondExchangeService_ListActiveOffers_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListActiveOffersRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(BondExchangeServiceServer).ListActiveOffers(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: BondExchangeService_ListActiveOffers_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BondExchangeServiceServer).ListActiveOffers(ctx, req.(*ListActiveOffersRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(BondExchangeServiceServer).ListActiveOffers(m, &grpc.GenericServerStream[ListActiveOffersRequest, ListActiveOffersResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BondExchangeService_ListActiveOffersServer = grpc.ServerStreamingServer[ListActiveOffersResponse]
 
 func _BondExchangeService_ListActiveBondSeries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListActiveBondSeriesRequest)
@@ -270,10 +274,6 @@ var BondExchangeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BondExchangeService_CreateSaleOffer_Handler,
 		},
 		{
-			MethodName: "ListActiveOffers",
-			Handler:    _BondExchangeService_ListActiveOffers_Handler,
-		},
-		{
 			MethodName: "ListActiveBondSeries",
 			Handler:    _BondExchangeService_ListActiveBondSeries_Handler,
 		},
@@ -282,6 +282,12 @@ var BondExchangeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BondExchangeService_CheckHealth_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ListActiveOffers",
+			Handler:       _BondExchangeService_ListActiveOffers_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "bondexchange/v1/bond_exchange.proto",
 }

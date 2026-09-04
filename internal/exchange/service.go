@@ -3,10 +3,15 @@ package exchange
 import "context"
 
 type Store interface {
-	Buy(ctx context.Context, buyerID UserID, offerID OfferID) (Purchase, error)
-	CreateSaleOffer(ctx context.Context, offer SaleOffer) (SaleOffer, error)
-	ActiveOffers(ctx context.Context, bondSeries BondSeries) ([]SaleOffer, error)
-	ActiveBondSeries(ctx context.Context) ([]BondSeries, error)
+	Buy(ctx context.Context, operation MutationContext, offerID OfferID) (Purchase, error)
+	CreateSaleOffer(ctx context.Context, operation MutationContext, offer SaleOffer) (SaleOffer, error)
+	StreamActiveOffers(
+		ctx context.Context,
+		access AccessContext,
+		bondSeries BondSeries,
+		yield func(SaleOffer) error,
+	) error
+	ActiveBondSeries(ctx context.Context, access AccessContext) ([]BondSeries, error)
 }
 
 type Service struct {
@@ -17,31 +22,36 @@ func NewService(store Store) *Service {
 	return &Service{store: store}
 }
 
-func (service *Service) Buy(ctx context.Context, buyer string, offer string) (Purchase, error) {
-	buyerID, err := ParseUserID(buyer)
-	if err != nil {
-		return Purchase{}, err
+func (service *Service) Buy(ctx context.Context, access AccessContext, idempotencyKey string, offer string) (Purchase, error) {
+	if access.Operation != OperationBuy || access.Principal.ID == "" {
+		return Purchase{}, ErrInvalidOperation
+	}
+	if !IsValidIdempotencyKey(idempotencyKey) {
+		return Purchase{}, ErrInvalidIdempotencyKey
 	}
 	offerID, err := ParseOfferID(offer)
 	if err != nil {
 		return Purchase{}, err
 	}
-	return service.store.Buy(ctx, buyerID, offerID)
+	return service.store.Buy(ctx, MutationContext{AccessContext: access, IdempotencyKey: idempotencyKey}, offerID)
 }
 
 func (service *Service) CreateSaleOffer(
 	ctx context.Context,
+	access AccessContext,
+	idempotencyKey string,
 	id string,
-	seller string,
 	bond string,
 	price string,
 	currency string,
 ) (SaleOffer, error) {
-	offerID, err := ParseOfferID(id)
-	if err != nil {
-		return SaleOffer{}, err
+	if access.Operation != OperationCreateSaleOffer || access.Principal.ID == "" {
+		return SaleOffer{}, ErrInvalidOperation
 	}
-	sellerID, err := ParseUserID(seller)
+	if !IsValidIdempotencyKey(idempotencyKey) {
+		return SaleOffer{}, ErrInvalidIdempotencyKey
+	}
+	offerID, err := ParseOfferID(id)
 	if err != nil {
 		return SaleOffer{}, err
 	}
@@ -57,26 +67,37 @@ func (service *Service) CreateSaleOffer(
 	if err != nil {
 		return SaleOffer{}, err
 	}
-	return service.store.CreateSaleOffer(ctx, SaleOffer{
+	return service.store.CreateSaleOffer(ctx, MutationContext{
+		AccessContext:  access,
+		IdempotencyKey: idempotencyKey,
+	}, SaleOffer{
 		ID:         offerID,
-		SellerID:   sellerID,
+		SellerID:   access.Principal.ID,
 		BondSeries: bondSeries,
 		Price:      offerPrice,
 		Currency:   currencyCode,
 	})
 }
 
-func (service *Service) ActiveOffers(
+func (service *Service) StreamActiveOffers(
 	ctx context.Context,
+	access AccessContext,
 	bond string,
-) ([]SaleOffer, error) {
+	yield func(SaleOffer) error,
+) error {
+	if access.Operation != OperationListActiveOffers || access.Principal.ID == "" || yield == nil {
+		return ErrInvalidOperation
+	}
 	series, err := ParseBondSeries(bond)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return service.store.ActiveOffers(ctx, series)
+	return service.store.StreamActiveOffers(ctx, access, series, yield)
 }
 
-func (service *Service) ActiveBondSeries(ctx context.Context) ([]BondSeries, error) {
-	return service.store.ActiveBondSeries(ctx)
+func (service *Service) ActiveBondSeries(ctx context.Context, access AccessContext) ([]BondSeries, error) {
+	if access.Operation != OperationListBondSeries || access.Principal.ID == "" {
+		return nil, ErrInvalidOperation
+	}
+	return service.store.ActiveBondSeries(ctx, access)
 }

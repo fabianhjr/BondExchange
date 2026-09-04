@@ -55,9 +55,10 @@
 | --- | --- |
 | Repository root | Project guidance, contributor documentation, and the devenv configuration. |
 | `api/` and `gen/go/` | Proto3 API source, generated Swagger contract, and generated Go transport bindings. |
-| `cmd/` and `internal/` | Stateless Go server, domain logic, REST/gRPC transport adapters, and PostgreSQL adapter. |
+| `cmd/` and `internal/` | Stateless Go server, demo-only assertion issuer, domain logic, authentication, REST/gRPC adapters, and PostgreSQL adapter. |
 | `db/` | Versioned database schema, disposable demo fixtures, and persistence documentation. |
 | `nix/` | Nix-packaged PostgreSQL lifecycle, demo, and development verification helpers. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |
 | `docs/adr/` | Architecture decision records and their index. |
+| `docs/security/` | ASVS application profile, requirement dispositions, and continuous-compliance evidence. |
 | `.github/workflows/` | Continuous integration workflows. |

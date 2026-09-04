@@ -33,9 +33,36 @@ BOND_EXCHANGE_RUNTIME_ROOT_FILE="$runtime_marker" \
   bond-exchange-demo >"$demo_log" 2>&1 &
 demo_pid=$!
 
+project_root="${DEVENV_ROOT:-$PWD}"
+auth_ready=0
+for _ in {1..150}; do
+  if [[ -s "$runtime_marker" ]]; then
+    asserted_runtime_root="$(cat "$runtime_marker")"
+    if [[ -f "$asserted_runtime_root/auth/private.jwk" ]]; then
+      auth_ready=1
+      break
+    fi
+  fi
+  if ! kill -0 "$demo_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.2
+done
+if (( auth_ready != 1 )); then
+  echo "demo assertion issuer did not become ready" >&2
+  exit 1
+fi
+private_key="$asserted_runtime_root/auth/private.jwk"
+issue_token() {
+  go run "$project_root/cmd/demo-auth" token "$private_key" "$1" "$2" "$3" "$4"
+}
+
+health_token="$(issue_token demo-buyer health.read - '{}')"
 healthy=0
 for _ in {1..150}; do
-  if curl --fail --silent "http://$rest_address/healthz" >"$smoke_root/health.json"; then
+  if curl --fail --silent \
+    --header "Authorization: Bearer $health_token" \
+    "http://$rest_address/healthz" >"$smoke_root/health.json"; then
     healthy=1
     break
   fi
@@ -51,25 +78,35 @@ fi
 jq -e '.status == "ok"' "$smoke_root/health.json" >/dev/null
 
 grpcurl -plaintext \
+  -H "Authorization: Bearer $health_token" \
   -d '{}' \
   "$grpc_address" \
   bondexchange.v1.BondExchangeService/CheckHealth \
   >"$smoke_root/grpc-health.json"
 jq -e '.status == "ok"' "$smoke_root/grpc-health.json" >/dev/null
 
+series_token="$(issue_token demo-buyer bond-series.list - '{}')"
 curl --fail --silent \
+  --header "Authorization: Bearer $series_token" \
   "http://$rest_address/active-bond-series" \
   >"$smoke_root/series.json"
 jq -e '.bond_series == ["DEMO2026", "DEMO2027"]' "$smoke_root/series.json" >/dev/null
 
+offers_token="$(issue_token demo-buyer offers.list - '{"bond":"DEMO2026"}')"
 curl --fail --silent \
+  --header "Authorization: Bearer $offers_token" \
   "http://$rest_address/active-offers?bond=DEMO2026" \
-  >"$smoke_root/offers.json"
-jq -e '.offers | length == 2' "$smoke_root/offers.json" >/dev/null
+  | tr '\036' '\n' >"$smoke_root/offers.json"
+jq -se '([.[] | select(.offer)] | length == 2) and (.[-1].complete.offer_count == "2")' "$smoke_root/offers.json" >/dev/null
 
+create_key="demo-create-key-0001"
+create_request='{"id":"demo-smoke-offer","bond_series":"DEMO2026","price":"97.125","currency_code":"USD"}'
+create_token="$(issue_token demo-seller offers.create "$create_key" "$create_request")"
 create_status="$(curl --silent --output "$smoke_root/create.json" --write-out '%{http_code}' \
   --header 'Content-Type: application/json' \
-  --data '{"id":"demo-smoke-offer","seller_id":"demo-seller","bond_series":"DEMO2026","price":"97.125","currency_code":"USD"}' \
+  --header "Authorization: Bearer $create_token" \
+  --header "Idempotency-Key: $create_key" \
+  --data "$create_request" \
   "http://$rest_address/sale-offers")"
 if [[ "$create_status" != 201 ]]; then
   echo "create sale offer returned HTTP $create_status" >&2
@@ -77,9 +114,14 @@ if [[ "$create_status" != 201 ]]; then
 fi
 jq -e '.offer.id == "demo-smoke-offer"' "$smoke_root/create.json" >/dev/null
 
+buy_key="demo-buy-key-0000001"
+buy_request='{"sale_offer_id":"demo-smoke-offer"}'
+buy_token="$(issue_token demo-buyer purchases.buy "$buy_key" "$buy_request")"
 buy_status="$(curl --silent --output "$smoke_root/buy.json" --write-out '%{http_code}' \
   --header 'Content-Type: application/json' \
-  --data '{"buyer_id":"demo-buyer","sale_offer_id":"demo-smoke-offer"}' \
+  --header "Authorization: Bearer $buy_token" \
+  --header "Idempotency-Key: $buy_key" \
+  --data "$buy_request" \
   "http://$rest_address/buys")"
 if [[ "$buy_status" != 201 ]]; then
   echo "buy returned HTTP $buy_status" >&2

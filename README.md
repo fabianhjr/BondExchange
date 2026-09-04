@@ -16,11 +16,19 @@ development tools. They do not need to be installed globally.
 
 ## Architecture
 
-The Go server is stateless, so multiple pods can serve requests concurrently.
-They share PostgreSQL as the concurrency authority. Users, bonds, sale offers,
-and purchases are append-only facts; a unique purchase key guarantees that
-only one buyer wins a race for an offer. A database view derives the currently
-active offers.
+The Go server is stateless, so multiple instances can serve requests
+concurrently. They share PostgreSQL as the concurrency and durable-idempotency
+authority. Users, bonds, sale offers, binding orders/reservations, principals,
+RBAC changes, and operation results are append-only facts. A unique purchase
+key guarantees that only one buyer wins a race for an offer. A database view
+derives the currently active offers.
+
+Both internal transports require a short-lived federated JWT assertion bound
+to one operation, the deterministic protobuf request digest, and, for
+mutations, an idempotency key. PostgreSQL resolves the federated identity and
+derives permissions from append-only RBAC grants and revocations. Buyer and
+seller identifiers come only from that authenticated principal and are omitted
+from API responses.
 
 [`api/proto/bondexchange/v1/bond_exchange.proto`](api/proto/bondexchange/v1/bond_exchange.proto)
 is the transport contract. Buf generates Go messages, gRPC server/client
@@ -47,18 +55,23 @@ Stopping `devenv up` also stops PostgreSQL and removes the demo database. Each
 new demo therefore starts from the same known state with users `demo-seller`
 and `demo-buyer`, bonds `DEMO2026` and `DEMO2027`, and three active offers.
 
-The REST server listens on `:8080` and the gRPC server listens on `:9090` by
-default. Set `BOND_EXCHANGE_ADDRESS` and `BOND_EXCHANGE_GRPC_ADDRESS` to change
-the respective listener addresses. To use a persistent or externally managed
+The REST server listens on `127.0.0.1:8080` and the gRPC server listens on
+`127.0.0.1:9090` by default. Set `BOND_EXCHANGE_ADDRESS` and
+`BOND_EXCHANGE_GRPC_ADDRESS` to change the respective listener addresses. To
+use a persistent or externally managed
 database instead, supply its `DATABASE_URL` explicitly and start only the
 server:
 
 ```console
 DATABASE_URL=postgresql://user:password@localhost/bond_exchange \
+BOND_EXCHANGE_ASSERTION_ISSUER=https://issuer.example \
+BOND_EXCHANGE_ASSERTION_AUDIENCE=bond-exchange \
+BOND_EXCHANGE_ASSERTION_JWKS_FILE=/run/secrets/issuer.jwks \
   devenv shell go run ./cmd/server
 ```
 
-Apply migrations to that external database separately with `dbmate up`; the
+The JWKS must contain public EdDSA or ES256 signature keys with unique `kid`
+values and `use: "sig"`. Apply migrations to that external database separately with `dbmate up`; the
 application never migrates during startup. Both listeners are plaintext;
 production deployments should provide transport security at the workload or
 ingress boundary. A production runtime role should receive only the required
@@ -67,12 +80,11 @@ migration role.
 
 Available endpoints are:
 
-- `POST /buys` with
-  `{"buyer_id":"user-2","sale_offer_id":"offer-1"}`;
+- `POST /buys` with `{"sale_offer_id":"offer-1"}`;
 - `POST /sale-offers` with
-  `{"id":"offer-2","seller_id":"user-1","bond_series":"BND2026","price":"99.75","currency_code":"USD"}`;
-- `GET /active-offers?bond=BND2026`, which requires a bond series and returns
-  every active offer for it;
+  `{"id":"offer-2","bond_series":"BND2026","price":"99.75","currency_code":"USD"}`;
+- `GET /active-offers?bond=BND2026`, which streams every active offer and a
+  terminal count as `application/json-seq`;
 - `GET /active-bond-series`, which returns every bond series having an active
   offer; and
 - `GET /healthz`.
@@ -85,15 +97,28 @@ The matching native gRPC methods are:
 - `bondexchange.v1.BondExchangeService/ListActiveBondSeries`; and
 - `bondexchange.v1.BondExchangeService/CheckHealth`.
 
-Server reflection is enabled, so the development shell's `grpcurl` can inspect
-and invoke the service. For example:
+Server reflection is disabled by default. Set
+`BOND_EXCHANGE_ENABLE_REFLECTION=true` only for an explicitly authorized
+internal diagnostic environment.
+
+The disposable demo generates an ephemeral signing key and prints its path.
+Use the development-only `demo-auth` helper to create an assertion whose
+request JSON exactly matches the request being sent. For example:
 
 ```console
-grpcurl -plaintext localhost:9090 list
-grpcurl -plaintext \
-  -d '{"buyer_id":"demo-buyer","sale_offer_id":"demo-offer-1"}' \
-  localhost:9090 bondexchange.v1.BondExchangeService/Buy
+KEY=/path/printed/by/devenv/private.jwk
+IDEMPOTENCY_KEY=demo-buy-key-0000001
+REQUEST='{"sale_offer_id":"demo-offer-1"}'
+TOKEN="$(go run ./cmd/demo-auth token "$KEY" demo-buyer purchases.buy "$IDEMPOTENCY_KEY" "$REQUEST")"
+curl --header "Authorization: Bearer $TOKEN" \
+  --header "Idempotency-Key: $IDEMPOTENCY_KEY" \
+  --header 'Content-Type: application/json' \
+  --data "$REQUEST" http://127.0.0.1:8080/buys
 ```
+
+Read operations also need an assertion but omit the idempotency header and use
+`-` as the helper's idempotency argument. Assertions expire after two minutes
+in the demo and after at most five minutes at the server boundary.
 
 Bond-series input is canonicalized to uppercase at the service boundary. Its
 canonical stored form is 3–40 uppercase ASCII letters or digits.
@@ -117,6 +142,7 @@ devenv tasks run demo:smoke
 devenv tasks run go:test
 devenv tasks run go:coverage
 devenv tasks run go:mutation
+devenv tasks run security:check
 ```
 
 After editing the Proto3 source, regenerate every checked-in API artifact with
@@ -142,3 +168,6 @@ Coverage and mutation also run as separately visible CI gates.
 
 See the [formal model](spec/tla/README.md), [database design](db/README.md), and
 [architecture decisions](docs/adr/README.md) for the boundaries and rationale.
+The [ASVS 5.0 Level 3 application profile](docs/security/ASVS.md) records
+requirement-level evidence and the deployment and identity controls that remain
+pending rather than assumed.

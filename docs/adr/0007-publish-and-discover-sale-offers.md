@@ -17,17 +17,20 @@ listing.
 
 ## Decision
 
-Require a bond series for `ListActiveOffers` and return every active offer for
-that series in sale-offer ID order. Remove the `after` and `limit` fields from
-the protobuf request and reserve their field numbers and names. The response is
-intentionally unpaginated.
+Require a bond series for `ListActiveOffers` and stream every active offer for
+that series in sale-offer ID order from one repeatable-read database snapshot.
+Remove the `after` and `limit` fields from the protobuf request and reserve
+their field numbers and names. The stream is intentionally unbounded in count,
+uses transport backpressure, and ends with an explicit offer-count event. REST
+uses JSON Text Sequences and gRPC uses server streaming.
 
 Add `ListActiveBondSeries`, exposed as `GET /active-bond-series`, to return each
 bond series represented by at least one active offer exactly once and in
 lexicographic order. Derive both reads from the existing `active_offers` view.
 
 Add `CreateSaleOffer`, exposed as `POST /sale-offers`. A caller supplies the
-offer ID, seller ID, bond series, exact decimal price string, and currency code.
+offer ID, bond series, exact decimal price string, and currency code; the
+seller is the authenticated principal and cannot be assigned in the request.
 The application validates and canonicalizes those values, then inserts the
 offer as an append-only fact. Sellers and bonds continue to be provisioned
 outside this API. The database primary key resolves concurrent creation of the
@@ -46,9 +49,9 @@ discovery as derived reads rather than transport or SQL behavior in the model.
 - A bond series with no active offers is absent from discovery, including after
   its last active offer is purchased.
 - Creating the first active offer for a series makes that series discoverable.
-- Responses for a heavily offered bond may be large because listing is
-  deliberately unpaginated. Pagination requires a later explicit contract
-  change rather than implicit truncation.
+- Heavily offered bonds do not require one in-memory response, but slow clients
+  retain a database snapshot and connection. Pagination or a maximum count
+  requires a later explicit contract change rather than implicit truncation.
 - Offer creation preserves stateless servers and append-only facts. Duplicate
   IDs are reported as conflicts without process-local locking.
 - No database schema migration is required; the existing table, constraints,
@@ -65,10 +68,11 @@ explicit.
 
 ### Keep offer-ID pagination
 
-Pagination would bound responses but would prevent the operation from returning
-the complete active book requested for a bond series. It was removed. If offer
-books become too large, a future contract can add snapshot or cursor semantics
-with explicit consistency guarantees.
+Pagination would bound individual requests but require explicit cross-page
+snapshot semantics to represent one complete active book. Streaming was
+selected to preserve a single database snapshot and incremental delivery. If
+offer books become too slow to consume, a future contract can add snapshot or
+cursor semantics with explicit consistency guarantees.
 
 ### Return bond records instead of series identifiers
 

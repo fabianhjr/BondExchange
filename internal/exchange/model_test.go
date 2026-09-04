@@ -23,6 +23,11 @@ func TestIdentifierParsing(t *testing.T) {
 	if _, err := ParseOfferID(""); !errors.Is(err, ErrInvalidOfferID) {
 		t.Fatalf("ParseOfferID(empty) error = %v", err)
 	}
+	for _, invalid := range []string{strings.Repeat("x", 129), "user\nname", "user\x7f"} {
+		if _, err := ParseUserID(invalid); !errors.Is(err, ErrInvalidUserID) {
+			t.Fatalf("ParseUserID(%q) error = %v", invalid, err)
+		}
+	}
 }
 
 func TestParseBondSeries(t *testing.T) {
@@ -86,6 +91,25 @@ func TestPriceAndCurrencyParsing(t *testing.T) {
 	}
 	if _, err := ParseCurrencyCode(""); !errors.Is(err, ErrInvalidCurrencyCode) {
 		t.Fatalf("ParseCurrencyCode(empty) error = %v", err)
+	}
+	for _, invalid := range []string{"usd", "US1", "USÉ"} {
+		if _, err := ParseCurrencyCode(invalid); !errors.Is(err, ErrInvalidCurrencyCode) {
+			t.Fatalf("ParseCurrencyCode(%q) error = %v", invalid, err)
+		}
+	}
+}
+
+func TestIdempotencyKeyValidation(t *testing.T) {
+	t.Parallel()
+	for _, valid := range []string{"idempotency-key-1", strings.Repeat("x", 128)} {
+		if !IsValidIdempotencyKey(valid) {
+			t.Fatalf("valid key %q was rejected", valid)
+		}
+	}
+	for _, invalid := range []string{"short", strings.Repeat("x", 129), "idempotency key 1", "idempotency-key\x7f"} {
+		if IsValidIdempotencyKey(invalid) {
+			t.Fatalf("invalid key %q was accepted", invalid)
+		}
 	}
 }
 
