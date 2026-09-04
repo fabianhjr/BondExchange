@@ -69,6 +69,21 @@ bounded PostgreSQL connections, and no runtime gRPC reflection. A checked-in
 descriptor set supports offline tooling without exposing service discovery.
 Unexpected errors and panics produce generic responses.
 
+Successful offer creation and buying atomically record only an integration
+event's immutable source-table name, source ID, schema version, and completion
+time. Versioned loaders reconstruct minimized payloads in memory and do not
+include buyer, seller, assertion, issuer-subject, request, or credential data.
+Publication occurs after commit, is at least once, and uses per-destination
+leases. Publisher failures and panics are contained and cannot change a
+committed domain result. Consumers must deduplicate by `(table_name, id)`.
+
+There is no automatic event recovery process. `PublishPendingEvents` requires
+an operation-bound assertion, `events.publish`, and an idempotency key; it
+attempts pending deliveries only when explicitly invoked and returns aggregate
+counts rather than event data. The repository configures no concrete publisher.
+Destination authentication, transport security, secrets, allowlists, payload
+classification, and operational invocation remain deployment decisions.
+
 Security events are JSON logs with source-code location and the operation,
 outcome, safe error class, principal audit ID, client ID/class, assertion ID,
 request digest, and stream count where applicable. When an OpenTelemetry span
@@ -94,6 +109,7 @@ panics are logged without request or credential contents.
 | AD-11 | Logs are structured JSON and enrich automatic OpenTelemetry context. | Automatic instrumentation and the collector are runtime concerns; telemetry data must be classified and protected. |
 | AD-12 | Expected domain failures stay detailed unless detail would enable identity or credential enumeration. | Authentication and authorization failures are generic; unexpected failures never expose database, token, or stack details. |
 | AD-13 | Runtime gRPC reflection is absent; clients use a versioned descriptor set. | Operators lose live discovery and must select an artifact matching the deployed API. |
+| AD-14 | Integration events persist only immutable source references and use immediate best-effort delivery with explicit manual recovery. | Source loaders must remain compatible for the retention period, delivery is at least once, and pending events can remain indefinitely without operator action. |
 
 ## Pending non-code and deployment decisions
 
@@ -112,7 +128,10 @@ loopback by default:
   availability, capacity, and retention;
 - OpenTelemetry agent/collector selection, authenticated export, sampling,
   clock synchronization, immutable log storage, access, alerting, and
-  retention; and
+  retention;
+- integration-event destination selection, publisher credentials and network
+  policy, duplicate handling, payload approval, pending-event alerting, and the
+  operating procedure for explicit recovery; and
 - production packaging, SBOM publication/attestation, vulnerability-response
   ownership, and independent ASVS verification.
 

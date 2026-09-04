@@ -49,3 +49,20 @@ func TestDemoAssertionIsAcceptedByProductionAuthenticator(t *testing.T) {
 		t.Fatalf("Authenticate() error = %v", err)
 	}
 }
+
+func TestDemoAuthSupportsPendingEventRecovery(t *testing.T) {
+	directory := t.TempDir()
+	if err := initialize(directory); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := issueToken(
+		filepath.Join(directory, "private.jwk"),
+		"demo-buyer",
+		exchange.OperationPublishPendingEvents,
+		"event-recovery-key-0001",
+		`{"destination_id":"security"}`,
+		time.Now().UTC(),
+	); err != nil {
+		t.Fatalf("issueToken() error = %v", err)
+	}
+}

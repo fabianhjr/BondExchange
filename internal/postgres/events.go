@@ -1,0 +1,227 @@
+package postgres
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/fabianhjr/BondExchange/internal/eventing"
+	"github.com/fabianhjr/BondExchange/internal/exchange"
+	"github.com/jackc/pgx/v5"
+)
+
+func (store *Store) LoadEvent(ctx context.Context, ref eventing.SourceRef) (eventing.Envelope, error) {
+	var version uint16
+	var completedAt time.Time
+	err := store.pool.QueryRow(ctx, `
+SELECT schema_version, completed_at
+FROM bond_exchange.integration_events
+WHERE table_name = $1 AND id = $2`, ref.TableName, ref.ID).Scan(&version, &completedAt)
+	if err != nil {
+		return eventing.Envelope{}, err
+	}
+	if version != 1 {
+		return eventing.Envelope{}, eventing.ErrUnsupportedEvent
+	}
+
+	envelope := eventing.Envelope{
+		Source:        ref,
+		SchemaVersion: version,
+		CompletedAt:   completedAt,
+	}
+	switch ref.TableName {
+	case eventing.TableSaleOffers:
+		var payload eventing.SaleOfferCreated
+		var priceText string
+		err = store.pool.QueryRow(ctx, `
+SELECT id, bond_series, price::text, currency_code
+FROM bond_exchange.sale_offers
+WHERE id = $1`, ref.ID).Scan(
+			&payload.ID,
+			&payload.BondSeries,
+			&priceText,
+			&payload.CurrencyCode,
+		)
+		if err == nil {
+			price, parseErr := exchange.ParsePrice(priceText)
+			if parseErr != nil {
+				return eventing.Envelope{}, parseErr
+			}
+			payload.Price = price.String()
+		}
+		envelope.Type = eventing.TypeSaleOfferCreated
+		envelope.Data = payload
+	case eventing.TablePurchases:
+		var payload eventing.PurchaseRecorded
+		var priceText string
+		err = store.pool.QueryRow(ctx, `
+SELECT
+  purchase.sale_offer_id,
+  sale_offer.bond_series,
+  sale_offer.price::text,
+  sale_offer.currency_code,
+  purchase.bought_at
+FROM bond_exchange.purchases AS purchase
+JOIN bond_exchange.sale_offers AS sale_offer
+  ON sale_offer.id = purchase.sale_offer_id
+WHERE purchase.sale_offer_id = $1`, ref.ID).Scan(
+			&payload.SaleOfferID,
+			&payload.BondSeries,
+			&priceText,
+			&payload.CurrencyCode,
+			&payload.BoughtAt,
+		)
+		if err == nil {
+			price, parseErr := exchange.ParsePrice(priceText)
+			if parseErr != nil {
+				return eventing.Envelope{}, parseErr
+			}
+			payload.Price = price.String()
+		}
+		envelope.Type = eventing.TypePurchaseRecorded
+		envelope.Data = payload
+	default:
+		return eventing.Envelope{}, eventing.ErrUnsupportedEvent
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return eventing.Envelope{}, fmt.Errorf("%w: source fact is missing", eventing.ErrUnsupportedEvent)
+	}
+	return envelope, err
+}
+
+func (store *Store) ClaimEvent(
+	ctx context.Context,
+	destinationID string,
+	ref eventing.SourceRef,
+	leaseToken string,
+	leaseDuration time.Duration,
+	force bool,
+) (int, bool, error) {
+	var attempt int
+	err := store.pool.QueryRow(ctx, `
+INSERT INTO bond_exchange.integration_event_deliveries
+  (destination_id, table_name, id, attempt_count, lease_token, lease_until)
+VALUES ($1, $2, $3, 1, $4, transaction_timestamp() + ($5 * interval '1 microsecond'))
+ON CONFLICT (destination_id, table_name, id) DO UPDATE
+SET
+  attempt_count = bond_exchange.integration_event_deliveries.attempt_count + 1,
+  lease_token = EXCLUDED.lease_token,
+  lease_until = EXCLUDED.lease_until
+WHERE bond_exchange.integration_event_deliveries.delivered_at IS NULL
+  AND (
+    bond_exchange.integration_event_deliveries.lease_until IS NULL
+    OR bond_exchange.integration_event_deliveries.lease_until <= transaction_timestamp()
+  )
+  AND (
+    $6
+    OR bond_exchange.integration_event_deliveries.next_attempt_at <= transaction_timestamp()
+  )
+RETURNING attempt_count`, destinationID, ref.TableName, ref.ID, leaseToken, leaseDuration.Microseconds(), force).Scan(&attempt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	return attempt, err == nil, err
+}
+
+func (store *Store) MarkEventDelivered(
+	ctx context.Context,
+	destinationID string,
+	ref eventing.SourceRef,
+	leaseToken string,
+) error {
+	result, err := store.pool.Exec(ctx, `
+UPDATE bond_exchange.integration_event_deliveries
+SET
+  delivered_at = transaction_timestamp(),
+  lease_token = NULL,
+  lease_until = NULL,
+  last_error_class = NULL
+WHERE destination_id = $1
+  AND table_name = $2
+  AND id = $3
+  AND lease_token = $4
+  AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseToken)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return errors.New("integration event delivery lease was lost")
+	}
+	return nil
+}
+
+func (store *Store) MarkEventFailed(
+	ctx context.Context,
+	destinationID string,
+	ref eventing.SourceRef,
+	leaseToken string,
+	errorClass string,
+	retryAfter time.Duration,
+) error {
+	result, err := store.pool.Exec(ctx, `
+UPDATE bond_exchange.integration_event_deliveries
+SET
+  lease_token = NULL,
+  lease_until = NULL,
+  next_attempt_at = transaction_timestamp() + ($5 * interval '1 microsecond'),
+  last_error_class = $6
+WHERE destination_id = $1
+  AND table_name = $2
+  AND id = $3
+  AND lease_token = $4
+  AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseToken, retryAfter.Microseconds(), errorClass)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return errors.New("integration event delivery lease was lost")
+	}
+	return nil
+}
+
+func (store *Store) PendingEvents(
+	ctx context.Context,
+	destinationID string,
+	after eventing.SourceRef,
+	limit int,
+) ([]eventing.SourceRef, error) {
+	rows, err := store.pool.Query(ctx, `
+SELECT event.table_name, event.id
+FROM bond_exchange.integration_events AS event
+LEFT JOIN bond_exchange.integration_event_deliveries AS delivery
+  ON delivery.destination_id = $1
+  AND delivery.table_name = event.table_name
+  AND delivery.id = event.id
+WHERE delivery.delivered_at IS NULL
+  AND (delivery.lease_until IS NULL OR delivery.lease_until <= transaction_timestamp())
+  AND (event.table_name, event.id) > ($2, $3)
+ORDER BY event.table_name, event.id
+LIMIT $4`, destinationID, after.TableName, after.ID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	refs := make([]eventing.SourceRef, 0, limit)
+	for rows.Next() {
+		var ref eventing.SourceRef
+		if err := rows.Scan(&ref.TableName, &ref.ID); err != nil {
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	return refs, rows.Err()
+}
+
+func (store *Store) CountPendingEvents(ctx context.Context, destinationID string) (uint64, error) {
+	var count uint64
+	err := store.pool.QueryRow(ctx, `
+SELECT count(*)
+FROM bond_exchange.integration_events AS event
+LEFT JOIN bond_exchange.integration_event_deliveries AS delivery
+  ON delivery.destination_id = $1
+  AND delivery.table_name = event.table_name
+  AND delivery.id = event.id
+WHERE delivery.delivered_at IS NULL`, destinationID).Scan(&count)
+	return count, err
+}

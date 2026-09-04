@@ -40,7 +40,8 @@ gateway maps those codes to HTTP statuses while retaining the existing
 `{"error":"..."}` JSON error shape.
 
 Every method requires one `Authorization: Bearer <assertion>` metadata value.
-Mutations additionally require exactly one `Idempotency-Key`. Identity fields
+Mutations and the explicit pending-event recovery operation additionally
+require exactly one `Idempotency-Key`. Identity fields
 are not part of request messages: the operation-bound assertion resolves the
 principal used as buyer or seller. Assertion content and validation are
 documented in [`../docs/security/ASVS.md`](../docs/security/ASVS.md).
@@ -54,3 +55,12 @@ RFC 7464 JSON Text Sequences because direct in-process gRPC-Gateway
 registration does not implement server streams. Both emit one offer per event
 and a terminal count. Removed pagination and identity field numbers and names
 are reserved against reuse.
+
+`POST /event-publications:publish-pending` and the matching
+`PublishPendingEvents` RPC explicitly attempt every visible pending integration
+event for one requested destination, or for all configured destinations when
+`destination_id` is empty. The response contains only attempted, delivered,
+failed, and remaining counts. No startup hook, timer, or background worker
+calls this operation. The checked-in server has no concrete publisher, so the
+operation currently returns gRPC `FailedPrecondition`, mapped to HTTP 400 by
+the REST gateway.

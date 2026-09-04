@@ -23,12 +23,22 @@ RBAC changes, and operation results are append-only facts. A unique purchase
 key guarantees that only one buyer wins a race for an offer. A database view
 derives the currently active offers.
 
+Successful offer creation and buying also append minimal integration-event
+references in the same transaction. A reference contains only the immutable
+source table and row ID, its event-schema version, and completion time; payloads
+are reconstructed from the source fact in memory. After commit the application
+makes one bounded delivery attempt to each configured destination. Delivery is
+at least once and consumers must deduplicate by `(table_name, id)`. There is no
+automatic retry worker or startup drain; an authorized operator can explicitly
+retry pending events. This repository currently configures no concrete event
+publisher, so no event leaves the service.
+
 Both internal transports require a short-lived federated JWT assertion bound
-to one operation, the deterministic protobuf request digest, and, for
-mutations, an idempotency key. PostgreSQL resolves the federated identity and
-derives permissions from append-only RBAC grants and revocations. Buyer and
-seller identifiers come only from that authenticated principal and are omitted
-from API responses.
+to one operation and the deterministic protobuf request digest. Domain
+mutations and manual event recovery also require an idempotency key. PostgreSQL
+resolves the federated identity and derives permissions from append-only RBAC
+grants and revocations. Buyer and seller identifiers come only from that
+authenticated principal and are omitted from API responses.
 
 [`api/proto/bondexchange/v1/bond_exchange.proto`](api/proto/bondexchange/v1/bond_exchange.proto)
 is the transport contract. Buf generates Go messages, gRPC server/client
@@ -76,9 +86,10 @@ The JWKS must contain public EdDSA or ES256 signature keys with unique `kid`
 values and `use: "sig"`. Apply migrations to that external database separately with `dbmate up`; the
 application never migrates during startup. Both listeners are plaintext;
 production deployments should provide transport security at the workload or
-ingress boundary. A production runtime role should receive only the required
-`SELECT` and `INSERT` privileges; schema ownership belongs to a separate
-migration role.
+ingress boundary. A production exchange runtime role should receive only the
+required `SELECT` and `INSERT` privileges. A future configured publisher also
+needs narrowly scoped `UPDATE` access to integration-event delivery state;
+schema ownership belongs to a separate migration role.
 
 Available endpoints are:
 
@@ -89,7 +100,11 @@ Available endpoints are:
   terminal count as `application/json-seq`;
 - `GET /active-bond-series`, which returns every bond series having an active
   offer; and
-- `GET /healthz`.
+- `GET /healthz`; and
+- `POST /event-publications:publish-pending` with an optional
+  `{"destination_id":"..."}`, which explicitly attempts pending integration
+  events and returns aggregate counts. It returns an error while no publisher
+  is configured.
 
 The matching native gRPC methods are:
 
@@ -97,7 +112,8 @@ The matching native gRPC methods are:
 - `bondexchange.v1.BondExchangeService/CreateSaleOffer`;
 - `bondexchange.v1.BondExchangeService/ListActiveOffers`;
 - `bondexchange.v1.BondExchangeService/ListActiveBondSeries`; and
-- `bondexchange.v1.BondExchangeService/CheckHealth`.
+- `bondexchange.v1.BondExchangeService/CheckHealth`; and
+- `bondexchange.v1.BondExchangeService/PublishPendingEvents`.
 
 The server does not register gRPC reflection. Tools such as `grpcurl` must use
 the versioned descriptor set explicitly, for example with

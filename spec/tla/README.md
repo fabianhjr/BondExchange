@@ -55,6 +55,12 @@ Bond-specific offer listing and active-series discovery are derived reads and
 do not change model state. HTTP parameters, SQL queries, ordering, and input
 canonicalization remain implementation-boundary concerns.
 
+Outbound integration-event references and delivery attempts are likewise an
+implementation projection. They do not change sale offers, purchases, or
+operation idempotency, so publisher interfaces, delivery leases, retries, and
+the manual recovery endpoint are intentionally outside the TLA+ state. A
+successful mutation's source fact remains the modeled behavior.
+
 The model does not prohibit a seller from buying their own offer.
 
 There are intentionally no buy offers, matching engine, balances, holdings,

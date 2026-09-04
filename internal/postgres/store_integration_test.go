@@ -12,12 +12,24 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/fabianhjr/BondExchange/internal/eventing"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 )
+
+type recordingPublisher struct {
+	events []eventing.Envelope
+	err    error
+}
+
+func (publisher *recordingPublisher) Publish(_ context.Context, event eventing.Envelope) error {
+	publisher.events = append(publisher.events, event)
+	return publisher.err
+}
 
 const testDatabaseEnvironment = "BOND_EXCHANGE_TEST_DATABASE_URL"
 
@@ -267,6 +279,23 @@ func TestDomainFactTablesRejectMutation(t *testing.T) {
 			t.Fatalf("statement %q error = %v", statement, err)
 		}
 	}
+
+	offer := insertOffer(t, pool, user, insertBond(t, pool))
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.integration_events (table_name, id, schema_version, completed_at)
+VALUES ('sale_offers', $1, 1, transaction_timestamp())`, offer); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`UPDATE bond_exchange.integration_events SET schema_version = schema_version WHERE table_name = 'sale_offers' AND id = $1`,
+		`DELETE FROM bond_exchange.integration_events WHERE table_name = 'sale_offers' AND id = $1`,
+	} {
+		_, err := pool.Exec(context.Background(), statement, offer)
+		var databaseError *pgconn.PgError
+		if !errors.As(err, &databaseError) || databaseError.Code != "55000" {
+			t.Fatalf("statement %q error = %v", statement, err)
+		}
+	}
 }
 
 func TestMutationIdempotencyReplaysResultAndRejectsKeyReuse(t *testing.T) {
@@ -306,6 +335,241 @@ SELECT
 	}
 	if claims != 1 || results != 1 || offers != 1 {
 		t.Fatalf("claims, results, offers = %d, %d, %d", claims, results, offers)
+	}
+}
+
+func TestSuccessfulMutationsRecordMinimalIntegrationEventReferences(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "event-seller")
+	buyer := insertUser(t, pool, "event-buyer")
+	bond := insertBond(t, pool)
+	offer := exchange.SaleOffer{
+		ID:         exchange.OfferID(uniqueID(t, "event-offer")),
+		SellerID:   seller,
+		BondSeries: bond,
+		Price:      decimal.RequireFromString("101.25"),
+		Currency:   "USD",
+	}
+	createOperation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "event-create"), string(offer.ID))
+	if _, err := store.CreateSaleOffer(context.Background(), createOperation, offer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSaleOffer(context.Background(), createOperation, offer); err != nil {
+		t.Fatalf("idempotent create replay: %v", err)
+	}
+	if _, err := store.Buy(
+		context.Background(),
+		mutation(buyer, exchange.OperationBuy, uniqueID(t, "event-buy"), string(offer.ID)),
+		offer.ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var eventCount, payloadColumns int
+	if err := pool.QueryRow(context.Background(), `
+SELECT count(*)
+FROM bond_exchange.integration_events
+WHERE id = $1`, offer.ID).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(context.Background(), `
+SELECT count(*)
+FROM information_schema.columns
+WHERE table_schema = 'bond_exchange'
+  AND table_name = 'integration_events'
+  AND column_name IN ('payload', 'data', 'event_id')`).Scan(&payloadColumns); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != 2 || payloadColumns != 0 {
+		t.Fatalf("event references = %d, copied payload columns = %d", eventCount, payloadColumns)
+	}
+
+	createdEvent, err := store.LoadEvent(context.Background(), eventing.SourceRef{
+		TableName: eventing.TableSaleOffers,
+		ID:        string(offer.ID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdPayload, ok := createdEvent.Data.(eventing.SaleOfferCreated)
+	if !ok || createdEvent.Type != eventing.TypeSaleOfferCreated || createdPayload.ID != string(offer.ID) ||
+		createdPayload.Price != "101.25" {
+		t.Fatalf("created event = %#v", createdEvent)
+	}
+	purchaseEvent, err := store.LoadEvent(context.Background(), eventing.SourceRef{
+		TableName: eventing.TablePurchases,
+		ID:        string(offer.ID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchasePayload, ok := purchaseEvent.Data.(eventing.PurchaseRecorded)
+	if !ok || purchaseEvent.Type != eventing.TypePurchaseRecorded || purchasePayload.SaleOfferID != string(offer.ID) ||
+		purchasePayload.BoughtAt.IsZero() {
+		t.Fatalf("purchase event = %#v", purchaseEvent)
+	}
+}
+
+func TestIntegrationEventDeliveryIsLeasedAndDeduplicated(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "publisher")
+	bond := insertBond(t, pool)
+	offer := exchange.SaleOffer{
+		ID:         exchange.OfferID(uniqueID(t, "published-offer")),
+		SellerID:   seller,
+		BondSeries: bond,
+		Price:      decimal.RequireFromString("99.5"),
+		Currency:   "USD",
+	}
+	if _, err := store.CreateSaleOffer(
+		context.Background(),
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "publish-create"), string(offer.ID)),
+		offer,
+	); err != nil {
+		t.Fatal(err)
+	}
+	publisher := &recordingPublisher{}
+	dispatcher, err := eventing.NewDispatcher(store, []eventing.Destination{{ID: "test", Publisher: publisher}}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := eventing.SourceRef{TableName: eventing.TableSaleOffers, ID: string(offer.ID)}
+	dispatcher.Publish(context.Background(), ref)
+	dispatcher.Publish(context.Background(), ref)
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d", len(publisher.events))
+	}
+	var delivered bool
+	if err := pool.QueryRow(context.Background(), `
+SELECT delivered_at IS NOT NULL
+FROM bond_exchange.integration_event_deliveries
+WHERE destination_id = 'test' AND table_name = $1 AND id = $2`, ref.TableName, ref.ID).Scan(&delivered); err != nil {
+		t.Fatal(err)
+	}
+	if !delivered {
+		t.Fatal("event was not marked delivered")
+	}
+}
+
+func TestIntegrationEventLeaseCoordinatesOverlappingAttempts(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "lease-publisher")
+	bond := insertBond(t, pool)
+	offer := exchange.SaleOffer{
+		ID:         exchange.OfferID(uniqueID(t, "leased-offer")),
+		SellerID:   seller,
+		BondSeries: bond,
+		Price:      decimal.RequireFromString("97.25"),
+		Currency:   "USD",
+	}
+	if _, err := store.CreateSaleOffer(
+		context.Background(),
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "lease-create"), string(offer.ID)),
+		offer,
+	); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	ref := eventing.SourceRef{TableName: eventing.TableSaleOffers, ID: string(offer.ID)}
+	attempt, claimed, err := store.ClaimEvent(ctx, "lease-test", ref, "first-lease", time.Minute, false)
+	if err != nil || !claimed || attempt != 1 {
+		t.Fatalf("first claim = %d, %t, %v", attempt, claimed, err)
+	}
+	if _, claimed, err := store.ClaimEvent(ctx, "lease-test", ref, "second-lease", time.Minute, true); err != nil || claimed {
+		t.Fatalf("overlapping claim = %t, %v", claimed, err)
+	}
+	if err := store.MarkEventFailed(ctx, "lease-test", ref, "wrong-lease", "publisher_error", time.Hour); err == nil {
+		t.Fatal("failure with wrong lease token succeeded")
+	}
+	if err := store.MarkEventFailed(ctx, "lease-test", ref, "first-lease", "publisher_error", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := store.ClaimEvent(ctx, "lease-test", ref, "early-lease", time.Minute, false); err != nil || claimed {
+		t.Fatalf("claim before retry time = %t, %v", claimed, err)
+	}
+	_, claimed, err = store.ClaimEvent(ctx, "lease-test", ref, "recovery-lease", time.Minute, true)
+	if err != nil || !claimed {
+		t.Fatalf("forced recovery claim = %t, %v", claimed, err)
+	}
+	if err := store.MarkEventDelivered(ctx, "lease-test", ref, "recovery-lease"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestManualIntegrationEventRecoveryRetriesFailedDelivery(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "recovery-publisher")
+	bond := insertBond(t, pool)
+	offer := exchange.SaleOffer{
+		ID:         exchange.OfferID(uniqueID(t, "recovery-offer")),
+		SellerID:   seller,
+		BondSeries: bond,
+		Price:      decimal.RequireFromString("98.75"),
+		Currency:   "USD",
+	}
+	if _, err := store.CreateSaleOffer(
+		context.Background(),
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "recovery-create"), string(offer.ID)),
+		offer,
+	); err != nil {
+		t.Fatal(err)
+	}
+	publisher := &recordingPublisher{err: errors.New("publisher unavailable")}
+	dispatcher, err := eventing.NewDispatcher(store, []eventing.Destination{{ID: "test", Publisher: publisher}}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := eventing.SourceRef{TableName: eventing.TableSaleOffers, ID: string(offer.ID)}
+	dispatcher.Publish(context.Background(), ref)
+
+	var attempts int
+	var errorClass string
+	if err := pool.QueryRow(context.Background(), `
+SELECT attempt_count, last_error_class
+FROM bond_exchange.integration_event_deliveries
+WHERE destination_id = 'test' AND table_name = $1 AND id = $2`, ref.TableName, ref.ID).Scan(&attempts, &errorClass); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 || errorClass != "publisher_error" {
+		t.Fatalf("failed delivery = %d attempts, %q", attempts, errorClass)
+	}
+
+	publisher.err = nil
+	summary, err := dispatcher.PublishPending(context.Background(), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Attempted == 0 || summary.Delivered != summary.Attempted || summary.Failed != 0 || summary.Remaining != 0 {
+		t.Fatalf("recovery summary = %#v", summary)
+	}
+}
+
+func TestLoadEventRejectsUnsupportedVersionAndMissingReference(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "versioned-event")
+	bond := insertBond(t, pool)
+	offer := insertOffer(t, pool, seller, bond)
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.integration_events (table_name, id, schema_version, completed_at)
+VALUES ('sale_offers', $1, 2, transaction_timestamp())`, offer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LoadEvent(context.Background(), eventing.SourceRef{
+		TableName: eventing.TableSaleOffers,
+		ID:        string(offer),
+	}); !errors.Is(err, eventing.ErrUnsupportedEvent) {
+		t.Fatalf("unsupported version error = %v", err)
+	}
+	if _, err := store.LoadEvent(context.Background(), eventing.SourceRef{
+		TableName: eventing.TableSaleOffers,
+		ID:        "missing",
+	}); err == nil {
+		t.Fatal("missing event reference loaded")
 	}
 }
 

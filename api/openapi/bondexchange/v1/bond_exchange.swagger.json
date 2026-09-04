@@ -130,6 +130,52 @@
         ]
       }
     },
+    "/event-publications:publish-pending": {
+      "post": {
+        "summary": "PublishPendingEvents explicitly retries pending integration-event deliveries.\nNo automatic startup or scheduled drain invokes this operation.",
+        "operationId": "BondExchangeService_PublishPendingEvents",
+        "responses": {
+          "200": {
+            "description": "The visible pending events were attempted.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.PublishPendingEventsResponse"
+            }
+          },
+          "400": {
+            "description": "The destination is invalid or no publisher is configured.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "500": {
+            "description": "The server could not complete the recovery attempt.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.PublishPendingEventsRequest"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "description": "A 16-128 character key bound into the operation assertion; per-event leases coordinate overlapping drains.",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BondExchangeService"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "summary": "CheckHealth reports whether the server can reach its database.",
@@ -330,6 +376,36 @@
         },
         "complete": {
           "$ref": "#/definitions/bondexchange.v1.ListActiveOffersComplete"
+        }
+      }
+    },
+    "bondexchange.v1.PublishPendingEventsRequest": {
+      "type": "object",
+      "properties": {
+        "destination_id": {
+          "type": "string",
+          "description": "Stable configured destination identifier. Empty selects every destination."
+        }
+      }
+    },
+    "bondexchange.v1.PublishPendingEventsResponse": {
+      "type": "object",
+      "properties": {
+        "attempted": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "delivered": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "failed": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "remaining": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },

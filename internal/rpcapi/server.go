@@ -9,6 +9,7 @@ import (
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1"
 	"github.com/fabianhjr/BondExchange/internal/authn"
+	"github.com/fabianhjr/BondExchange/internal/eventing"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -45,6 +46,7 @@ type Application interface {
 		yield func(exchange.SaleOffer) error,
 	) error
 	ActiveBondSeries(ctx context.Context, access exchange.AccessContext) ([]exchange.BondSeries, error)
+	PublishPendingEvents(ctx context.Context, access exchange.AccessContext, destinationID string) (eventing.Summary, error)
 }
 
 func (server *Server) CreateSaleOffer(
@@ -182,6 +184,41 @@ func (server *Server) CheckHealth(
 	return &bondexchangev1.CheckHealthResponse{Status: "ok"}, nil
 }
 
+func (server *Server) PublishPendingEvents(
+	ctx context.Context,
+	request *bondexchangev1.PublishPendingEventsRequest,
+) (*bondexchangev1.PublishPendingEventsResponse, error) {
+	authenticated, err := server.authenticate(ctx, exchange.OperationPublishPendingEvents, request, true)
+	if err != nil {
+		logSecurityOperation(ctx, exchange.OperationPublishPendingEvents, nil, err)
+		return nil, transportError(err)
+	}
+	summary, err := server.application.PublishPendingEvents(
+		ctx,
+		authenticated.AccessContext,
+		request.GetDestinationId(),
+	)
+	logSecurityOperation(
+		ctx,
+		exchange.OperationPublishPendingEvents,
+		&authenticated.AccessContext,
+		err,
+		"attempted", summary.Attempted,
+		"delivered", summary.Delivered,
+		"failed", summary.Failed,
+		"remaining", summary.Remaining,
+	)
+	if err != nil {
+		return nil, transportError(err)
+	}
+	return &bondexchangev1.PublishPendingEventsResponse{
+		Attempted: summary.Attempted,
+		Delivered: summary.Delivered,
+		Failed:    summary.Failed,
+		Remaining: summary.Remaining,
+	}, nil
+}
+
 func logSecurityOperation(
 	ctx context.Context,
 	operation string,
@@ -282,6 +319,10 @@ func transportError(err error) error {
 		return status.Error(codes.AlreadyExists, err.Error())
 	case errors.Is(err, exchange.ErrIdempotencyConflict):
 		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, eventing.ErrUnknownDestination):
+		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, eventing.ErrNoPublishers):
+		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
 		return status.Error(codes.Internal, "internal server error")
 	}

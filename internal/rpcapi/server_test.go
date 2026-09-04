@@ -11,6 +11,7 @@ import (
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1"
 	"github.com/fabianhjr/BondExchange/internal/authn"
+	"github.com/fabianhjr/BondExchange/internal/eventing"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/shopspring/decimal"
 	"google.golang.org/grpc"
@@ -35,6 +36,9 @@ type applicationStub struct {
 	createPrice    string
 	createCurrency string
 	bond           string
+	publishSummary eventing.Summary
+	publishErr     error
+	destinationID  string
 }
 
 func (application *applicationStub) Buy(
@@ -83,6 +87,15 @@ func (application *applicationStub) StreamActiveOffers(
 
 func (application *applicationStub) ActiveBondSeries(context.Context, exchange.AccessContext) ([]exchange.BondSeries, error) {
 	return application.series, application.seriesErr
+}
+
+func (application *applicationStub) PublishPendingEvents(
+	_ context.Context,
+	_ exchange.AccessContext,
+	destinationID string,
+) (eventing.Summary, error) {
+	application.destinationID = destinationID
+	return application.publishSummary, application.publishErr
 }
 
 type healthStub struct {
@@ -210,6 +223,18 @@ func TestGRPCServer(t *testing.T) {
 	if health.GetStatus() != "ok" {
 		t.Fatalf("health status = %q", health.GetStatus())
 	}
+
+	application.publishSummary = eventing.Summary{Attempted: 3, Delivered: 2, Failed: 1, Remaining: 1}
+	published, err := client.PublishPendingEvents(context.Background(), &bondexchangev1.PublishPendingEventsRequest{
+		DestinationId: "security",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if application.destinationID != "security" || published.GetAttempted() != 3 || published.GetDelivered() != 2 ||
+		published.GetFailed() != 1 || published.GetRemaining() != 1 {
+		t.Fatalf("publish pending = %v, destination = %q", published, application.destinationID)
+	}
 }
 
 func TestGRPCErrors(t *testing.T) {
@@ -276,6 +301,24 @@ func TestGRPCErrors(t *testing.T) {
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("health code = %s", status.Code(err))
 	}
+
+	for _, test := range []struct {
+		name string
+		err  error
+		code codes.Code
+	}{
+		{name: "unknown destination", err: eventing.ErrUnknownDestination, code: codes.InvalidArgument},
+		{name: "no publishers", err: eventing.ErrNoPublishers, code: codes.FailedPrecondition},
+		{name: "internal", err: errors.New("boom"), code: codes.Internal},
+	} {
+		t.Run("publish "+test.name, func(t *testing.T) {
+			client := newClient(t, testServer(&applicationStub{publishErr: test.err}, healthStub{}))
+			_, err := client.PublishPendingEvents(context.Background(), &bondexchangev1.PublishPendingEventsRequest{})
+			if status.Code(err) != test.code {
+				t.Fatalf("code = %s, want %s", status.Code(err), test.code)
+			}
+		})
+	}
 }
 
 func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
@@ -299,6 +342,8 @@ func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
 	_, err = client.ListActiveBondSeries(context.Background(), &bondexchangev1.ListActiveBondSeriesRequest{})
 	assertUnauthenticated(err)
 	_, err = client.CheckHealth(context.Background(), &bondexchangev1.CheckHealthRequest{})
+	assertUnauthenticated(err)
+	_, err = client.PublishPendingEvents(context.Background(), &bondexchangev1.PublishPendingEventsRequest{})
 	assertUnauthenticated(err)
 }
 
