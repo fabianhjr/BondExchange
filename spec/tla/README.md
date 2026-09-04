@@ -3,9 +3,9 @@
 This directory contains a deliberately small marketplace model:
 
 - `BondExchangeActions.tla` defines the domain, active sale offers, completed
-  purchases, validation, and buying action.
+  purchases, validation, publishing action, and buying action.
 - `BondExchange.tla` defines the possible initial sale books and composes the
-  buying action into the temporal specification.
+  publishing and buying actions into the temporal specification.
 - `BondExchange.cfg` provides a finite instance for exhaustive TLC checking.
 
 ## Domain
@@ -22,8 +22,9 @@ representatives of positive exact monetary values. Decimal precision,
 PostgreSQL encoding, and JSON serialization do not affect buying behavior or
 the checked invariants, so they remain outside the domain model.
 
-The initial state represents any non-empty, well-formed set of sale offers
-within the configured bounds. Offer IDs must be unique within that set.
+The initial state represents any well-formed set of sale offers, including an
+empty market, within the configured bounds. Offer IDs must be unique within
+that set.
 
 Case-insensitive lookup and conversion of input to the uppercase canonical
 representation are responsibilities of the system boundary. The TLA+ model
@@ -32,12 +33,20 @@ identifiers and verifies that their stored representation is uppercase.
 
 ## Behavior
 
-`Buy(buyer, offerId)` is the only state-changing action. It is enabled only
-when the buyer is a user and exactly one active sale offer has the requested
-ID. The action atomically removes that offer from the active sale book and
-records a completed purchase containing the unchanged offer and its buyer. An
-empty active sale book is a valid terminal state, so the TLC configuration
-does not treat it as a deadlock error.
+`CreateSaleOffer(seller, bond, offerId, price, currency)` publishes a new active
+sale offer. It requires valid domain values and an ID that has never appeared
+in either the active book or purchase history. Creation appends the offer and
+does not change completed purchases.
+
+`Buy(buyer, offerId)` is enabled only when the buyer is a user and exactly one
+active sale offer has the requested ID. The action atomically removes that
+offer from the active sale book and records a completed purchase containing
+the unchanged offer and its buyer. An empty active sale book remains valid, so
+the TLC configuration does not treat it as a deadlock error.
+
+Bond-specific offer listing and active-series discovery are derived reads and
+do not change model state. HTTP parameters, SQL queries, ordering, and input
+canonicalization remain implementation-boundary concerns.
 
 The model does not prohibit a seller from buying their own offer.
 
@@ -47,9 +56,9 @@ this model.
 
 ## Verification
 
-TLC checks that every reachable active sale-offer and completed-purchase set
-is well formed, that offer IDs remain unique, and that an offer cannot be both
-active and purchased:
+TLC checks through interleaved creation and buying that every reachable active
+sale-offer and completed-purchase set is well formed, that offer IDs remain
+unique, and that an offer cannot be both active and purchased:
 
 ```console
 devenv tasks run spec:check

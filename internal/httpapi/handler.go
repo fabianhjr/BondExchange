@@ -60,7 +60,8 @@ func requireSingleJSONDocument(next http.Handler) http.Handler {
 }
 
 func setSuccessStatus(_ context.Context, response http.ResponseWriter, message proto.Message) error {
-	if _, ok := message.(*bondexchangev1.BuyResponse); ok {
+	switch message.(type) {
+	case *bondexchangev1.BuyResponse, *bondexchangev1.CreateSaleOfferResponse:
 		response.WriteHeader(http.StatusCreated)
 	}
 	return nil

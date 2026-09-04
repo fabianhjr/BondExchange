@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -106,41 +107,145 @@ func TestBuyRejectsMissingDomainObjects(t *testing.T) {
 	}
 }
 
-func TestActiveOffersSupportsFilteringAndPagination(t *testing.T) {
+func TestCreateSaleOffer(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "seller")
+	bond := insertBond(t, pool)
+	offer := exchange.SaleOffer{
+		ID:         exchange.OfferID(uniqueID(t, "offer")),
+		SellerID:   seller,
+		BondSeries: bond,
+		Price:      decimal.RequireFromString("99.125"),
+		Currency:   "USD",
+	}
+
+	created, err := store.CreateSaleOffer(context.Background(), offer)
+	if err != nil {
+		t.Fatalf("CreateSaleOffer() error = %v", err)
+	}
+	if created.ID != offer.ID || created.SellerID != seller || created.BondSeries != bond ||
+		!created.Price.Equal(offer.Price) || created.Currency != "USD" {
+		t.Fatalf("created offer = %#v, want %#v", created, offer)
+	}
+	activeOffers, err := store.ActiveOffers(context.Background(), bond)
+	if err != nil || len(activeOffers) != 1 || activeOffers[0].ID != offer.ID {
+		t.Fatalf("ActiveOffers() after creation = %#v, %v", activeOffers, err)
+	}
+	activeSeries, err := store.ActiveBondSeries(context.Background())
+	if err != nil || countSeries(activeSeries, bond) != 1 {
+		t.Fatalf("ActiveBondSeries() after creation = %#v, %v", activeSeries, err)
+	}
+	if _, err := store.CreateSaleOffer(context.Background(), offer); !errors.Is(err, exchange.ErrOfferAlreadyExists) {
+		t.Fatalf("duplicate CreateSaleOffer() error = %v", err)
+	}
+
+	missingSeller := offer
+	missingSeller.ID = exchange.OfferID(uniqueID(t, "offer"))
+	missingSeller.SellerID = exchange.UserID(uniqueID(t, "missing-seller"))
+	if _, err := store.CreateSaleOffer(context.Background(), missingSeller); !errors.Is(err, exchange.ErrSellerNotFound) {
+		t.Fatalf("missing seller error = %v", err)
+	}
+
+	missingBond := offer
+	missingBond.ID = exchange.OfferID(uniqueID(t, "offer"))
+	missingBond.BondSeries = exchange.BondSeries("B" + strings.ToUpper(uniqueHex(t, 8)))
+	if _, err := store.CreateSaleOffer(context.Background(), missingBond); !errors.Is(err, exchange.ErrBondNotFound) {
+		t.Fatalf("missing bond error = %v", err)
+	}
+}
+
+func TestConcurrentCreateSaleOfferRecordsOneOffer(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	offer := exchange.SaleOffer{
+		ID:         exchange.OfferID(uniqueID(t, "offer")),
+		SellerID:   insertUser(t, pool, "seller"),
+		BondSeries: insertBond(t, pool),
+		Price:      decimal.RequireFromString("100.25"),
+		Currency:   "USD",
+	}
+
+	const competitors = 8
+	results := make(chan exchange.SaleOffer, competitors)
+	errorsChannel := make(chan error, competitors)
+	start := make(chan struct{})
+	var waitGroup sync.WaitGroup
+	for range competitors {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			created, err := store.CreateSaleOffer(context.Background(), offer)
+			if err != nil {
+				errorsChannel <- err
+				return
+			}
+			results <- created
+		}()
+	}
+	close(start)
+	waitGroup.Wait()
+	close(results)
+	close(errorsChannel)
+
+	if len(results) != 1 {
+		t.Fatalf("successful creates = %d, want 1", len(results))
+	}
+	for err := range errorsChannel {
+		if !errors.Is(err, exchange.ErrOfferAlreadyExists) {
+			t.Fatalf("losing CreateSaleOffer() error = %v", err)
+		}
+	}
+}
+
+func TestActiveOffersAndBondSeries(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
 	seller := insertUser(t, pool, "seller")
 	bond := insertBond(t, pool)
 	first := insertOffer(t, pool, seller, bond)
 	second := insertOffer(t, pool, seller, bond)
-	if first > second {
-		first, second = second, first
+	third := insertOffer(t, pool, seller, bond)
+	otherBond := insertBond(t, pool)
+	insertOffer(t, pool, seller, otherBond)
+	inactiveBond := insertBond(t, pool)
+	inactiveOffer := insertOffer(t, pool, seller, inactiveBond)
+	buyer := insertUser(t, pool, "buyer")
+	if _, err := store.Buy(context.Background(), buyer, first); err != nil {
+		t.Fatalf("buy first offer: %v", err)
+	}
+	if _, err := store.Buy(context.Background(), buyer, inactiveOffer); err != nil {
+		t.Fatalf("buy inactive-bond offer: %v", err)
 	}
 
-	offers, err := store.ActiveOffers(context.Background(), exchange.ActiveOfferQuery{
-		BondSeries: &bond,
-		After:      first,
-		Limit:      10,
-	})
+	offers, err := store.ActiveOffers(context.Background(), bond)
 	if err != nil {
 		t.Fatalf("ActiveOffers() error = %v", err)
 	}
-	foundSecond := false
-	for _, offer := range offers {
-		if offer.ID == second {
-			foundSecond = true
-		}
-		if offer.BondSeries != bond || offer.ID <= first {
+	expectedOfferIDs := []exchange.OfferID{second, third}
+	slices.Sort(expectedOfferIDs)
+	if len(offers) != len(expectedOfferIDs) {
+		t.Fatalf("ActiveOffers() = %#v, want IDs %#v", offers, expectedOfferIDs)
+	}
+	for index, offer := range offers {
+		if offer.BondSeries != bond || offer.ID != expectedOfferIDs[index] {
 			t.Fatalf("unexpected offer %#v", offer)
 		}
 	}
-	if !foundSecond {
-		t.Fatalf("offer %q not returned in %#v", second, offers)
-	}
 
-	allOffers, err := store.ActiveOffers(context.Background(), exchange.ActiveOfferQuery{Limit: 100})
-	if err != nil || len(allOffers) == 0 {
-		t.Fatalf("unfiltered ActiveOffers() = %#v, %v", allOffers, err)
+	series, err := store.ActiveBondSeries(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveBondSeries() error = %v", err)
+	}
+	if !slices.IsSorted(series) {
+		t.Fatalf("active bond series are not sorted: %#v", series)
+	}
+	if countSeries(series, bond) != 1 || countSeries(series, otherBond) != 1 {
+		t.Fatalf("active bond series %#v do not include %q and %q exactly once", series, bond, otherBond)
+	}
+	if countSeries(series, inactiveBond) != 0 {
+		t.Fatalf("inactive bond series %q returned in %#v", inactiveBond, series)
 	}
 }
 
@@ -233,9 +338,25 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	if _, err := store.Buy(ctx, "buyer", "offer"); err == nil {
 		t.Fatal("Buy() succeeded with closed pool")
 	}
-	if _, err := store.ActiveOffers(ctx, exchange.ActiveOfferQuery{Limit: 1}); err == nil {
+	if _, err := store.CreateSaleOffer(ctx, exchange.SaleOffer{}); err == nil {
+		t.Fatal("CreateSaleOffer() succeeded with closed pool")
+	}
+	if _, err := store.ActiveOffers(ctx, "BND"); err == nil {
 		t.Fatal("ActiveOffers() succeeded with closed pool")
 	}
+	if _, err := store.ActiveBondSeries(ctx); err == nil {
+		t.Fatal("ActiveBondSeries() succeeded with closed pool")
+	}
+}
+
+func countSeries(series []exchange.BondSeries, target exchange.BondSeries) int {
+	count := 0
+	for _, candidate := range series {
+		if candidate == target {
+			count++
+		}
+	}
+	return count
 }
 
 func openTestPool(t *testing.T) *pgxpool.Pool {

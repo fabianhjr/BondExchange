@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -18,15 +19,22 @@ import (
 )
 
 type applicationStub struct {
-	purchase exchange.Purchase
-	buyErr   error
-	offers   []exchange.SaleOffer
-	listErr  error
-	buyer    string
-	offer    string
-	bond     string
-	after    string
-	limit    int
+	purchase       exchange.Purchase
+	buyErr         error
+	created        exchange.SaleOffer
+	createErr      error
+	offers         []exchange.SaleOffer
+	listErr        error
+	series         []exchange.BondSeries
+	seriesErr      error
+	buyer          string
+	buyOffer       string
+	createID       string
+	createSeller   string
+	createBond     string
+	createPrice    string
+	createCurrency string
+	bond           string
 }
 
 func (application *applicationStub) Buy(
@@ -35,20 +43,36 @@ func (application *applicationStub) Buy(
 	offer string,
 ) (exchange.Purchase, error) {
 	application.buyer = buyer
-	application.offer = offer
+	application.buyOffer = offer
 	return application.purchase, application.buyErr
+}
+
+func (application *applicationStub) CreateSaleOffer(
+	_ context.Context,
+	id string,
+	seller string,
+	bond string,
+	price string,
+	currency string,
+) (exchange.SaleOffer, error) {
+	application.createID = id
+	application.createSeller = seller
+	application.createBond = bond
+	application.createPrice = price
+	application.createCurrency = currency
+	return application.created, application.createErr
 }
 
 func (application *applicationStub) ActiveOffers(
 	_ context.Context,
 	bond string,
-	after string,
-	limit int,
 ) ([]exchange.SaleOffer, error) {
 	application.bond = bond
-	application.after = after
-	application.limit = limit
 	return application.offers, application.listErr
+}
+
+func (application *applicationStub) ActiveBondSeries(context.Context) ([]exchange.BondSeries, error) {
+	return application.series, application.seriesErr
 }
 
 type healthStub struct{ err error }
@@ -71,7 +95,15 @@ func TestGRPCServer(t *testing.T) {
 			BuyerID:  "buyer-1",
 			BoughtAt: boughtAt,
 		},
+		created: exchange.SaleOffer{
+			ID:         "offer-2",
+			SellerID:   "seller-1",
+			BondSeries: "BND1",
+			Price:      decimal.RequireFromString("99.75"),
+			Currency:   "USD",
+		},
 		offers: []exchange.SaleOffer{{ID: "offer-2"}},
+		series: []exchange.BondSeries{"BND1", "GOV1"},
 	}
 	client := newClient(t, NewServer(application, healthStub{}))
 
@@ -82,8 +114,8 @@ func TestGRPCServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if application.buyer != "buyer-1" || application.offer != "offer-1" {
-		t.Fatalf("application received buyer %q and offer %q", application.buyer, application.offer)
+	if application.buyer != "buyer-1" || application.buyOffer != "offer-1" {
+		t.Fatalf("application received buyer %q and offer %q", application.buyer, application.buyOffer)
 	}
 	if purchase.GetOffer().GetPrice() != "100.25" || purchase.GetBuyerId() != "buyer-1" {
 		t.Fatalf("purchase = %v", purchase)
@@ -92,19 +124,42 @@ func TestGRPCServer(t *testing.T) {
 		t.Fatalf("bought_at = %s", purchase.GetBoughtAt().AsTime())
 	}
 
-	offers, err := client.ListActiveOffers(context.Background(), &bondexchangev1.ListActiveOffersRequest{
-		Bond:  "bnd",
-		After: "offer-1",
-		Limit: 25,
+	created, err := client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{
+		Id:           "offer-2",
+		SellerId:     "seller-1",
+		BondSeries:   "bnd1",
+		Price:        "99.75",
+		CurrencyCode: "USD",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.GetOffer().GetId() != "offer-2" || created.GetOffer().GetPrice() != "99.75" {
+		t.Fatalf("created offer = %v", created)
+	}
+	if application.createID != "offer-2" || application.createSeller != "seller-1" ||
+		application.createBond != "bnd1" || application.createPrice != "99.75" ||
+		application.createCurrency != "USD" {
+		t.Fatalf("create input = %#v", application)
+	}
+
+	offers, err := client.ListActiveOffers(context.Background(), &bondexchangev1.ListActiveOffersRequest{Bond: "bnd"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(offers.GetOffers()) != 1 || offers.GetOffers()[0].GetId() != "offer-2" {
 		t.Fatalf("offers = %v", offers)
 	}
-	if application.bond != "bnd" || application.after != "offer-1" || application.limit != 25 {
-		t.Fatalf("application received bond %q, after %q, limit %d", application.bond, application.after, application.limit)
+	if application.bond != "bnd" {
+		t.Fatalf("application received bond %q", application.bond)
+	}
+
+	series, err := client.ListActiveBondSeries(context.Background(), &bondexchangev1.ListActiveBondSeriesRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(series.GetBondSeries(), []string{"BND1", "GOV1"}) {
+		t.Fatalf("bond series = %#v", series.GetBondSeries())
 	}
 
 	health, err := client.CheckHealth(context.Background(), &bondexchangev1.CheckHealthRequest{})
@@ -140,10 +195,36 @@ func TestGRPCErrors(t *testing.T) {
 		})
 	}
 
-	client := newClient(t, NewServer(&applicationStub{listErr: exchange.ErrInvalidActiveOfferLimit}, healthStub{}))
+	client := newClient(t, NewServer(&applicationStub{listErr: exchange.ErrInvalidBondSeries}, healthStub{}))
 	_, err := client.ListActiveOffers(context.Background(), &bondexchangev1.ListActiveOffersRequest{})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("list code = %s", status.Code(err))
+	}
+
+	for _, test := range []struct {
+		name string
+		err  error
+		code codes.Code
+	}{
+		{name: "invalid", err: exchange.ErrInvalidPrice, code: codes.InvalidArgument},
+		{name: "missing seller", err: exchange.ErrSellerNotFound, code: codes.NotFound},
+		{name: "missing bond", err: exchange.ErrBondNotFound, code: codes.NotFound},
+		{name: "duplicate", err: exchange.ErrOfferAlreadyExists, code: codes.AlreadyExists},
+		{name: "internal", err: errors.New("boom"), code: codes.Internal},
+	} {
+		t.Run("create "+test.name, func(t *testing.T) {
+			client := newClient(t, NewServer(&applicationStub{createErr: test.err}, healthStub{}))
+			_, err := client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{})
+			if status.Code(err) != test.code {
+				t.Fatalf("code = %s, want %s", status.Code(err), test.code)
+			}
+		})
+	}
+
+	client = newClient(t, NewServer(&applicationStub{seriesErr: errors.New("boom")}, healthStub{}))
+	_, err = client.ListActiveBondSeries(context.Background(), &bondexchangev1.ListActiveBondSeriesRequest{})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("series code = %s", status.Code(err))
 	}
 
 	client = newClient(t, NewServer(&applicationStub{}, healthStub{err: errors.New("down")}))

@@ -2,14 +2,11 @@ package exchange
 
 import "context"
 
-const (
-	DefaultActiveOfferLimit = 50
-	MaxActiveOfferLimit     = 100
-)
-
 type Store interface {
 	Buy(ctx context.Context, buyerID UserID, offerID OfferID) (Purchase, error)
-	ActiveOffers(ctx context.Context, query ActiveOfferQuery) ([]SaleOffer, error)
+	CreateSaleOffer(ctx context.Context, offer SaleOffer) (SaleOffer, error)
+	ActiveOffers(ctx context.Context, bondSeries BondSeries) ([]SaleOffer, error)
+	ActiveBondSeries(ctx context.Context) ([]BondSeries, error)
 }
 
 type Service struct {
@@ -32,32 +29,54 @@ func (service *Service) Buy(ctx context.Context, buyer string, offer string) (Pu
 	return service.store.Buy(ctx, buyerID, offerID)
 }
 
+func (service *Service) CreateSaleOffer(
+	ctx context.Context,
+	id string,
+	seller string,
+	bond string,
+	price string,
+	currency string,
+) (SaleOffer, error) {
+	offerID, err := ParseOfferID(id)
+	if err != nil {
+		return SaleOffer{}, err
+	}
+	sellerID, err := ParseUserID(seller)
+	if err != nil {
+		return SaleOffer{}, err
+	}
+	bondSeries, err := ParseBondSeries(bond)
+	if err != nil {
+		return SaleOffer{}, err
+	}
+	offerPrice, err := ParsePrice(price)
+	if err != nil {
+		return SaleOffer{}, err
+	}
+	currencyCode, err := ParseCurrencyCode(currency)
+	if err != nil {
+		return SaleOffer{}, err
+	}
+	return service.store.CreateSaleOffer(ctx, SaleOffer{
+		ID:         offerID,
+		SellerID:   sellerID,
+		BondSeries: bondSeries,
+		Price:      offerPrice,
+		Currency:   currencyCode,
+	})
+}
+
 func (service *Service) ActiveOffers(
 	ctx context.Context,
 	bond string,
-	after string,
-	limit int,
 ) ([]SaleOffer, error) {
-	query := ActiveOfferQuery{Limit: limit}
-	if query.Limit == 0 {
-		query.Limit = DefaultActiveOfferLimit
+	series, err := ParseBondSeries(bond)
+	if err != nil {
+		return nil, err
 	}
-	if query.Limit < 1 || query.Limit > MaxActiveOfferLimit {
-		return nil, ErrInvalidActiveOfferLimit
-	}
-	if bond != "" {
-		series, err := ParseBondSeries(bond)
-		if err != nil {
-			return nil, err
-		}
-		query.BondSeries = &series
-	}
-	if after != "" {
-		offerID, err := ParseOfferID(after)
-		if err != nil {
-			return nil, err
-		}
-		query.After = offerID
-	}
-	return service.store.ActiveOffers(ctx, query)
+	return service.store.ActiveOffers(ctx, series)
+}
+
+func (service *Service) ActiveBondSeries(ctx context.Context) ([]BondSeries, error) {
+	return service.store.ActiveBondSeries(ctx)
 }

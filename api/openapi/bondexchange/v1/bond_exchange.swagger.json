@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "Bond Exchange API",
-    "description": "REST and gRPC API for buying sale offers and listing active offers.",
+    "description": "REST and gRPC API for publishing and buying sale offers.",
     "version": "1.0.0"
   },
   "tags": [
@@ -17,9 +17,32 @@
     "application/json"
   ],
   "paths": {
+    "/active-bond-series": {
+      "get": {
+        "summary": "ListActiveBondSeries returns every bond series having at least one active offer.",
+        "operationId": "BondExchangeService_ListActiveBondSeries",
+        "responses": {
+          "200": {
+            "description": "The bond series having active offers.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.ListActiveBondSeriesResponse"
+            }
+          },
+          "500": {
+            "description": "The server could not complete the request.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          }
+        },
+        "tags": [
+          "BondExchangeService"
+        ]
+      }
+    },
     "/active-offers": {
       "get": {
-        "summary": "ListActiveOffers returns active sale offers using keyset pagination.",
+        "summary": "ListActiveOffers returns every active sale offer for one required bond series.",
         "operationId": "BondExchangeService_ListActiveOffers",
         "responses": {
           "200": {
@@ -29,7 +52,7 @@
             }
           },
           "400": {
-            "description": "A filter or pagination value is invalid.",
+            "description": "The required bond series is missing or invalid.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
@@ -44,25 +67,10 @@
         "parameters": [
           {
             "name": "bond",
-            "description": "Bond series to filter by. The service canonicalizes this value to uppercase.",
+            "description": "Required bond series to list. The service canonicalizes this value to uppercase.",
             "in": "query",
-            "required": false,
+            "required": true,
             "type": "string"
-          },
-          {
-            "name": "after",
-            "description": "Return offers whose IDs sort after this sale-offer ID.",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "limit",
-            "description": "Page size from 1 through 100. Zero selects the server default of 50.",
-            "in": "query",
-            "required": false,
-            "type": "integer",
-            "format": "int32"
           }
         ],
         "tags": [
@@ -137,6 +145,57 @@
           "BondExchangeService"
         ]
       }
+    },
+    "/sale-offers": {
+      "post": {
+        "summary": "CreateSaleOffer publishes a new sale offer for an existing seller and bond series.",
+        "operationId": "BondExchangeService_CreateSaleOffer",
+        "responses": {
+          "201": {
+            "description": "The sale offer was created.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.CreateSaleOfferResponse"
+            }
+          },
+          "400": {
+            "description": "The sale offer is invalid.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "404": {
+            "description": "The seller or bond series does not exist.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "409": {
+            "description": "The sale-offer ID already exists.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "500": {
+            "description": "The server could not complete the request.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.CreateSaleOfferRequest"
+            }
+          }
+        ],
+        "tags": [
+          "BondExchangeService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -186,6 +245,46 @@
         "status"
       ]
     },
+    "bondexchange.v1.CreateSaleOfferRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "seller_id": {
+          "type": "string"
+        },
+        "bond_series": {
+          "type": "string",
+          "description": "Bond series to sell. The service canonicalizes this value to uppercase."
+        },
+        "price": {
+          "type": "string",
+          "description": "Exact positive decimal monetary amount encoded as a string."
+        },
+        "currency_code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "seller_id",
+        "bond_series",
+        "price",
+        "currency_code"
+      ]
+    },
+    "bondexchange.v1.CreateSaleOfferResponse": {
+      "type": "object",
+      "properties": {
+        "offer": {
+          "$ref": "#/definitions/bondexchange.v1.SaleOffer"
+        }
+      },
+      "required": [
+        "offer"
+      ]
+    },
     "bondexchange.v1.Error": {
       "type": "object",
       "properties": {
@@ -196,6 +295,20 @@
       "description": "Error is the REST error response. Native gRPC callers receive the equivalent status code and message.",
       "required": [
         "error"
+      ]
+    },
+    "bondexchange.v1.ListActiveBondSeriesResponse": {
+      "type": "object",
+      "properties": {
+        "bond_series": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "bond_series"
       ]
     },
     "bondexchange.v1.ListActiveOffersResponse": {

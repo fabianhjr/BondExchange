@@ -1,7 +1,7 @@
 # Bond Exchange
 
 A small bond-sale service backed by an executable TLA+ specification. A user
-can buy one existing sale offer; the service does not publish buy offers.
+can publish and buy sale offers; the service does not publish buy offers.
 
 ## Prerequisites
 
@@ -30,9 +30,8 @@ One application adapter implements the generated service and calls the domain
 service; both the native gRPC server and the in-process REST gateway use that
 adapter. Transport types do not enter the domain or PostgreSQL packages.
 
-The API deliberately has no method for creating users, bonds, or sale offers
-yet. Those facts must be provisioned separately before exercising the buy and
-active-offer methods.
+The API deliberately has no method for creating users or bonds yet. Those
+facts must be provisioned separately before publishing or buying sale offers.
 
 ## Run locally
 
@@ -57,14 +56,20 @@ Available endpoints are:
 
 - `POST /buys` with
   `{"buyer_id":"user-2","sale_offer_id":"offer-1"}`;
-- `GET /active-offers`, with optional `bond`, `after`, and `limit` query
-  parameters; and
+- `POST /sale-offers` with
+  `{"id":"offer-2","seller_id":"user-1","bond_series":"BND2026","price":"99.75","currency_code":"USD"}`;
+- `GET /active-offers?bond=BND2026`, which requires a bond series and returns
+  every active offer for it;
+- `GET /active-bond-series`, which returns every bond series having an active
+  offer; and
 - `GET /healthz`.
 
 The matching native gRPC methods are:
 
 - `bondexchange.v1.BondExchangeService/Buy`;
-- `bondexchange.v1.BondExchangeService/ListActiveOffers`; and
+- `bondexchange.v1.BondExchangeService/CreateSaleOffer`;
+- `bondexchange.v1.BondExchangeService/ListActiveOffers`;
+- `bondexchange.v1.BondExchangeService/ListActiveBondSeries`; and
 - `bondexchange.v1.BondExchangeService/CheckHealth`.
 
 Server reflection is enabled, so the development shell's `grpcurl` can inspect

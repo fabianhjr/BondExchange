@@ -2,7 +2,7 @@
 EXTENDS FiniteSets, Naturals, Sequences, TLC
 
 (***************************************************************************)
-(* Domain, state, and the sole transition action for the bond marketplace. *)
+(* Domain, state, and transition actions for the bond marketplace.         *)
 (***************************************************************************)
 
 CONSTANTS Users, Bonds, SaleOfferIds, Prices, CurrencyCodes
@@ -58,6 +58,9 @@ OffersWithId(offerId) ==
 PurchasedOfferIdsOf(completedPurchases) ==
   {purchase.offer.id : purchase \in completedPurchases}
 
+KnownSaleOfferIds ==
+  SaleOfferIdsOf(saleOffers) \cup PurchasedOfferIdsOf(purchases)
+
 TypeOK ==
   /\ saleOffers \subseteq SaleOffer
   /\ purchases \subseteq Purchase
@@ -77,5 +80,21 @@ Buy(buyer, offerId) ==
   /\ \E offer \in OffersWithId(offerId) :
        /\ saleOffers' = saleOffers \ {offer}
        /\ purchases' = purchases \cup {[offer |-> offer, buyer |-> buyer]}
+
+CreateSaleOffer(seller, bond, offerId, price, currency) ==
+  /\ seller \in Users
+  /\ bond \in Bonds
+  /\ offerId \in SaleOfferIds
+  /\ price \in Prices
+  /\ currency \in CurrencyCodes
+  /\ offerId \notin KnownSaleOfferIds
+  /\ saleOffers' = saleOffers \cup {
+       [id       |-> offerId,
+        seller   |-> seller,
+        bond     |-> bond,
+        price    |-> price,
+        currency |-> currency]
+     }
+  /\ UNCHANGED purchases
 
 =============================================================================

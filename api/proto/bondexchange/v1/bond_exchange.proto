@@ -11,7 +11,7 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "Bond Exchange API"
     version: "1.0.0"
-    description: "REST and gRPC API for buying sale offers and listing active offers."
+    description: "REST and gRPC API for publishing and buying sale offers."
   }
   consumes: "application/json"
   produces: "application/json"
@@ -65,7 +65,62 @@ service BondExchangeService {
     };
   }
 
-  // ListActiveOffers returns active sale offers using keyset pagination.
+  // CreateSaleOffer publishes a new sale offer for an existing seller and bond series.
+  rpc CreateSaleOffer(CreateSaleOfferRequest) returns (CreateSaleOfferResponse) {
+    option (google.api.http) = {
+      post: "/sale-offers"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      responses: {
+        key: "201"
+        value: {
+          description: "The sale offer was created."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.CreateSaleOfferResponse"}
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "The sale offer is invalid."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "The seller or bond series does not exist."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "409"
+        value: {
+          description: "The sale-offer ID already exists."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "The server could not complete the request."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+    };
+  }
+
+  // ListActiveOffers returns every active sale offer for one required bond series.
   rpc ListActiveOffers(ListActiveOffersRequest) returns (ListActiveOffersResponse) {
     option (google.api.http) = {get: "/active-offers"};
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
@@ -81,9 +136,34 @@ service BondExchangeService {
       responses: {
         key: "400"
         value: {
-          description: "A filter or pagination value is invalid."
+          description: "The required bond series is missing or invalid."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "The server could not complete the request."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+    };
+  }
+
+  // ListActiveBondSeries returns every bond series having at least one active offer.
+  rpc ListActiveBondSeries(ListActiveBondSeriesRequest) returns (ListActiveBondSeriesResponse) {
+    option (google.api.http) = {get: "/active-bond-series"};
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      responses: {
+        key: "200"
+        value: {
+          description: "The bond series having active offers."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.ListActiveBondSeriesResponse"}
           }
         }
       }
@@ -134,13 +214,37 @@ message BuyRequest {
   string sale_offer_id = 2;
 }
 
+message CreateSaleOfferRequest {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["id", "seller_id", "bond_series", "price", "currency_code"]}
+  };
+
+  string id = 1;
+  string seller_id = 2;
+  // Bond series to sell. The service canonicalizes this value to uppercase.
+  string bond_series = 3;
+  // Exact positive decimal monetary amount encoded as a string.
+  string price = 4;
+  string currency_code = 5;
+}
+
+message CreateSaleOfferResponse {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["offer"]}
+  };
+
+  SaleOffer offer = 1;
+}
+
 message ListActiveOffersRequest {
-  // Bond series to filter by. The service canonicalizes this value to uppercase.
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["bond"]}
+  };
+
+  // Required bond series to list. The service canonicalizes this value to uppercase.
   string bond = 1;
-  // Return offers whose IDs sort after this sale-offer ID.
-  string after = 2;
-  // Page size from 1 through 100. Zero selects the server default of 50.
-  int32 limit = 3;
+  reserved 2, 3;
+  reserved "after", "limit";
 }
 
 message ListActiveOffersResponse {
@@ -149,6 +253,16 @@ message ListActiveOffersResponse {
   };
 
   repeated SaleOffer offers = 1;
+}
+
+message ListActiveBondSeriesRequest {}
+
+message ListActiveBondSeriesResponse {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["bond_series"]}
+  };
+
+  repeated string bond_series = 1;
 }
 
 message CheckHealthRequest {}

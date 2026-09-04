@@ -17,7 +17,34 @@ type HealthChecker interface {
 
 type Application interface {
 	Buy(ctx context.Context, buyer string, offer string) (exchange.Purchase, error)
-	ActiveOffers(ctx context.Context, bond string, after string, limit int) ([]exchange.SaleOffer, error)
+	CreateSaleOffer(
+		ctx context.Context,
+		id string,
+		seller string,
+		bond string,
+		price string,
+		currency string,
+	) (exchange.SaleOffer, error)
+	ActiveOffers(ctx context.Context, bond string) ([]exchange.SaleOffer, error)
+	ActiveBondSeries(ctx context.Context) ([]exchange.BondSeries, error)
+}
+
+func (server *Server) CreateSaleOffer(
+	ctx context.Context,
+	request *bondexchangev1.CreateSaleOfferRequest,
+) (*bondexchangev1.CreateSaleOfferResponse, error) {
+	offer, err := server.application.CreateSaleOffer(
+		ctx,
+		request.GetId(),
+		request.GetSellerId(),
+		request.GetBondSeries(),
+		request.GetPrice(),
+		request.GetCurrencyCode(),
+	)
+	if err != nil {
+		return nil, transportError(err)
+	}
+	return &bondexchangev1.CreateSaleOfferResponse{Offer: saleOfferToProto(offer)}, nil
 }
 
 type Server struct {
@@ -42,12 +69,7 @@ func (server *Server) ListActiveOffers(
 	ctx context.Context,
 	request *bondexchangev1.ListActiveOffersRequest,
 ) (*bondexchangev1.ListActiveOffersResponse, error) {
-	offers, err := server.application.ActiveOffers(
-		ctx,
-		request.GetBond(),
-		request.GetAfter(),
-		int(request.GetLimit()),
-	)
+	offers, err := server.application.ActiveOffers(ctx, request.GetBond())
 	if err != nil {
 		return nil, transportError(err)
 	}
@@ -56,6 +78,23 @@ func (server *Server) ListActiveOffers(
 	}
 	for _, offer := range offers {
 		response.Offers = append(response.Offers, saleOfferToProto(offer))
+	}
+	return response, nil
+}
+
+func (server *Server) ListActiveBondSeries(
+	ctx context.Context,
+	_ *bondexchangev1.ListActiveBondSeriesRequest,
+) (*bondexchangev1.ListActiveBondSeriesResponse, error) {
+	series, err := server.application.ActiveBondSeries(ctx)
+	if err != nil {
+		return nil, transportError(err)
+	}
+	response := &bondexchangev1.ListActiveBondSeriesResponse{
+		BondSeries: make([]string, 0, len(series)),
+	}
+	for _, bondSeries := range series {
+		response.BondSeries = append(response.BondSeries, string(bondSeries))
 	}
 	return response, nil
 }
@@ -95,11 +134,16 @@ func transportError(err error) error {
 	case errors.Is(err, exchange.ErrInvalidUserID),
 		errors.Is(err, exchange.ErrInvalidOfferID),
 		errors.Is(err, exchange.ErrInvalidBondSeries),
-		errors.Is(err, exchange.ErrInvalidActiveOfferLimit):
+		errors.Is(err, exchange.ErrInvalidPrice),
+		errors.Is(err, exchange.ErrInvalidCurrencyCode):
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, exchange.ErrBuyerNotFound),
-		errors.Is(err, exchange.ErrOfferUnavailable):
+		errors.Is(err, exchange.ErrOfferUnavailable),
+		errors.Is(err, exchange.ErrSellerNotFound),
+		errors.Is(err, exchange.ErrBondNotFound):
 		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, exchange.ErrOfferAlreadyExists):
+		return status.Error(codes.AlreadyExists, err.Error())
 	default:
 		return status.Error(codes.Internal, "internal server error")
 	}

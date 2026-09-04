@@ -19,9 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BondExchangeService_Buy_FullMethodName              = "/bondexchange.v1.BondExchangeService/Buy"
-	BondExchangeService_ListActiveOffers_FullMethodName = "/bondexchange.v1.BondExchangeService/ListActiveOffers"
-	BondExchangeService_CheckHealth_FullMethodName      = "/bondexchange.v1.BondExchangeService/CheckHealth"
+	BondExchangeService_Buy_FullMethodName                  = "/bondexchange.v1.BondExchangeService/Buy"
+	BondExchangeService_CreateSaleOffer_FullMethodName      = "/bondexchange.v1.BondExchangeService/CreateSaleOffer"
+	BondExchangeService_ListActiveOffers_FullMethodName     = "/bondexchange.v1.BondExchangeService/ListActiveOffers"
+	BondExchangeService_ListActiveBondSeries_FullMethodName = "/bondexchange.v1.BondExchangeService/ListActiveBondSeries"
+	BondExchangeService_CheckHealth_FullMethodName          = "/bondexchange.v1.BondExchangeService/CheckHealth"
 )
 
 // BondExchangeServiceClient is the client API for BondExchangeService service.
@@ -32,8 +34,12 @@ const (
 type BondExchangeServiceClient interface {
 	// Buy purchases one currently active sale offer for a buyer.
 	Buy(ctx context.Context, in *BuyRequest, opts ...grpc.CallOption) (*BuyResponse, error)
-	// ListActiveOffers returns active sale offers using keyset pagination.
+	// CreateSaleOffer publishes a new sale offer for an existing seller and bond series.
+	CreateSaleOffer(ctx context.Context, in *CreateSaleOfferRequest, opts ...grpc.CallOption) (*CreateSaleOfferResponse, error)
+	// ListActiveOffers returns every active sale offer for one required bond series.
 	ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (*ListActiveOffersResponse, error)
+	// ListActiveBondSeries returns every bond series having at least one active offer.
+	ListActiveBondSeries(ctx context.Context, in *ListActiveBondSeriesRequest, opts ...grpc.CallOption) (*ListActiveBondSeriesResponse, error)
 	// CheckHealth reports whether the server can reach its database.
 	CheckHealth(ctx context.Context, in *CheckHealthRequest, opts ...grpc.CallOption) (*CheckHealthResponse, error)
 }
@@ -56,10 +62,30 @@ func (c *bondExchangeServiceClient) Buy(ctx context.Context, in *BuyRequest, opt
 	return out, nil
 }
 
+func (c *bondExchangeServiceClient) CreateSaleOffer(ctx context.Context, in *CreateSaleOfferRequest, opts ...grpc.CallOption) (*CreateSaleOfferResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateSaleOfferResponse)
+	err := c.cc.Invoke(ctx, BondExchangeService_CreateSaleOffer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bondExchangeServiceClient) ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (*ListActiveOffersResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListActiveOffersResponse)
 	err := c.cc.Invoke(ctx, BondExchangeService_ListActiveOffers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bondExchangeServiceClient) ListActiveBondSeries(ctx context.Context, in *ListActiveBondSeriesRequest, opts ...grpc.CallOption) (*ListActiveBondSeriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListActiveBondSeriesResponse)
+	err := c.cc.Invoke(ctx, BondExchangeService_ListActiveBondSeries_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +110,12 @@ func (c *bondExchangeServiceClient) CheckHealth(ctx context.Context, in *CheckHe
 type BondExchangeServiceServer interface {
 	// Buy purchases one currently active sale offer for a buyer.
 	Buy(context.Context, *BuyRequest) (*BuyResponse, error)
-	// ListActiveOffers returns active sale offers using keyset pagination.
+	// CreateSaleOffer publishes a new sale offer for an existing seller and bond series.
+	CreateSaleOffer(context.Context, *CreateSaleOfferRequest) (*CreateSaleOfferResponse, error)
+	// ListActiveOffers returns every active sale offer for one required bond series.
 	ListActiveOffers(context.Context, *ListActiveOffersRequest) (*ListActiveOffersResponse, error)
+	// ListActiveBondSeries returns every bond series having at least one active offer.
+	ListActiveBondSeries(context.Context, *ListActiveBondSeriesRequest) (*ListActiveBondSeriesResponse, error)
 	// CheckHealth reports whether the server can reach its database.
 	CheckHealth(context.Context, *CheckHealthRequest) (*CheckHealthResponse, error)
 	mustEmbedUnimplementedBondExchangeServiceServer()
@@ -101,8 +131,14 @@ type UnimplementedBondExchangeServiceServer struct{}
 func (UnimplementedBondExchangeServiceServer) Buy(context.Context, *BuyRequest) (*BuyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Buy not implemented")
 }
+func (UnimplementedBondExchangeServiceServer) CreateSaleOffer(context.Context, *CreateSaleOfferRequest) (*CreateSaleOfferResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateSaleOffer not implemented")
+}
 func (UnimplementedBondExchangeServiceServer) ListActiveOffers(context.Context, *ListActiveOffersRequest) (*ListActiveOffersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListActiveOffers not implemented")
+}
+func (UnimplementedBondExchangeServiceServer) ListActiveBondSeries(context.Context, *ListActiveBondSeriesRequest) (*ListActiveBondSeriesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListActiveBondSeries not implemented")
 }
 func (UnimplementedBondExchangeServiceServer) CheckHealth(context.Context, *CheckHealthRequest) (*CheckHealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CheckHealth not implemented")
@@ -146,6 +182,24 @@ func _BondExchangeService_Buy_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BondExchangeService_CreateSaleOffer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateSaleOfferRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BondExchangeServiceServer).CreateSaleOffer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BondExchangeService_CreateSaleOffer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BondExchangeServiceServer).CreateSaleOffer(ctx, req.(*CreateSaleOfferRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BondExchangeService_ListActiveOffers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListActiveOffersRequest)
 	if err := dec(in); err != nil {
@@ -160,6 +214,24 @@ func _BondExchangeService_ListActiveOffers_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(BondExchangeServiceServer).ListActiveOffers(ctx, req.(*ListActiveOffersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BondExchangeService_ListActiveBondSeries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListActiveBondSeriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BondExchangeServiceServer).ListActiveBondSeries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BondExchangeService_ListActiveBondSeries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BondExchangeServiceServer).ListActiveBondSeries(ctx, req.(*ListActiveBondSeriesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -194,8 +266,16 @@ var BondExchangeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BondExchangeService_Buy_Handler,
 		},
 		{
+			MethodName: "CreateSaleOffer",
+			Handler:    _BondExchangeService_CreateSaleOffer_Handler,
+		},
+		{
 			MethodName: "ListActiveOffers",
 			Handler:    _BondExchangeService_ListActiveOffers_Handler,
+		},
+		{
+			MethodName: "ListActiveBondSeries",
+			Handler:    _BondExchangeService_ListActiveBondSeries_Handler,
 		},
 		{
 			MethodName: "CheckHealth",

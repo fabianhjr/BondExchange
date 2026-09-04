@@ -22,12 +22,20 @@ come from different server instances. The losing requests are reported as an
 unavailable offer, while the original offer row remains as history.
 
 The non-materialized `bond_exchange.active_offers` view excludes every offer
-that has a matching purchase. Its optional bond filter and keyset pagination
-are supported by the sale-offer primary key and the
-`sale_offers_bond_series_id_idx` index. The purchase primary key supports the
-anti-join and enforces single-sale concurrency. Purchase history by buyer is
-supported by `purchases_buyer_id_sale_offer_id_idx`. Add further indexes only
-for observed query plans.
+that has a matching purchase. The API requires a bond series and returns all
+active offers for it in ID order; the
+`sale_offers_bond_series_id_idx` index supports that lookup. A separate
+distinct query derives the sorted list of bond series represented in the view.
+The purchase primary key supports the anti-join and enforces single-sale
+concurrency. Purchase history by buyer is supported by
+`purchases_buyer_id_sale_offer_id_idx`. Add further indexes only for observed
+query plans.
+
+The API creates sale offers with `INSERT ... RETURNING`. The sale-offer primary
+key serializes concurrent attempts to publish the same ID, while foreign keys
+require the seller and bond series to have been provisioned already. Creation
+does not require a schema migration because the existing append-only table
+already contains the complete sale-offer fact.
 
 Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema

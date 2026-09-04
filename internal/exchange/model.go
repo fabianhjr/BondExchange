@@ -18,14 +18,16 @@ const (
 var maxMonetaryAmount = decimal.New(99_999_999_999_999, -MonetaryAmountScale)
 
 var (
-	ErrInvalidUserID           = errors.New("user ID must not be empty")
-	ErrInvalidOfferID          = errors.New("sale-offer ID must not be empty")
-	ErrInvalidBondSeries       = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
-	ErrInvalidPrice            = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
-	ErrInvalidCurrencyCode     = errors.New("currency code must not be empty")
-	ErrInvalidActiveOfferLimit = errors.New("active-offer limit must be between 1 and 100")
-	ErrBuyerNotFound           = errors.New("buyer does not exist")
-	ErrOfferUnavailable        = errors.New("sale offer does not exist or has already been bought")
+	ErrInvalidUserID       = errors.New("user ID must not be empty")
+	ErrInvalidOfferID      = errors.New("sale-offer ID must not be empty")
+	ErrInvalidBondSeries   = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
+	ErrInvalidPrice        = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
+	ErrInvalidCurrencyCode = errors.New("currency code must not be empty")
+	ErrBuyerNotFound       = errors.New("buyer does not exist")
+	ErrSellerNotFound      = errors.New("seller does not exist")
+	ErrBondNotFound        = errors.New("bond series does not exist")
+	ErrOfferAlreadyExists  = errors.New("sale-offer ID already exists")
+	ErrOfferUnavailable    = errors.New("sale offer does not exist or has already been bought")
 )
 
 type UserID string
@@ -101,10 +103,4 @@ type Purchase struct {
 	Offer    SaleOffer `json:"offer"`
 	BuyerID  UserID    `json:"buyer_id"`
 	BoughtAt time.Time `json:"bought_at"`
-}
-
-type ActiveOfferQuery struct {
-	BondSeries *BondSeries
-	After      OfferID
-	Limit      int
 }

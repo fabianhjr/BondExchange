@@ -15,15 +15,22 @@ import (
 )
 
 type applicationStub struct {
-	purchase exchange.Purchase
-	buyErr   error
-	offers   []exchange.SaleOffer
-	listErr  error
-	buyer    string
-	offer    string
-	bond     string
-	after    string
-	limit    int
+	purchase       exchange.Purchase
+	buyErr         error
+	created        exchange.SaleOffer
+	createErr      error
+	offers         []exchange.SaleOffer
+	listErr        error
+	series         []exchange.BondSeries
+	seriesErr      error
+	buyer          string
+	buyOffer       string
+	createID       string
+	createSeller   string
+	createBond     string
+	createPrice    string
+	createCurrency string
+	bond           string
 }
 
 func (application *applicationStub) Buy(
@@ -32,20 +39,36 @@ func (application *applicationStub) Buy(
 	offer string,
 ) (exchange.Purchase, error) {
 	application.buyer = buyer
-	application.offer = offer
+	application.buyOffer = offer
 	return application.purchase, application.buyErr
+}
+
+func (application *applicationStub) CreateSaleOffer(
+	_ context.Context,
+	id string,
+	seller string,
+	bond string,
+	price string,
+	currency string,
+) (exchange.SaleOffer, error) {
+	application.createID = id
+	application.createSeller = seller
+	application.createBond = bond
+	application.createPrice = price
+	application.createCurrency = currency
+	return application.created, application.createErr
 }
 
 func (application *applicationStub) ActiveOffers(
 	_ context.Context,
 	bond string,
-	after string,
-	limit int,
 ) ([]exchange.SaleOffer, error) {
 	application.bond = bond
-	application.after = after
-	application.limit = limit
 	return application.offers, application.listErr
+}
+
+func (application *applicationStub) ActiveBondSeries(context.Context) ([]exchange.BondSeries, error) {
+	return application.series, application.seriesErr
 }
 
 type healthStub struct{ err error }
@@ -73,8 +96,8 @@ func TestBuyHandler(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if application.buyer != "buyer-1" || application.offer != "offer-1" {
-		t.Fatalf("application received buyer %q and offer %q", application.buyer, application.offer)
+	if application.buyer != "buyer-1" || application.buyOffer != "offer-1" {
+		t.Fatalf("application received buyer %q and offer %q", application.buyer, application.buyOffer)
 	}
 	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
 		t.Fatalf("Content-Type = %q", contentType)
@@ -129,12 +152,12 @@ func TestActiveOffersHandler(t *testing.T) {
 		Price: decimal.RequireFromString("100.25"),
 	}}}
 	handler := newHandler(t, application, healthStub{})
-	response := performRequest(handler, http.MethodGet, "/active-offers?bond=bnd&after=offer-1&limit=25", "")
+	response := performRequest(handler, http.MethodGet, "/active-offers?bond=bnd", "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if application.bond != "bnd" || application.after != "offer-1" || application.limit != 25 {
-		t.Fatalf("application received bond %q, after %q, limit %d", application.bond, application.after, application.limit)
+	if application.bond != "bnd" {
+		t.Fatalf("application received bond %q", application.bond)
 	}
 	if !strings.Contains(response.Body.String(), `"id":"offer-2"`) {
 		t.Fatalf("body = %s", response.Body.String())
@@ -143,18 +166,12 @@ func TestActiveOffersHandler(t *testing.T) {
 		t.Fatalf("body = %s", response.Body.String())
 	}
 
-	response = performRequest(handler, http.MethodGet, "/active-offers?limit=nope", "")
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("invalid limit status = %d", response.Code)
-	}
-
 	for _, test := range []struct {
 		name   string
 		err    error
 		status int
 	}{
 		{name: "invalid bond", err: exchange.ErrInvalidBondSeries, status: http.StatusBadRequest},
-		{name: "invalid limit", err: exchange.ErrInvalidActiveOfferLimit, status: http.StatusBadRequest},
 		{name: "internal", err: errors.New("boom"), status: http.StatusInternalServerError},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -164,6 +181,80 @@ func TestActiveOffersHandler(t *testing.T) {
 				t.Fatalf("status = %d, want %d", response.Code, test.status)
 			}
 		})
+	}
+}
+
+func TestCreateSaleOfferHandler(t *testing.T) {
+	t.Parallel()
+
+	application := &applicationStub{created: exchange.SaleOffer{
+		ID:         "offer-2",
+		SellerID:   "seller-1",
+		BondSeries: "BND1",
+		Price:      decimal.RequireFromString("99.75"),
+		Currency:   "USD",
+	}}
+	handler := newHandler(t, application, healthStub{})
+	response := performRequest(
+		handler,
+		http.MethodPost,
+		"/sale-offers",
+		`{"id":"offer-2","seller_id":"seller-1","bond_series":"bnd1","price":"99.75","currency_code":"USD"}`,
+	)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if application.createID != "offer-2" || application.createSeller != "seller-1" ||
+		application.createBond != "bnd1" || application.createPrice != "99.75" ||
+		application.createCurrency != "USD" {
+		t.Fatalf("application create input = %#v", application)
+	}
+	for _, expected := range []string{`"offer":{`, `"id":"offer-2"`, `"price":"99.75"`} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("body %s does not contain %s", response.Body.String(), expected)
+		}
+	}
+
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "invalid", err: exchange.ErrInvalidPrice, status: http.StatusBadRequest},
+		{name: "missing seller", err: exchange.ErrSellerNotFound, status: http.StatusNotFound},
+		{name: "missing bond", err: exchange.ErrBondNotFound, status: http.StatusNotFound},
+		{name: "duplicate", err: exchange.ErrOfferAlreadyExists, status: http.StatusConflict},
+		{name: "internal", err: errors.New("boom"), status: http.StatusInternalServerError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			application.createErr = test.err
+			response := performRequest(handler, http.MethodPost, "/sale-offers", `{}`)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, test.status, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestActiveBondSeriesHandler(t *testing.T) {
+	t.Parallel()
+
+	application := &applicationStub{series: []exchange.BondSeries{"BND1", "GOV1"}}
+	handler := newHandler(t, application, healthStub{})
+	response := performRequest(handler, http.MethodGet, "/active-bond-series", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{`"bond_series":`, `"BND1"`, `"GOV1"`} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("body %s does not contain %s", response.Body.String(), expected)
+		}
+	}
+
+	application.seriesErr = errors.New("boom")
+	response = performRequest(handler, http.MethodGet, "/active-bond-series", "")
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("error status = %d", response.Code)
 	}
 }
 

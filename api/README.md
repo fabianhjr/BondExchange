@@ -31,3 +31,9 @@ call, while external gRPC clients reach the same implementation on the gRPC
 listener. The adapter maps domain errors to canonical gRPC codes; the REST
 gateway maps those codes to HTTP statuses while retaining the existing
 `{"error":"..."}` JSON error shape.
+
+The API publishes sale offers with `POST /sale-offers`, lists every active
+offer for one required bond series with `GET /active-offers?bond=...`, and
+discovers all series currently having active offers with
+`GET /active-bond-series`. Active-offer listing is deliberately unpaginated;
+the removed protobuf field numbers and names are reserved against reuse.

@@ -7,6 +7,7 @@ import (
 
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -37,16 +38,59 @@ SELECT
   EXISTS (SELECT 1 FROM bond_exchange.users WHERE id = $1),
   EXISTS (SELECT 1 FROM bond_exchange.sale_offers WHERE id = $2)`
 
+const createSaleOfferQuery = `
+INSERT INTO bond_exchange.sale_offers
+  (id, seller_id, bond_series, price, currency_code)
+VALUES ($1, $2, $3, $4::numeric, $5)
+RETURNING id, seller_id, bond_series, price, currency_code`
+
 const activeOffersQuery = `
 SELECT id, seller_id, bond_series, price, currency_code
 FROM bond_exchange.active_offers
-WHERE ($1::text = '' OR bond_series = $1)
-  AND id > $2
-ORDER BY id
-LIMIT $3`
+WHERE bond_series = $1
+ORDER BY id`
+
+const activeBondSeriesQuery = `
+SELECT DISTINCT bond_series
+FROM bond_exchange.active_offers
+ORDER BY bond_series`
 
 type Store struct {
 	pool *pgxpool.Pool
+}
+
+func (store *Store) CreateSaleOffer(
+	ctx context.Context,
+	offer exchange.SaleOffer,
+) (exchange.SaleOffer, error) {
+	var (
+		created   exchange.SaleOffer
+		priceText string
+	)
+	err := store.pool.QueryRow(
+		ctx,
+		createSaleOfferQuery,
+		string(offer.ID),
+		string(offer.SellerID),
+		string(offer.BondSeries),
+		offer.Price.String(),
+		string(offer.Currency),
+	).Scan(
+		&created.ID,
+		&created.SellerID,
+		&created.BondSeries,
+		&priceText,
+		&created.Currency,
+	)
+	if err != nil {
+		return exchange.SaleOffer{}, classifyCreateSaleOfferError(err)
+	}
+	price, err := exchange.ParsePrice(priceText)
+	if err != nil {
+		return exchange.SaleOffer{}, err
+	}
+	created.Price = price
+	return created, nil
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
@@ -118,18 +162,12 @@ func (store *Store) Buy(
 
 func (store *Store) ActiveOffers(
 	ctx context.Context,
-	query exchange.ActiveOfferQuery,
+	bondSeries exchange.BondSeries,
 ) ([]exchange.SaleOffer, error) {
-	bondSeries := ""
-	if query.BondSeries != nil {
-		bondSeries = string(*query.BondSeries)
-	}
 	rows, err := store.pool.Query(
 		ctx,
 		activeOffersQuery,
-		bondSeries,
-		string(query.After),
-		query.Limit,
+		string(bondSeries),
 	)
 	if err != nil {
 		return nil, err
@@ -162,4 +200,42 @@ func (store *Store) ActiveOffers(
 		return nil, err
 	}
 	return offers, nil
+}
+
+func (store *Store) ActiveBondSeries(ctx context.Context) ([]exchange.BondSeries, error) {
+	rows, err := store.pool.Query(ctx, activeBondSeriesQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	series := make([]exchange.BondSeries, 0)
+	for rows.Next() {
+		var bondSeries exchange.BondSeries
+		if err := rows.Scan(&bondSeries); err != nil {
+			return nil, err
+		}
+		series = append(series, bondSeries)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return series, nil
+}
+
+func classifyCreateSaleOfferError(err error) error {
+	var databaseError *pgconn.PgError
+	if !errors.As(err, &databaseError) {
+		return err
+	}
+	switch databaseError.ConstraintName {
+	case "sale_offers_pkey":
+		return exchange.ErrOfferAlreadyExists
+	case "sale_offers_seller_id_fkey":
+		return exchange.ErrSellerNotFound
+	case "sale_offers_bond_series_fkey":
+		return exchange.ErrBondNotFound
+	default:
+		return err
+	}
 }
