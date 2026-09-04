@@ -71,9 +71,36 @@ service BondExchangeService {
         }
       }
       responses: {
+        key: "401"
+        value: {
+          description: "Authentication is required."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "The operation is not permitted."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
         key: "404"
         value: {
           description: "The active offer is unavailable."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "409"
+        value: {
+          description: "An idempotency conflict occurred."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }
@@ -125,6 +152,24 @@ service BondExchangeService {
         }
       }
       responses: {
+        key: "401"
+        value: {
+          description: "Authentication is required."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "The operation is not permitted."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
         key: "404"
         value: {
           description: "The bond series does not exist."
@@ -136,7 +181,7 @@ service BondExchangeService {
       responses: {
         key: "409"
         value: {
-          description: "The sale-offer ID already exists."
+          description: "The sale-offer ID already exists, or an idempotency conflict occurred."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }
@@ -155,13 +200,15 @@ service BondExchangeService {
   }
 
   // ListActiveOffers streams every active sale offer from one database snapshot.
+  // The REST endpoint returns an RFC 7464 JSON text sequence.
   rpc ListActiveOffers(ListActiveOffersRequest) returns (stream ListActiveOffersResponse) {
     option (google.api.http) = {get: "/active-offers"};
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      produces: "application/json-seq"
       responses: {
         key: "200"
         value: {
-          description: "The active sale offers."
+          description: "The active sale offers, returned as a JSON sequence (RFC 7464) of ListActiveOffersResponse objects."
           schema: {
             json_schema: {ref: ".bondexchange.v1.ListActiveOffersResponse"}
           }
@@ -171,6 +218,24 @@ service BondExchangeService {
         key: "400"
         value: {
           description: "The required bond series is missing or invalid."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Authentication is required."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "The operation is not permitted."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }
@@ -202,6 +267,24 @@ service BondExchangeService {
         }
       }
       responses: {
+        key: "401"
+        value: {
+          description: "Authentication is required."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "The operation is not permitted."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
         key: "500"
         value: {
           description: "The server could not complete the request."
@@ -223,6 +306,24 @@ service BondExchangeService {
           description: "The service is healthy."
           schema: {
             json_schema: {ref: ".bondexchange.v1.CheckHealthResponse"}
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Authentication is required."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "The operation is not permitted."
+          schema: {
+            json_schema: {ref: ".bondexchange.v1.Error"}
           }
         }
       }

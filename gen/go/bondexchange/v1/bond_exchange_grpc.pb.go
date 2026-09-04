@@ -38,6 +38,7 @@ type BondExchangeServiceClient interface {
 	// CreateSaleOffer publishes a new sale offer for the authenticated principal.
 	CreateSaleOffer(ctx context.Context, in *CreateSaleOfferRequest, opts ...grpc.CallOption) (*CreateSaleOfferResponse, error)
 	// ListActiveOffers streams every active sale offer from one database snapshot.
+	// The REST endpoint returns an RFC 7464 JSON text sequence.
 	ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListActiveOffersResponse], error)
 	// ListActiveBondSeries returns every bond series having at least one active offer.
 	ListActiveBondSeries(ctx context.Context, in *ListActiveBondSeriesRequest, opts ...grpc.CallOption) (*ListActiveBondSeriesResponse, error)
@@ -124,6 +125,7 @@ type BondExchangeServiceServer interface {
 	// CreateSaleOffer publishes a new sale offer for the authenticated principal.
 	CreateSaleOffer(context.Context, *CreateSaleOfferRequest) (*CreateSaleOfferResponse, error)
 	// ListActiveOffers streams every active sale offer from one database snapshot.
+	// The REST endpoint returns an RFC 7464 JSON text sequence.
 	ListActiveOffers(*ListActiveOffersRequest, grpc.ServerStreamingServer[ListActiveOffersResponse]) error
 	// ListActiveBondSeries returns every bond series having at least one active offer.
 	ListActiveBondSeries(context.Context, *ListActiveBondSeriesRequest) (*ListActiveBondSeriesResponse, error)

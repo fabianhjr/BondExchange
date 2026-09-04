@@ -733,63 +733,96 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error:\r\x92A\n" +
 	"\n" +
-	"\b\xd2\x01\x05error2\xfb\x0f\n" +
-	"\x13BondExchangeService\x12\xc7\x03\n" +
-	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x84\x03\x92A\xf0\x02JC\n" +
+	"\b\xd2\x01\x05error2\xf4\x16\n" +
+	"\x13BondExchangeService\x12\x97\x05\n" +
+	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\xd4\x04\x92A\xc0\x04JC\n" +
 	"\x03201\x12<\n" +
 	"\x18The offer was purchased.\x12 \n" +
 	"\x1e\x1a\x1c.bondexchange.v1.BuyResponseJ<\n" +
 	"\x03400\x125\n" +
 	"\x17The request is invalid.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ@\n" +
+	"\x03401\x129\n" +
+	"\x1bAuthentication is required.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
+	"\x03403\x12=\n" +
+	"\x1fThe operation is not permitted.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJE\n" +
 	"\x03404\x12>\n" +
 	" The active offer is unavailable.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJF\n" +
+	"\x03409\x12?\n" +
+	"!An idempotency conflict occurred.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorrS\n" +
 	"Q\n" +
 	"\x0fIdempotency-Key\x12:A 16-128 character key bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\n" +
-	":\x01*\"\x05/buys\x12\xcb\x04\n" +
-	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\xe4\x03\x92A\xc9\x03JR\n" +
+	":\x01*\"\x05/buys\x12\xf8\x05\n" +
+	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\x91\x05\x92A\xf6\x04JR\n" +
 	"\x03201\x12K\n" +
 	"\x1bThe sale offer was created.\x12,\n" +
 	"*\x1a(.bondexchange.v1.CreateSaleOfferResponseJ?\n" +
 	"\x03400\x128\n" +
 	"\x1aThe sale offer is invalid.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ@\n" +
+	"\x03401\x129\n" +
+	"\x1bAuthentication is required.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
+	"\x03403\x12=\n" +
+	"\x1fThe operation is not permitted.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
 	"\x03404\x12=\n" +
 	"\x1fThe bond series does not exist.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorJF\n" +
-	"\x03409\x12?\n" +
-	"!The sale-offer ID already exists.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJk\n" +
+	"\x03409\x12d\n" +
+	"FThe sale-offer ID already exists, or an idempotency conflict occurred.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorrS\n" +
 	"Q\n" +
-	"\x0fIdempotency-Key\x12:A 16-128 character key bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/sale-offers\x12\xfe\x02\n" +
-	"\x10ListActiveOffers\x12(.bondexchange.v1.ListActiveOffersRequest\x1a).bondexchange.v1.ListActiveOffersResponse\"\x92\x02\x92A\xf8\x01JO\n" +
-	"\x03200\x12H\n" +
-	"\x17The active sale offers.\x12-\n" +
+	"\x0fIdempotency-Key\x12:A 16-128 character key bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/sale-offers\x12\xea\x04\n" +
+	"\x10ListActiveOffers\x12(.bondexchange.v1.ListActiveOffersRequest\x1a).bondexchange.v1.ListActiveOffersResponse\"\xfe\x03\x92A\xe4\x03:\x14application/json-seqJ\x9c\x01\n" +
+	"\x03200\x12\x94\x01\n" +
+	"cThe active sale offers, returned as a JSON sequence (RFC 7464) of ListActiveOffersResponse objects.\x12-\n" +
 	"+\x1a).bondexchange.v1.ListActiveOffersResponseJT\n" +
 	"\x03400\x12M\n" +
 	"/The required bond series is missing or invalid.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ@\n" +
+	"\x03401\x129\n" +
+	"\x1bAuthentication is required.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
+	"\x03403\x12=\n" +
+	"\x1fThe operation is not permitted.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x10\x12\x0e/active-offers0\x01\x12\xc9\x02\n" +
-	"\x14ListActiveBondSeries\x12,.bondexchange.v1.ListActiveBondSeriesRequest\x1a-.bondexchange.v1.ListActiveBondSeriesResponse\"\xd3\x01\x92A\xb4\x01Ja\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x10\x12\x0e/active-offers0\x01\x12\xd1\x03\n" +
+	"\x14ListActiveBondSeries\x12,.bondexchange.v1.ListActiveBondSeriesRequest\x1a-.bondexchange.v1.ListActiveBondSeriesResponse\"\xdb\x02\x92A\xbc\x02Ja\n" +
 	"\x03200\x12Z\n" +
 	"%The bond series having active offers.\x121\n" +
-	"/\x1a-.bondexchange.v1.ListActiveBondSeriesResponseJO\n" +
+	"/\x1a-.bondexchange.v1.ListActiveBondSeriesResponseJ@\n" +
+	"\x03401\x129\n" +
+	"\x1bAuthentication is required.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
+	"\x03403\x12=\n" +
+	"\x1fThe operation is not permitted.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x15\x12\x13/active-bond-series\x12\xfe\x01\n" +
-	"\vCheckHealth\x12#.bondexchange.v1.CheckHealthRequest\x1a$.bondexchange.v1.CheckHealthResponse\"\xa3\x01\x92A\x8f\x01JJ\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x15\x12\x13/active-bond-series\x12\x86\x03\n" +
+	"\vCheckHealth\x12#.bondexchange.v1.CheckHealthRequest\x1a$.bondexchange.v1.CheckHealthResponse\"\xab\x02\x92A\x97\x02JJ\n" +
 	"\x03200\x12C\n" +
 	"\x17The service is healthy.\x12(\n" +
-	"&\x1a$.bondexchange.v1.CheckHealthResponseJA\n" +
+	"&\x1a$.bondexchange.v1.CheckHealthResponseJ@\n" +
+	"\x03401\x129\n" +
+	"\x1bAuthentication is required.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
+	"\x03403\x12=\n" +
+	"\x1fThe operation is not permitted.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJA\n" +
 	"\x03503\x12:\n" +
 	"\x1cThe database is unavailable.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\n" +

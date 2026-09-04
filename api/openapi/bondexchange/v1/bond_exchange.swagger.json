@@ -7,7 +7,8 @@
   },
   "tags": [
     {
-      "name": "BondExchangeService"
+      "name": "BondExchangeService",
+      "description": "BondExchangeService exposes the bond-sale application over gRPC and REST."
     }
   ],
   "consumes": [
@@ -28,6 +29,18 @@
               "$ref": "#/definitions/bondexchange.v1.ListActiveBondSeriesResponse"
             }
           },
+          "401": {
+            "description": "Authentication is required.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "403": {
+            "description": "The operation is not permitted.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
           "500": {
             "description": "The server could not complete the request.",
             "schema": {
@@ -42,17 +55,29 @@
     },
     "/active-offers": {
       "get": {
-        "summary": "ListActiveOffers streams every active sale offer from one database snapshot.",
+        "summary": "ListActiveOffers streams every active sale offer from one database snapshot.\nThe REST endpoint returns an RFC 7464 JSON text sequence.",
         "operationId": "BondExchangeService_ListActiveOffers",
         "responses": {
           "200": {
-            "description": "The active sale offers.",
+            "description": "The active sale offers, returned as a JSON sequence (RFC 7464) of ListActiveOffersResponse objects.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.ListActiveOffersResponse"
             }
           },
           "400": {
             "description": "The required bond series is missing or invalid.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "401": {
+            "description": "Authentication is required.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "403": {
+            "description": "The operation is not permitted.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
@@ -75,6 +100,9 @@
         ],
         "tags": [
           "BondExchangeService"
+        ],
+        "produces": [
+          "application/json-seq"
         ]
       }
     },
@@ -95,8 +123,26 @@
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
           },
+          "401": {
+            "description": "Authentication is required.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "403": {
+            "description": "The operation is not permitted.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
           "404": {
             "description": "The active offer is unavailable.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "409": {
+            "description": "An idempotency conflict occurred.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
@@ -141,6 +187,18 @@
               "$ref": "#/definitions/bondexchange.v1.CheckHealthResponse"
             }
           },
+          "401": {
+            "description": "Authentication is required.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "403": {
+            "description": "The operation is not permitted.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
           "503": {
             "description": "The database is unavailable.",
             "schema": {
@@ -170,6 +228,18 @@
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
           },
+          "401": {
+            "description": "Authentication is required.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "403": {
+            "description": "The operation is not permitted.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
           "404": {
             "description": "The bond series does not exist.",
             "schema": {
@@ -177,7 +247,7 @@
             }
           },
           "409": {
-            "description": "The sale-offer ID already exists.",
+            "description": "The sale-offer ID already exists, or an idempotency conflict occurred.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
