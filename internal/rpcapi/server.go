@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1"
 	"github.com/fabianhjr/BondExchange/internal/authn"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -284,5 +286,28 @@ func transportError(err error) error {
 		return status.Error(codes.AlreadyExists, err.Error())
 	default:
 		return status.Error(codes.Internal, "internal server error")
+	}
+}
+
+func (server *Server) AuthorizeReflectionStreamInterceptor() grpc.StreamServerInterceptor {
+	return func(
+		srv any,
+		ss grpc.ServerStream,
+		info *grpc.StreamServerInfo,
+		handler grpc.StreamHandler,
+	) error {
+		if strings.HasPrefix(info.FullMethod, "/grpc.reflection.") {
+			ctx := ss.Context()
+			authenticated, err := server.authenticate(ctx, exchange.OperationReflection, &bondexchangev1.CheckHealthRequest{}, false)
+			if err != nil {
+				logSecurityOperation(ctx, exchange.OperationReflection, nil, err)
+				return transportError(err)
+			}
+			if err := server.health.Authorize(ctx, authenticated.AccessContext, exchange.PermissionReflection); err != nil {
+				logSecurityOperation(ctx, exchange.OperationReflection, &authenticated.AccessContext, err)
+				return transportError(err)
+			}
+		}
+		return handler(srv, ss)
 	}
 }

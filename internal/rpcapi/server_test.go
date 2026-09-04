@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -308,6 +309,76 @@ func TestGRPCHealthAuthorizationFailure(t *testing.T) {
 	_, err := client.CheckHealth(context.Background(), &bondexchangev1.CheckHealthRequest{})
 	if status.Code(err) != codes.PermissionDenied || status.Convert(err).Message() != "operation not permitted" {
 		t.Fatalf("authorization error = %v", err)
+	}
+}
+
+func TestGRPCReflectionInterception(t *testing.T) {
+	t.Parallel()
+
+	// 1. Test Reflection Gated by Authentication Failure
+	serverAuthFail := NewServer(&applicationStub{}, healthStub{}, authenticatorStub{err: exchange.ErrUnauthenticated})
+	listenerAuth := bufconn.Listen(1024 * 1024)
+	grpcServerAuth := grpc.NewServer(
+		grpc.StreamInterceptor(serverAuthFail.AuthorizeReflectionStreamInterceptor()),
+	)
+	reflection.Register(grpcServerAuth)
+	go func() {
+		_ = grpcServerAuth.Serve(listenerAuth)
+	}()
+	t.Cleanup(grpcServerAuth.Stop)
+
+	connAuth, err := grpc.NewClient(
+		"passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listenerAuth.Dial()
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connAuth.Close() })
+
+	streamAuth, err := connAuth.NewStream(context.Background(), &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}, "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = streamAuth.RecvMsg(nil)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got: %v", err)
+	}
+
+	// 2. Test Reflection Gated by Authorization Failure
+	serverAuthzFail := NewServer(&applicationStub{}, healthStub{authorizeErr: exchange.ErrPermissionDenied}, authenticatorStub{})
+	listenerAuthz := bufconn.Listen(1024 * 1024)
+	grpcServerAuthz := grpc.NewServer(
+		grpc.StreamInterceptor(serverAuthzFail.AuthorizeReflectionStreamInterceptor()),
+	)
+	reflection.Register(grpcServerAuthz)
+	go func() {
+		_ = grpcServerAuthz.Serve(listenerAuthz)
+	}()
+	t.Cleanup(grpcServerAuthz.Stop)
+
+	connAuthz, err := grpc.NewClient(
+		"passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listenerAuthz.Dial()
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connAuthz.Close() })
+
+	streamAuthz, err := connAuthz.NewStream(context.Background(), &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}, "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = streamAuthz.RecvMsg(nil)
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got: %v", err)
 	}
 }
 

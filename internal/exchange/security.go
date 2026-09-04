@@ -11,6 +11,7 @@ const (
 	OperationListActiveOffers = "offers.list"
 	OperationListBondSeries   = "bond-series.list"
 	OperationCheckHealth      = "health.read"
+	OperationReflection       = "reflection.use"
 )
 
 const (
@@ -19,6 +20,7 @@ const (
 	PermissionListActiveOffers = "offers.list"
 	PermissionListBondSeries   = "offers.list"
 	PermissionCheckHealth      = "health.read"
+	PermissionReflection       = "reflection.use"
 )
 
 var (

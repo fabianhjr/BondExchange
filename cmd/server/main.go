@@ -93,7 +93,10 @@ func run() error {
 		grpc.MaxSendMsgSize(64*1024),
 		grpc.MaxConcurrentStreams(128),
 		grpc.UnaryInterceptor(recoverUnaryPanic),
-		grpc.StreamInterceptor(recoverStreamPanic),
+		grpc.StreamInterceptor(grpc.ChainStreamInterceptor(
+			recoverStreamPanic,
+			apiServer.AuthorizeReflectionStreamInterceptor(),
+		)),
 	)
 	bondexchangev1.RegisterBondExchangeServiceServer(grpcServer, apiServer)
 	if os.Getenv("BOND_EXCHANGE_ENABLE_REFLECTION") == "true" {
