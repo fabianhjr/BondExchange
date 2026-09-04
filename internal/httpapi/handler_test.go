@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -118,6 +119,20 @@ func (authenticatorStub) Authenticate(_ context.Context, operation string, _ []b
 	}
 	return result, nil
 }
+
+type failingResponseWriter struct {
+	header http.Header
+}
+
+func (writer *failingResponseWriter) Header() http.Header {
+	return writer.header
+}
+
+func (*failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func (*failingResponseWriter) WriteHeader(int) {}
 
 func TestBuyHandler(t *testing.T) {
 	t.Parallel()
@@ -405,6 +420,9 @@ func TestJSONStructureValidation(t *testing.T) {
 	}
 	for _, invalid := range []string{
 		`[]`,
+		`{`,
+		`{,}`,
+		`{"a":`,
 		`{"a":1} {"b":2}`,
 		`{"a":[1,2}`,
 		`{"a":{"b":1,"b":2}}`,
@@ -412,6 +430,40 @@ func TestJSONStructureValidation(t *testing.T) {
 		if err := validateSingleJSONObject([]byte(invalid)); err == nil {
 			t.Fatalf("invalid JSON %s was accepted", invalid)
 		}
+	}
+	if err := validateJSONValue(json.NewDecoder(strings.NewReader("")), json.Delim(']')); err == nil {
+		t.Fatal("unexpected closing delimiter was accepted")
+	}
+	for _, encoded := range []string{"invalid", "[invalid"} {
+		if err := validateJSONValue(json.NewDecoder(strings.NewReader(encoded)), json.Delim('[')); err == nil {
+			t.Fatalf("malformed array contents %q were accepted", encoded)
+		}
+	}
+}
+
+func TestHTTPWriteAndEmptyBodyPaths(t *testing.T) {
+	t.Parallel()
+	failed := &failingResponseWriter{header: http.Header{}}
+	stream := &activeOffersRESTStream{context: context.Background(), response: failed}
+	message := &bondexchangev1.ListActiveOffersResponse{
+		Event: &bondexchangev1.ListActiveOffersResponse_Complete{Complete: &bondexchangev1.ListActiveOffersComplete{}},
+	}
+	if err := stream.writeJSONSequence(message); err == nil {
+		t.Fatal("stream write failure was ignored")
+	}
+	writeRESTError(failed, http.StatusInternalServerError, "failed")
+
+	called := false
+	handler := requireSingleJSONDocument(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		called = true
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", strings.NewReader(" \n\t"))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if !called || response.Code != http.StatusNoContent {
+		t.Fatalf("empty body path = called %t, status %d", called, response.Code)
 	}
 }
 

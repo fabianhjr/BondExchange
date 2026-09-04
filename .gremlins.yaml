@@ -10,7 +10,7 @@ unleash:
     - "^cmd/"
     - "^gen/"
   threshold:
-    efficacy: 80
+    efficacy: 95
     mutant-coverage: 0
 
 mutants:

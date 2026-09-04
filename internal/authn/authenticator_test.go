@@ -264,6 +264,59 @@ func TestJWTAuthenticatorRejectsResolverFailureAndMalformedBearer(t *testing.T) 
 	}
 }
 
+func TestJWTAuthenticatorRejectsUnknownKeyAlgorithmMismatchAndBadSignature(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
+	request := []byte("request")
+	key := "idempotency-key-123"
+	operation := operationClaims{ClientID: "client", AuthorizationDetails: []authorizationDetails{{
+		Type: AuthorizationType, Actions: []string{exchange.OperationBuy}, RequestSHA256: requestDigest(request), IdempotencyKey: key,
+	}}}
+
+	t.Run("unknown key", func(t *testing.T) {
+		authenticator, privateKey := newTestAuthenticator(t, now)
+		token := signAssertion(t, privateKey, standardClaims(now), operation)
+		authenticator.config.Keys.Keys[0].KeyID = "other-key"
+		if _, err := authenticator.Authenticate(incomingContext(token, key), exchange.OperationBuy, request, true); !errors.Is(err, exchange.ErrUnauthenticated) {
+			t.Fatalf("Authenticate() error = %v", err)
+		}
+	})
+
+	t.Run("algorithm metadata mismatch", func(t *testing.T) {
+		authenticator, privateKey := newTestAuthenticator(t, now)
+		token := signAssertion(t, privateKey, standardClaims(now), operation)
+		authenticator.config.Keys.Keys[0].Algorithm = string(jose.ES256)
+		if _, err := authenticator.Authenticate(incomingContext(token, key), exchange.OperationBuy, request, true); !errors.Is(err, exchange.ErrUnauthenticated) {
+			t.Fatalf("Authenticate() error = %v", err)
+		}
+	})
+
+	t.Run("invalid signature", func(t *testing.T) {
+		authenticator, _ := newTestAuthenticator(t, now)
+		_, otherPrivateKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		token := signAssertion(t, otherPrivateKey, standardClaims(now), operation)
+		if _, err := authenticator.Authenticate(incomingContext(token, key), exchange.OperationBuy, request, true); !errors.Is(err, exchange.ErrUnauthenticated) {
+			t.Fatalf("Authenticate() error = %v", err)
+		}
+	})
+}
+
+func TestAuthenticationTextAndIdempotencyBoundaries(t *testing.T) {
+	t.Parallel()
+	if !validClaimText("valid", 5) || validClaimText("line\nbreak", 32) {
+		t.Fatal("claim text validation accepted a control character or rejected valid text")
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{
+		IdempotencyMetadata: {"idempotency-key-1", "idempotency-key-2"},
+	})
+	if _, err := requestIdempotencyKey(ctx, true); !errors.Is(err, exchange.ErrInvalidIdempotencyKey) {
+		t.Fatalf("duplicate idempotency metadata error = %v", err)
+	}
+}
+
 func newTestAuthenticator(t *testing.T, now time.Time) (*JWTAuthenticator, ed25519.PrivateKey) {
 	t.Helper()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)

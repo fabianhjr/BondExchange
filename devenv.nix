@@ -104,7 +104,7 @@ let
         ./internal/...
       coverage="$(go tool cover -func=.artifacts/coverage.out | awk '/^total:/ { gsub(/%/, "", $3); print $3 }')"
       echo "Statement coverage: $coverage%"
-      awk -v coverage="$coverage" 'BEGIN { if (coverage + 0 < 90) exit 1 }'
+      awk -v coverage="$coverage" 'BEGIN { if (coverage + 0 < 95) exit 1 }'
     '';
   };
 
@@ -238,13 +238,13 @@ in
   };
 
   tasks."go:coverage" = {
-    description = "Require at least 90% statement coverage for internal Go packages";
+    description = "Require at least 95% statement coverage for internal Go packages";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${goCoverage}/bin/bond-exchange-go-coverage";
     after = [ "go:test" ];
   };
 
   tasks."go:mutation" = {
-    description = "Require at least 80% mutation-test efficacy";
+    description = "Require at least 95% mutation-test efficacy";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${goMutation}/bin/bond-exchange-go-mutation";
     after = [
       "demo:smoke"
