@@ -91,7 +91,7 @@ func local_request_BondExchangeService_CreateSaleOffer_0(ctx context.Context, ma
 
 var filter_BondExchangeService_ListActiveOffers_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
-func request_BondExchangeService_ListActiveOffers_0(ctx context.Context, marshaler runtime.Marshaler, client BondExchangeServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_BondExchangeService_ListActiveOffers_0(ctx context.Context, marshaler runtime.Marshaler, client BondExchangeServiceClient, req *http.Request, pathParams map[string]string) (BondExchangeService_ListActiveOffersClient, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListActiveOffersRequest
 		metadata runtime.ServerMetadata
@@ -105,23 +105,16 @@ func request_BondExchangeService_ListActiveOffers_0(ctx context.Context, marshal
 	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BondExchangeService_ListActiveOffers_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	msg, err := client.ListActiveOffers(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_BondExchangeService_ListActiveOffers_0(ctx context.Context, marshaler runtime.Marshaler, server BondExchangeServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ListActiveOffersRequest
-		metadata runtime.ServerMetadata
-	)
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	stream, err := client.ListActiveOffers(ctx, &protoReq)
+	if err != nil {
+		return nil, metadata, err
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BondExchangeService_ListActiveOffers_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	header, err := stream.Header()
+	if err != nil {
+		return nil, metadata, err
 	}
-	msg, err := server.ListActiveOffers(ctx, &protoReq)
-	return msg, metadata, err
+	metadata.HeaderMD = header
+	return stream, metadata, nil
 }
 
 func request_BondExchangeService_ListActiveBondSeries_0(ctx context.Context, marshaler runtime.Marshaler, client BondExchangeServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -212,25 +205,12 @@ func RegisterBondExchangeServiceHandlerServer(ctx context.Context, mux *runtime.
 		}
 		forward_BondExchangeService_CreateSaleOffer_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+
 	mux.Handle(http.MethodGet, pattern_BondExchangeService_ListActiveOffers_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/bondexchange.v1.BondExchangeService/ListActiveOffers", runtime.WithHTTPPathPattern("/active-offers"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_BondExchangeService_ListActiveOffers_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_BondExchangeService_ListActiveOffers_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
+		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+		return
 	})
 	mux.Handle(http.MethodGet, pattern_BondExchangeService_ListActiveBondSeries_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -361,7 +341,7 @@ func RegisterBondExchangeServiceHandlerClient(ctx context.Context, mux *runtime.
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_BondExchangeService_ListActiveOffers_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BondExchangeService_ListActiveOffers_0(annotatedContext, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_BondExchangeService_ListActiveBondSeries_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -411,7 +391,7 @@ var (
 var (
 	forward_BondExchangeService_Buy_0                  = runtime.ForwardResponseMessage
 	forward_BondExchangeService_CreateSaleOffer_0      = runtime.ForwardResponseMessage
-	forward_BondExchangeService_ListActiveOffers_0     = runtime.ForwardResponseMessage
+	forward_BondExchangeService_ListActiveOffers_0     = runtime.ForwardResponseStream
 	forward_BondExchangeService_ListActiveBondSeries_0 = runtime.ForwardResponseMessage
 	forward_BondExchangeService_CheckHealth_0          = runtime.ForwardResponseMessage
 )

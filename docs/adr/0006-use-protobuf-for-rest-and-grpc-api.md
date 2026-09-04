@@ -26,7 +26,8 @@ plugins. Generate and commit:
 - Go protobuf messages;
 - gRPC client and server bindings;
 - an in-process gRPC-Gateway REST handler; and
-- a Swagger 2.0 JSON artifact.
+- a Swagger 2.0 JSON artifact; and
+- a `FileDescriptorSet` for offline gRPC tooling.
 
 Lint the Proto3 source and verify generated-artifact freshness as part of the
 devenv test graph and Go CI. Contract changes begin in Proto3; generated files
@@ -39,23 +40,27 @@ gRPC. Keep the existing REST paths, snake-case JSON names, success statuses,
 and error envelope. Map domain errors to canonical gRPC status codes before the
 gateway maps them to HTTP statuses.
 
-Run REST and gRPC on separate configurable listeners. Keep
-`BOND_EXCHANGE_ADDRESS` for REST, defaulting to `:8080`, and add
-`BOND_EXCHANGE_GRPC_ADDRESS`, defaulting to `:9090`. Enable gRPC reflection for
-development and diagnostics. Transport encryption remains a deployment-boundary
-responsibility for the current server.
+Run the internal REST and gRPC interfaces on separate configurable listeners.
+Keep `BOND_EXCHANGE_ADDRESS` for REST and add
+`BOND_EXCHANGE_GRPC_ADDRESS`; their defaults are `127.0.0.1:8080` and
+`127.0.0.1:9090` respectively.
+Do not register runtime gRPC reflection. Generate and check in a descriptor set
+for clients that need dynamic tooling, as refined by ADR-0010.
+Both transports require the same application-layer federated assertion and
+authorization checks. Transport encryption remains a pending
+deployment-boundary decision for the current server.
 
 ## Consequences
 
 - REST, gRPC, generated Go interfaces, and Swagger derive from one reviewed
   contract.
-- Existing REST clients retain their routes, field names, status codes, exact
-  decimal strings, and JSON error shape.
+- REST clients retain their routes, status codes, exact decimal strings, and
+  JSON error shape; identity fields are intentionally removed and reserved.
 - gRPC clients receive typed protobuf messages and canonical status codes.
-- Generated code and Swagger increase the repository size and must be
-  regenerated whenever the Proto3 contract changes.
-- The server opens two ports and deployments must route and secure both when
-  both interfaces are public.
+- Generated code, Swagger, and the descriptor set increase the repository size
+  and must be regenerated whenever the Proto3 contract changes.
+- The server opens two internal ports and deployments must route and secure
+  each interface that they make reachable.
 - Proto3 compatibility rules and stable field numbers constrain later API
   evolution.
 - The Proto3 schema describes transport encoding only. Domain behavior remains

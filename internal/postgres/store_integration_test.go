@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -46,7 +48,7 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 		go func(buyer exchange.UserID) {
 			defer waitGroup.Done()
 			<-start
-			purchase, err := store.Buy(ctx, buyer, offer)
+			purchase, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, "buy-request-key-"+string(buyer), string(offer)), offer)
 			if err != nil {
 				errorsChannel <- err
 				return
@@ -93,16 +95,14 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 	}
 }
 
-func TestBuyRejectsMissingDomainObjects(t *testing.T) {
+func TestBuyRejectsMissingOffer(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	if _, err := store.Buy(ctx, exchange.UserID(uniqueID(t, "missing-buyer")), exchange.OfferID(uniqueID(t, "missing-offer"))); !errors.Is(err, exchange.ErrBuyerNotFound) {
-		t.Fatalf("missing buyer error = %v", err)
-	}
 	buyer := insertUser(t, pool, "buyer")
-	if _, err := store.Buy(ctx, buyer, exchange.OfferID(uniqueID(t, "missing-offer"))); !errors.Is(err, exchange.ErrOfferUnavailable) {
+	missing := exchange.OfferID(uniqueID(t, "missing-offer"))
+	if _, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(missing)), missing); !errors.Is(err, exchange.ErrOfferUnavailable) {
 		t.Fatalf("missing offer error = %v", err)
 	}
 }
@@ -120,7 +120,7 @@ func TestCreateSaleOffer(t *testing.T) {
 		Currency:   "USD",
 	}
 
-	created, err := store.CreateSaleOffer(context.Background(), offer)
+	created, err := store.CreateSaleOffer(context.Background(), mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "create"), string(offer.ID)), offer)
 	if err != nil {
 		t.Fatalf("CreateSaleOffer() error = %v", err)
 	}
@@ -128,29 +128,33 @@ func TestCreateSaleOffer(t *testing.T) {
 		!created.Price.Equal(offer.Price) || created.Currency != "USD" {
 		t.Fatalf("created offer = %#v, want %#v", created, offer)
 	}
-	activeOffers, err := store.ActiveOffers(context.Background(), bond)
+	activeOffers, err := collectOffers(store, access(seller, exchange.OperationListActiveOffers), bond)
 	if err != nil || len(activeOffers) != 1 || activeOffers[0].ID != offer.ID {
 		t.Fatalf("ActiveOffers() after creation = %#v, %v", activeOffers, err)
 	}
-	activeSeries, err := store.ActiveBondSeries(context.Background())
+	activeSeries, err := store.ActiveBondSeries(context.Background(), access(seller, exchange.OperationListBondSeries))
 	if err != nil || countSeries(activeSeries, bond) != 1 {
 		t.Fatalf("ActiveBondSeries() after creation = %#v, %v", activeSeries, err)
 	}
-	if _, err := store.CreateSaleOffer(context.Background(), offer); !errors.Is(err, exchange.ErrOfferAlreadyExists) {
+	duplicateOperation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "create"), string(offer.ID))
+	if _, err := store.CreateSaleOffer(context.Background(), duplicateOperation, offer); !errors.Is(err, exchange.ErrOfferAlreadyExists) {
 		t.Fatalf("duplicate CreateSaleOffer() error = %v", err)
+	}
+	if _, err := store.CreateSaleOffer(context.Background(), duplicateOperation, offer); !errors.Is(err, exchange.ErrOfferAlreadyExists) {
+		t.Fatalf("replayed duplicate CreateSaleOffer() error = %v", err)
 	}
 
 	missingSeller := offer
 	missingSeller.ID = exchange.OfferID(uniqueID(t, "offer"))
 	missingSeller.SellerID = exchange.UserID(uniqueID(t, "missing-seller"))
-	if _, err := store.CreateSaleOffer(context.Background(), missingSeller); !errors.Is(err, exchange.ErrSellerNotFound) {
+	if _, err := store.CreateSaleOffer(context.Background(), mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "create"), string(missingSeller.ID)), missingSeller); !errors.Is(err, exchange.ErrSellerNotFound) {
 		t.Fatalf("missing seller error = %v", err)
 	}
 
 	missingBond := offer
 	missingBond.ID = exchange.OfferID(uniqueID(t, "offer"))
 	missingBond.BondSeries = exchange.BondSeries("B" + strings.ToUpper(uniqueHex(t, 8)))
-	if _, err := store.CreateSaleOffer(context.Background(), missingBond); !errors.Is(err, exchange.ErrBondNotFound) {
+	if _, err := store.CreateSaleOffer(context.Background(), mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "create"), string(missingBond.ID)), missingBond); !errors.Is(err, exchange.ErrBondNotFound) {
 		t.Fatalf("missing bond error = %v", err)
 	}
 }
@@ -171,18 +175,18 @@ func TestConcurrentCreateSaleOfferRecordsOneOffer(t *testing.T) {
 	errorsChannel := make(chan error, competitors)
 	start := make(chan struct{})
 	var waitGroup sync.WaitGroup
-	for range competitors {
+	for index := range competitors {
 		waitGroup.Add(1)
-		go func() {
+		go func(index int) {
 			defer waitGroup.Done()
 			<-start
-			created, err := store.CreateSaleOffer(context.Background(), offer)
+			created, err := store.CreateSaleOffer(context.Background(), mutation(offer.SellerID, exchange.OperationCreateSaleOffer, fmt.Sprintf("create-attempt-%04d", index), string(offer.ID)), offer)
 			if err != nil {
 				errorsChannel <- err
 				return
 			}
 			results <- created
-		}()
+		}(index)
 	}
 	close(start)
 	waitGroup.Wait()
@@ -212,14 +216,14 @@ func TestActiveOffersAndBondSeries(t *testing.T) {
 	inactiveBond := insertBond(t, pool)
 	inactiveOffer := insertOffer(t, pool, seller, inactiveBond)
 	buyer := insertUser(t, pool, "buyer")
-	if _, err := store.Buy(context.Background(), buyer, first); err != nil {
+	if _, err := store.Buy(context.Background(), mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(first)), first); err != nil {
 		t.Fatalf("buy first offer: %v", err)
 	}
-	if _, err := store.Buy(context.Background(), buyer, inactiveOffer); err != nil {
+	if _, err := store.Buy(context.Background(), mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(inactiveOffer)), inactiveOffer); err != nil {
 		t.Fatalf("buy inactive-bond offer: %v", err)
 	}
 
-	offers, err := store.ActiveOffers(context.Background(), bond)
+	offers, err := collectOffers(store, access(buyer, exchange.OperationListActiveOffers), bond)
 	if err != nil {
 		t.Fatalf("ActiveOffers() error = %v", err)
 	}
@@ -234,7 +238,7 @@ func TestActiveOffersAndBondSeries(t *testing.T) {
 		}
 	}
 
-	series, err := store.ActiveBondSeries(context.Background())
+	series, err := store.ActiveBondSeries(context.Background(), access(buyer, exchange.OperationListBondSeries))
 	if err != nil {
 		t.Fatalf("ActiveBondSeries() error = %v", err)
 	}
@@ -262,6 +266,199 @@ func TestDomainFactTablesRejectMutation(t *testing.T) {
 		if !errors.As(err, &databaseError) || databaseError.Code != "55000" {
 			t.Fatalf("statement %q error = %v", statement, err)
 		}
+	}
+}
+
+func TestMutationIdempotencyReplaysResultAndRejectsKeyReuse(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "seller")
+	bond := insertBond(t, pool)
+	offer := exchange.SaleOffer{
+		ID: exchange.OfferID(uniqueID(t, "offer")), SellerID: seller, BondSeries: bond,
+		Price: decimal.RequireFromString("101.25"), Currency: "USD",
+	}
+	operation := mutation(seller, exchange.OperationCreateSaleOffer, "stable-idempotency-key", "request-a")
+
+	first, err := store.CreateSaleOffer(context.Background(), operation, offer)
+	if err != nil {
+		t.Fatalf("first CreateSaleOffer() error = %v", err)
+	}
+	retry := operation
+	retry.AssertionDigest = sha256.Sum256([]byte("fresh federated assertion"))
+	second, err := store.CreateSaleOffer(context.Background(), retry, offer)
+	if err != nil || second.ID != first.ID || !second.Price.Equal(first.Price) {
+		t.Fatalf("idempotent retry = %#v, %v; want %#v", second, err, first)
+	}
+	conflict := retry
+	conflict.RequestDigest = sha256.Sum256([]byte("request-b"))
+	if _, err := store.CreateSaleOffer(context.Background(), conflict, offer); !errors.Is(err, exchange.ErrIdempotencyConflict) {
+		t.Fatalf("key reuse error = %v", err)
+	}
+
+	var claims, results, offers int
+	if err := pool.QueryRow(context.Background(), `
+SELECT
+  (SELECT count(*) FROM bond_exchange.operation_claims WHERE idempotency_key = $1),
+  (SELECT count(*) FROM bond_exchange.operation_results AS result JOIN bond_exchange.operation_claims AS claim ON claim.id = result.claim_id WHERE claim.idempotency_key = $1),
+  (SELECT count(*) FROM bond_exchange.sale_offers WHERE id = $2)`, operation.IdempotencyKey, offer.ID).Scan(&claims, &results, &offers); err != nil {
+		t.Fatal(err)
+	}
+	if claims != 1 || results != 1 || offers != 1 {
+		t.Fatalf("claims, results, offers = %d, %d, %d", claims, results, offers)
+	}
+}
+
+func TestBuyIdempotencyReplaysOriginalBinding(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "seller")
+	buyer := insertUser(t, pool, "buyer")
+	bond := insertBond(t, pool)
+	offer := insertOffer(t, pool, seller, bond)
+	operation := mutation(buyer, exchange.OperationBuy, "stable-buy-key-0001", string(offer))
+
+	first, err := store.Buy(context.Background(), operation, offer)
+	if err != nil {
+		t.Fatalf("first Buy() error = %v", err)
+	}
+	retry := operation
+	retry.AssertionDigest = sha256.Sum256([]byte("fresh assertion"))
+	second, err := store.Buy(context.Background(), retry, offer)
+	if err != nil || second.BuyerID != first.BuyerID || second.Offer.ID != first.Offer.ID || !second.BoughtAt.Equal(first.BoughtAt) {
+		t.Fatalf("retried Buy() = %#v, %v; want %#v", second, err, first)
+	}
+	conflict := retry
+	conflict.RequestDigest = sha256.Sum256([]byte("different request"))
+	if _, err := store.Buy(context.Background(), conflict, offer); !errors.Is(err, exchange.ErrIdempotencyConflict) {
+		t.Fatalf("conflicting Buy() error = %v", err)
+	}
+}
+
+func TestAppendOnlyRBACRevocationTakesEffect(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	principal := insertUser(t, pool, "principal")
+	ctx := context.Background()
+	if err := store.Authorize(ctx, access(principal, exchange.OperationBuy), exchange.PermissionBuy); err != nil {
+		t.Fatalf("initial Authorize() error = %v", err)
+	}
+	var grantID string
+	if err := pool.QueryRow(ctx, `
+SELECT id FROM bond_exchange.principal_role_grants
+WHERE principal_id = $1 AND role_id = 'trader'`, principal).Scan(&grantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO bond_exchange.principal_role_revocations (id, grant_id, revoked_by, reason)
+VALUES ($1, $2, $3, 'integration test')`, uniqueID(t, "revoke"), grantID, principal); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Authorize(ctx, access(principal, exchange.OperationBuy), exchange.PermissionBuy); !errors.Is(err, exchange.ErrPermissionDenied) {
+		t.Fatalf("Authorize() after revocation error = %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE bond_exchange.principal_role_grants SET reason = reason WHERE id = $1`, grantID); err == nil {
+		t.Fatal("append-only role grant accepted UPDATE")
+	}
+	if _, err := store.Buy(ctx, mutation(principal, exchange.OperationBuy, "revoked-buy-key-001", "offer"), "offer"); !errors.Is(err, exchange.ErrPermissionDenied) {
+		t.Fatalf("Buy() after revocation error = %v", err)
+	}
+	if _, err := store.CreateSaleOffer(ctx, mutation(principal, exchange.OperationCreateSaleOffer, "revoked-create-key-1", "offer"), exchange.SaleOffer{}); !errors.Is(err, exchange.ErrPermissionDenied) {
+		t.Fatalf("CreateSaleOffer() after revocation error = %v", err)
+	}
+}
+
+func TestResolveFederatedPrincipal(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	id := insertUser(t, pool, "federated")
+	principal, err := store.ResolvePrincipal(context.Background(), "https://issuer.test", string(id))
+	if err != nil || principal.ID != id || principal.ClientClass != exchange.ClientClassAutomated {
+		t.Fatalf("ResolvePrincipal() = %#v, %v", principal, err)
+	}
+}
+
+func TestSuspendedPrincipalCannotResolveOrAuthorize(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	id := insertUser(t, pool, "suspended")
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.principal_suspensions (id, principal_id, suspended_by, reason)
+VALUES ($1, $2, $2, 'Integration test suspension.')`, uniqueID(t, "suspension"), id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ResolvePrincipal(context.Background(), "https://issuer.test", string(id)); err == nil {
+		t.Fatal("ResolvePrincipal() returned a suspended principal")
+	}
+	if err := store.Authorize(context.Background(), access(id, exchange.OperationBuy), exchange.PermissionBuy); !errors.Is(err, exchange.ErrPermissionDenied) {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+}
+
+func TestStreamStopsOnConsumerError(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	seller := insertUser(t, pool, "seller")
+	bond := insertBond(t, pool)
+	insertOffer(t, pool, seller, bond)
+	want := errors.New("consumer stopped")
+	err := store.StreamActiveOffers(context.Background(), access(seller, exchange.OperationListActiveOffers), bond, func(exchange.SaleOffer) error {
+		return want
+	})
+	if !errors.Is(err, want) {
+		t.Fatalf("StreamActiveOffers() error = %v", err)
+	}
+}
+
+func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		code string
+	}{
+		{exchange.ErrBuyerNotFound, "buyer_not_found"},
+		{exchange.ErrOfferUnavailable, "offer_unavailable"},
+		{exchange.ErrOfferAlreadyExists, "offer_already_exists"},
+		{exchange.ErrSellerNotFound, "seller_not_found"},
+		{exchange.ErrBondNotFound, "bond_not_found"},
+	} {
+		code, ok := safeOperationErrorCode(test.err)
+		if !ok || code != test.code || !errors.Is(operationErrorFromCode(code), test.err) {
+			t.Fatalf("mapping %v = %q, %t", test.err, code, ok)
+		}
+	}
+	if _, ok := safeOperationErrorCode(errors.New("unknown")); ok {
+		t.Fatal("unknown error received a safe code")
+	}
+	if operationErrorFromCode("unknown") == nil {
+		t.Fatal("unknown stored code did not fail")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := waitBeforeTransactionRetry(ctx, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitBeforeTransactionRetry() error = %v", err)
+	}
+	original := errors.New("original")
+	if classifyCreateSaleOfferError(original) != original {
+		t.Fatal("non-database error was reclassified")
+	}
+	attempts := 0
+	value, err := retryTransaction(context.Background(), func() (string, error) {
+		attempts++
+		if attempts == 1 {
+			return "", &pgconn.PgError{Code: "40001"}
+		}
+		return "completed", nil
+	})
+	if err != nil || value != "completed" || attempts != 2 {
+		t.Fatalf("retryTransaction() = %q, %v after %d attempts", value, err, attempts)
+	}
+	attempts = 0
+	_, err = retryTransaction(context.Background(), func() (string, error) {
+		attempts++
+		return "", &pgconn.PgError{Code: "40001"}
+	})
+	if err == nil || attempts != 8 {
+		t.Fatalf("exhausted retryTransaction() error = %v after %d attempts", err, attempts)
 	}
 }
 
@@ -335,16 +532,16 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	if err := store.Ping(ctx); err == nil {
 		t.Fatal("Ping() succeeded with closed pool")
 	}
-	if _, err := store.Buy(ctx, "buyer", "offer"); err == nil {
+	if _, err := store.Buy(ctx, mutation("buyer", exchange.OperationBuy, "idempotency-key-1", "offer"), "offer"); err == nil {
 		t.Fatal("Buy() succeeded with closed pool")
 	}
-	if _, err := store.CreateSaleOffer(ctx, exchange.SaleOffer{}); err == nil {
+	if _, err := store.CreateSaleOffer(ctx, mutation("seller", exchange.OperationCreateSaleOffer, "idempotency-key-1", "offer"), exchange.SaleOffer{}); err == nil {
 		t.Fatal("CreateSaleOffer() succeeded with closed pool")
 	}
-	if _, err := store.ActiveOffers(ctx, "BND"); err == nil {
-		t.Fatal("ActiveOffers() succeeded with closed pool")
+	if err := store.StreamActiveOffers(ctx, access("reader", exchange.OperationListActiveOffers), "BND", func(exchange.SaleOffer) error { return nil }); err == nil {
+		t.Fatal("StreamActiveOffers() succeeded with closed pool")
 	}
-	if _, err := store.ActiveBondSeries(ctx); err == nil {
+	if _, err := store.ActiveBondSeries(ctx, access("reader", exchange.OperationListBondSeries)); err == nil {
 		t.Fatal("ActiveBondSeries() succeeded with closed pool")
 	}
 }
@@ -379,7 +576,41 @@ func insertUser(t *testing.T, pool *pgxpool.Pool, prefix string) exchange.UserID
 	if _, err := pool.Exec(context.Background(), `INSERT INTO bond_exchange.users (id) VALUES ($1)`, id); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.principals (id, issuer, subject, client_class)
+VALUES ($1, 'https://issuer.test', $1, 'automated')`, id); err != nil {
+		t.Fatalf("insert principal: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.principal_role_grants (id, principal_id, role_id, granted_by, reason)
+VALUES ($1, $2, 'trader', $2, 'Integration test access.')`, uniqueID(t, "grant"), id); err != nil {
+		t.Fatalf("insert principal role grant: %v", err)
+	}
 	return id
+}
+
+func access(user exchange.UserID, operation string) exchange.AccessContext {
+	return exchange.AccessContext{
+		Principal: exchange.Principal{ID: user, ClientID: "integration-client", ClientClass: exchange.ClientClassAutomated},
+		Operation: operation,
+	}
+}
+
+func mutation(user exchange.UserID, operation, idempotencyKey, request string) exchange.MutationContext {
+	value := access(user, operation)
+	value.RequestDigest = sha256.Sum256([]byte(request))
+	value.AssertionDigest = sha256.Sum256([]byte("fresh assertion: " + idempotencyKey))
+	value.AssertionID = idempotencyKey
+	return exchange.MutationContext{AccessContext: value, IdempotencyKey: idempotencyKey}
+}
+
+func collectOffers(store *Store, access exchange.AccessContext, bond exchange.BondSeries) ([]exchange.SaleOffer, error) {
+	offers := make([]exchange.SaleOffer, 0)
+	err := store.StreamActiveOffers(context.Background(), access, bond, func(offer exchange.SaleOffer) error {
+		offers = append(offers, offer)
+		return nil
+	})
+	return offers, err
 }
 
 func insertBond(t *testing.T, pool *pgxpool.Pool) exchange.BondSeries {

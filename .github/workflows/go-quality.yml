@@ -9,6 +9,7 @@ on:
       - "cmd/**"
       - "db/**"
       - "docs/adr/**"
+      - "docs/security/**"
       - "gen/**"
       - "internal/**"
       - "nix/**"
@@ -28,6 +29,7 @@ on:
       - "cmd/**"
       - "db/**"
       - "docs/adr/**"
+      - "docs/security/**"
       - "gen/**"
       - "internal/**"
       - "nix/**"
@@ -74,6 +76,11 @@ jobs:
           CI: "true"
         run: devenv tasks run dev:smoke
 
+      - name: Check ASVS profile and application security
+        env:
+          CI: "true"
+        run: devenv tasks run security:check
+
       - name: Run coverage gate
         env:
           CI: "true"
@@ -85,6 +92,14 @@ jobs:
         with:
           name: go-coverage
           path: .artifacts/coverage.out
+          if-no-files-found: ignore
+
+      - name: Upload module inventory
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-module-inventory
+          path: .artifacts/go-modules.json
           if-no-files-found: ignore
 
   mutation:

@@ -70,7 +70,9 @@ let
       pkgs.coreutils
       pkgs.curl
       pkgs.grpcurl
+      pkgs.go
       pkgs.jq
+      pkgs.stdenv.cc
       demo
     ];
     text = builtins.readFile ./nix/demo-smoke-check.sh;
@@ -119,6 +121,12 @@ let
       gremlins unleash
     '';
   };
+
+  asvsProfileCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-asvs-profile-check";
+    runtimeInputs = [ pkgs.gawk ];
+    text = builtins.readFile ./nix/asvs-profile-check.sh;
+  };
 in
 {
   packages = [
@@ -135,6 +143,7 @@ in
     pkgs.protoc-gen-go
     pkgs.protoc-gen-go-grpc
     pkgs.shellcheck
+    pkgs.govulncheck
     tlaPlus
     gremlins
     postgresHarness
@@ -181,9 +190,13 @@ in
   };
 
   tasks."api:generate" = {
-    description = "Generate Go, gRPC-Gateway, and Swagger artifacts from Proto3";
+    description = "Generate Go, gRPC-Gateway, Swagger, and descriptor artifacts from Proto3";
     cwd = "./api";
-    exec = "buf generate";
+    exec = ''
+      buf generate
+      mkdir -p descriptors
+      buf build --as-file-descriptor-set -o descriptors/bondexchange.protoset
+    '';
   };
 
   tasks."api:update-deps" = {
@@ -196,13 +209,13 @@ in
     description = "Lint Proto3 and verify that generated API artifacts are current";
     exec = ''
       snapshot_api() {
-        find gen/go api/openapi -type f -print0 2>/dev/null \
+        find gen/go api/openapi api/descriptors -type f -print0 2>/dev/null \
           | sort -z \
           | xargs -0 sha256sum
       }
       before="$(snapshot_api)"
       buf lint api
-      (cd api && buf generate)
+      (cd api && buf generate && mkdir -p descriptors && buf build --as-file-descriptor-set -o descriptors/bondexchange.protoset)
       after="$(snapshot_api)"
       if [ "$before" != "$after" ]; then
         echo "Generated API artifacts were stale; review and commit the regenerated files."
@@ -232,6 +245,23 @@ in
     after = [
       "demo:smoke"
       "go:coverage"
+    ];
+    before = [ "devenv:enterTest" ];
+  };
+
+  tasks."security:check" = {
+    description = "Validate ASVS evidence, inventory Go modules, and scan Go vulnerabilities";
+    exec = ''
+      mkdir -p .artifacts
+      ${asvsProfileCheck}/bin/bond-exchange-asvs-profile-check
+      go list -m -json all > .artifacts/go-modules.json
+      govulncheck ./...
+      go test ./internal/authn ./internal/httpapi ./internal/postgres ./internal/rpcapi
+    '';
+    after = [
+      "api:check"
+      "db:migrate"
+      "spec:check"
     ];
     before = [ "devenv:enterTest" ];
   };

@@ -1,0 +1,347 @@
+# ASVS 5.0.0 Level 3 application profile
+# requirement	level	status	evidence	rationale
+1.1.1	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.1.
+1.1.2	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.1.
+1.2.1	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.2	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.3	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.4	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.5	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.6	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.7	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.8	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.9	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.2.10	3	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.2.
+1.3.1	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.2	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.3	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.4	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.5	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.6	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.7	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.8	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.9	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.10	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.11	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.3.12	3	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.3.
+1.4.1	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.4.
+1.4.2	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.4.
+1.4.3	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.4.
+1.5.1	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.5.
+1.5.2	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.5.
+1.5.3	3	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 1.5.
+2.1.1	1	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.1.
+2.1.2	2	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.1.
+2.1.3	2	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.1.
+2.2.1	1	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.2.
+2.2.2	1	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.2.
+2.2.3	2	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.2.
+2.3.1	1	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
+2.3.2	2	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
+2.3.3	2	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
+2.3.4	2	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
+2.3.5	3	verified	internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
+2.4.1	2	pending-deployment	docs/security/ASVS.md	Per-principal anti-automation and rate limits are reserved for the mesh or sidecar decision.
+2.4.2	3	pending-deployment	docs/security/ASVS.md	Per-principal anti-automation and rate limits are reserved for the mesh or sidecar decision.
+3.1.1	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.2.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.2.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.2.3	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.3.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.3.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.3.3	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.3.4	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.3.5	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.3	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.4	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.5	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.6	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.7	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.4.8	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.3	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.4	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.5	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.6	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.7	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.5.8	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.6.1	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.7.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.7.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.7.3	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.7.4	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+3.7.5	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+4.1.1	1	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 4.1.
+4.1.2	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 4.1.
+4.1.3	2	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 4.1.
+4.1.4	3	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 4.1.
+4.1.5	3	verified	internal/httpapi/handler.go	Application control is implemented and linked to tests and design evidence for section 4.1.
+4.2.1	2	pending-deployment	docs/security/ASVS.md	End-to-end HTTP framing compatibility includes ingress and mesh components.
+4.2.2	3	pending-deployment	docs/security/ASVS.md	End-to-end HTTP framing compatibility includes ingress and mesh components.
+4.2.3	3	pending-deployment	docs/security/ASVS.md	End-to-end HTTP framing compatibility includes ingress and mesh components.
+4.2.4	3	pending-deployment	docs/security/ASVS.md	End-to-end HTTP framing compatibility includes ingress and mesh components.
+4.2.5	3	pending-deployment	docs/security/ASVS.md	End-to-end HTTP framing compatibility includes ingress and mesh components.
+4.3.1	2	not-applicable	-	No GraphQL, WebSocket, or equivalent endpoint.
+4.3.2	2	not-applicable	-	No GraphQL, WebSocket, or equivalent endpoint.
+4.4.1	1	not-applicable	-	No GraphQL, WebSocket, or equivalent endpoint.
+4.4.2	2	not-applicable	-	No GraphQL, WebSocket, or equivalent endpoint.
+4.4.3	2	not-applicable	-	No GraphQL, WebSocket, or equivalent endpoint.
+4.4.4	2	not-applicable	-	No GraphQL, WebSocket, or equivalent endpoint.
+5.1.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.2.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.2.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.2.3	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.2.4	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.2.5	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.2.6	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.3.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.3.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.3.3	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.4.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.4.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+5.4.3	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+6.1.1	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.1.
+6.1.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.1.
+6.1.3	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.1.
+6.2.1	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.2	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.3	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.4	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.5	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.6	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.7	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.8	1	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.9	2	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.10	2	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.11	2	not-applicable	-	The service does not process passwords; authentication is federated.
+6.2.12	2	not-applicable	-	The service does not process passwords; authentication is federated.
+6.3.1	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.3.2	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.3.3	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.3.4	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.3.5	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.3.6	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.3.7	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.3.8	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.3.
+6.4.1	1	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.4.2	1	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.4.3	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.4.4	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.4.5	3	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.4.6	3	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.1	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.2	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.3	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.4	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.5	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.6	3	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.7	3	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.5.8	3	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.6.1	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.6.2	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.6.3	2	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.6.4	3	pending-external-identity	docs/security/ASVS.md	Authentication-factor lifecycle is owned by the federated identity system.
+6.7.1	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.7.
+6.7.2	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.7.
+6.8.1	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.8.
+6.8.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.8.
+6.8.3	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.8.
+6.8.4	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 6.8.
+7.1.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.1.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.1.3	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.2.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.2.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.2.3	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.2.4	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.3.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.3.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.4.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.4.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.4.3	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.4.4	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.4.5	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.5.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.5.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.5.3	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.6.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+7.6.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+8.1.1	1	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.1.
+8.1.2	2	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.1.
+8.1.3	3	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.1.
+8.1.4	3	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.1.
+8.2.1	1	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.2.
+8.2.2	1	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.2.
+8.2.3	2	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.2.
+8.2.4	3	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.2.
+8.3.1	1	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.3.
+8.3.2	3	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.3.
+8.3.3	3	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.3.
+8.4.1	2	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.4.
+8.4.2	3	verified	internal/postgres/store.go	Application control is implemented and linked to tests and design evidence for section 8.4.
+9.1.1	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 9.1.
+9.1.2	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 9.1.
+9.1.3	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 9.1.
+9.2.1	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 9.2.
+9.2.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 9.2.
+9.2.3	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 9.2.
+9.2.4	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 9.2.
+10.1.1	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 10.1.
+10.1.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 10.1.
+10.2.1	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.2.2	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.2.3	3	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.3.1	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 10.3.
+10.3.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 10.3.
+10.3.3	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 10.3.
+10.3.4	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 10.3.
+10.3.5	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 10.3.
+10.4.1	1	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.2	1	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.3	1	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.4	1	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.5	1	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.6	2	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.7	2	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.8	2	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.9	2	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.10	2	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.11	2	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.12	3	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.13	3	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.14	3	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.15	3	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.4.16	3	pending-external-identity	docs/security/ASVS.md	Authorization-server behavior is outside this resource service.
+10.5.1	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.5.2	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.5.3	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.5.4	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.5.5	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.6.1	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.6.2	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.7.1	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.7.2	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+10.7.3	2	not-applicable	-	The service is not an OAuth client, OIDC client, OpenID Provider, or consent service.
+11.1.1	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.1.
+11.1.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.1.
+11.1.3	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.1.
+11.1.4	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.1.
+11.2.1	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.2.
+11.2.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.2.
+11.2.3	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.2.
+11.2.4	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.2.
+11.2.5	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.2.
+11.3.1	1	not-applicable	-	The application performs no reversible encryption.
+11.3.2	1	not-applicable	-	The application performs no reversible encryption.
+11.3.3	2	not-applicable	-	The application performs no reversible encryption.
+11.3.4	3	not-applicable	-	The application performs no reversible encryption.
+11.3.5	3	not-applicable	-	The application performs no reversible encryption.
+11.4.1	1	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.4.
+11.4.2	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.4.
+11.4.3	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.4.
+11.4.4	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.4.
+11.5.1	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.5.
+11.5.2	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.5.
+11.6.1	2	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.6.
+11.6.2	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.6.
+11.7.1	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.7.
+11.7.2	3	verified	internal/authn/authenticator.go	Application control is implemented and linked to tests and design evidence for section 11.7.
+12.1.1	1	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.1.2	2	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.1.3	2	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.1.4	3	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.1.5	3	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.2.1	1	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.2.2	1	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.3.1	2	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.3.2	2	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.3.3	2	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.3.4	2	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+12.3.5	3	pending-deployment	docs/security/ASVS.md	TLS and workload communication controls require a deployment architecture decision.
+13.1.1	2	verified	cmd/server/main.go	Application control is implemented and linked to tests and design evidence for section 13.1.
+13.1.2	3	verified	cmd/server/main.go	Application control is implemented and linked to tests and design evidence for section 13.1.
+13.1.3	3	verified	cmd/server/main.go	Application control is implemented and linked to tests and design evidence for section 13.1.
+13.1.4	3	verified	cmd/server/main.go	Application control is implemented and linked to tests and design evidence for section 13.1.
+13.2.1	2	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.2.2	2	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.2.3	2	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.2.4	2	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.2.5	2	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.2.6	3	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.3.1	2	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.3.2	2	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.3.3	3	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.3.4	3	pending-deployment	docs/security/ASVS.md	Backend trust and secret delivery require a deployment architecture decision.
+13.4.1	1	pending-deployment	docs/security/ASVS.md	Production packaging and exposure require a deployment architecture decision.
+13.4.2	2	pending-deployment	docs/security/ASVS.md	Production packaging and exposure require a deployment architecture decision.
+13.4.3	2	verified	cmd/server/main.go	Application control is implemented and linked to tests and design evidence for section 13.4.
+13.4.4	2	verified	cmd/server/main.go	Application control is implemented and linked to tests and design evidence for section 13.4.
+13.4.5	2	pending-deployment	docs/security/ASVS.md	Production packaging and exposure require a deployment architecture decision.
+13.4.6	3	verified	cmd/server/main.go	Application control is implemented and linked to tests and design evidence for section 13.4.
+13.4.7	3	pending-deployment	docs/security/ASVS.md	Production packaging and exposure require a deployment architecture decision.
+14.1.1	2	verified	api/proto/bondexchange/v1/bond_exchange.proto	Application control is implemented and linked to tests and design evidence for section 14.1.
+14.1.2	2	verified	api/proto/bondexchange/v1/bond_exchange.proto	Application control is implemented and linked to tests and design evidence for section 14.1.
+14.2.1	1	verified	api/proto/bondexchange/v1/bond_exchange.proto	Application control is implemented and linked to tests and design evidence for section 14.2.
+14.2.2	2	pending-deployment	docs/security/ASVS.md	Storage, log access, and retention enforcement require deployment policy.
+14.2.3	2	verified	api/proto/bondexchange/v1/bond_exchange.proto	Application control is implemented and linked to tests and design evidence for section 14.2.
+14.2.4	2	pending-deployment	docs/security/ASVS.md	Storage, log access, and retention enforcement require deployment policy.
+14.2.5	3	verified	api/proto/bondexchange/v1/bond_exchange.proto	Application control is implemented and linked to tests and design evidence for section 14.2.
+14.2.6	3	verified	api/proto/bondexchange/v1/bond_exchange.proto	Application control is implemented and linked to tests and design evidence for section 14.2.
+14.2.7	3	pending-deployment	docs/security/ASVS.md	Storage, log access, and retention enforcement require deployment policy.
+14.2.8	3	verified	api/proto/bondexchange/v1/bond_exchange.proto	Application control is implemented and linked to tests and design evidence for section 14.2.
+14.3.1	1	not-applicable	-	No browser or other client-side application is in scope.
+14.3.2	2	not-applicable	-	No browser or other client-side application is in scope.
+14.3.3	2	not-applicable	-	No browser or other client-side application is in scope.
+15.1.1	1	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.1.
+15.1.2	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.1.
+15.1.3	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.1.
+15.1.4	3	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.1.
+15.1.5	3	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.1.
+15.2.1	1	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.2.
+15.2.2	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.2.
+15.2.3	2	pending-deployment	docs/security/ASVS.md	Production packaging and exclusion of development tooling require a deployment architecture decision.
+15.2.4	3	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.2.
+15.2.5	3	pending-deployment	docs/security/ASVS.md	Runtime isolation around dangerous parsing and cryptographic boundaries requires a deployment architecture decision.
+15.3.1	1	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.3.
+15.3.2	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.3.
+15.3.3	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.3.
+15.3.4	2	pending-deployment	docs/security/ASVS.md	Trusted proxy identity and original client address handling require an ingress or mesh decision.
+15.3.5	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.3.
+15.3.6	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.3.
+15.3.7	2	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.3.
+15.4.1	3	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.4.
+15.4.2	3	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.4.
+15.4.3	3	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.4.
+15.4.4	3	verified	docs/security/ASVS.md	Application control is implemented and linked to tests and design evidence for section 15.4.
+16.1.1	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.1.
+16.2.1	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.2.
+16.2.2	2	pending-deployment	docs/security/ASVS.md	Clock synchronization is a runtime and infrastructure responsibility.
+16.2.3	2	pending-deployment	docs/security/ASVS.md	Approved log destinations depend on the telemetry collector and runtime configuration.
+16.2.4	2	pending-deployment	docs/security/ASVS.md	The application emits JSON, but compatibility with the selected log processor requires deployment verification.
+16.2.5	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.2.
+16.3.1	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.3.
+16.3.2	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.3.
+16.3.3	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.3.
+16.3.4	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.3.
+16.4.1	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.4.
+16.4.2	2	pending-deployment	docs/security/ASVS.md	Immutable external log transport and storage require deployment architecture.
+16.4.3	2	pending-deployment	docs/security/ASVS.md	Immutable external log transport and storage require deployment architecture.
+16.5.1	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.5.
+16.5.2	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.5.
+16.5.3	2	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.5.
+16.5.4	3	verified	internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.5.
+17.1.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.1.2	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.3	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.4	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.5	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.6	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.7	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.2.8	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.3.1	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
+17.3.2	2	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.

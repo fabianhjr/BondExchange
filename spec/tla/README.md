@@ -2,8 +2,9 @@
 
 This directory contains a deliberately small marketplace model:
 
-- `BondExchangeActions.tla` defines the domain, active sale offers, completed
-  purchases, validation, publishing action, and buying action.
+- `BondExchangeActions.tla` defines the domain, active sale offers, binding
+  order/reservation records, authorized idempotent operations, validation,
+  publishing action, and buying action.
 - `BondExchange.tla` defines the possible initial sale books and composes the
   publishing and buying actions into the temporal specification.
 - `BondExchange.cfg` provides a finite instance for exhaustive TLC checking.
@@ -15,7 +16,10 @@ This directory contains a deliberately small marketplace model:
   is between 3 and 40 characters, inclusive.
 - A sale offer has a unique ID, a seller, a bond, a positive price, and one
   currency code.
-- A completed purchase relates the purchased offer to the user who bought it.
+- A purchase fact relates the reserved offer to the user who placed the
+  binding order. It does not assert settlement or ownership transfer.
+- An operation result records its principal, client, operation, idempotency
+  key, abstract request digest, and resulting offer ID.
 
 `Prices` uses positive natural numbers in the finite TLC instance as abstract
 representatives of positive exact monetary values. Decimal precision,
@@ -33,16 +37,19 @@ identifiers and verifies that their stored representation is uppercase.
 
 ## Behavior
 
-`CreateSaleOffer(seller, bond, offerId, price, currency)` publishes a new active
-sale offer. It requires valid domain values and an ID that has never appeared
-in either the active book or purchase history. Creation appends the offer and
-does not change completed purchases.
+`CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price,
+currency)` publishes a new active sale offer. It requires authorization, a new
+idempotency scope, valid domain values, and an ID that has never appeared in
+either the active book or purchase history. Creation appends the offer and its
+operation result and does not change purchase facts.
 
-`Buy(buyer, offerId)` is enabled only when the buyer is a user and exactly one
+`Buy(buyer, client, key, requestDigest, offerId)` is enabled only when the
+principal/client is authorized, the idempotency scope is new, and exactly one
 active sale offer has the requested ID. The action atomically removes that
-offer from the active sale book and records a completed purchase containing
-the unchanged offer and its buyer. An empty active sale book remains valid, so
-the TLC configuration does not treat it as a deadlock error.
+offer from the active sale book and records a purchase fact and operation
+result. `RetryCompletedOperation` permits only the same request digest for an
+existing scope and leaves all domain state unchanged. Reusing a scope for a
+different digest has no enabled transition.
 
 Bond-specific offer listing and active-series discovery are derived reads and
 do not change model state. HTTP parameters, SQL queries, ordering, and input
@@ -51,14 +58,15 @@ canonicalization remain implementation-boundary concerns.
 The model does not prohibit a seller from buying their own offer.
 
 There are intentionally no buy offers, matching engine, balances, holdings,
-partial fills, order publication, ownership transfer, or settlement process in
-this model.
+partial fills, order publication, ownership transfer, cancellation, expiry, or
+settlement process in this model. Settlement semantics remain pending.
 
 ## Verification
 
-TLC checks through interleaved creation and buying that every reachable active
-sale-offer and completed-purchase set is well formed, that offer IDs remain
-unique, and that an offer cannot be both active and purchased:
+TLC checks through interleaved creation, buying, and retry that every reachable
+state is well formed, offer IDs and operation scopes remain unique, an offer
+cannot be both active and purchased, and every completed operation was
+authorized:
 
 ```console
 devenv tasks run spec:check

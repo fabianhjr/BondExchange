@@ -9,6 +9,8 @@ import (
 )
 
 const (
+	MinIdentifierLength     = 1
+	MaxIdentifierLength     = 128
 	MinBondSeriesLength     = 3
 	MaxBondSeriesLength     = 40
 	MonetaryAmountPrecision = 14
@@ -18,11 +20,11 @@ const (
 var maxMonetaryAmount = decimal.New(99_999_999_999_999, -MonetaryAmountScale)
 
 var (
-	ErrInvalidUserID       = errors.New("user ID must not be empty")
-	ErrInvalidOfferID      = errors.New("sale-offer ID must not be empty")
+	ErrInvalidUserID       = errors.New("user ID must contain 1-128 visible ASCII characters")
+	ErrInvalidOfferID      = errors.New("sale-offer ID must contain 1-128 visible ASCII characters")
 	ErrInvalidBondSeries   = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
 	ErrInvalidPrice        = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
-	ErrInvalidCurrencyCode = errors.New("currency code must not be empty")
+	ErrInvalidCurrencyCode = errors.New("currency code must contain exactly three uppercase ASCII letters")
 	ErrBuyerNotFound       = errors.New("buyer does not exist")
 	ErrSellerNotFound      = errors.New("seller does not exist")
 	ErrBondNotFound        = errors.New("bond series does not exist")
@@ -33,7 +35,7 @@ var (
 type UserID string
 
 func ParseUserID(value string) (UserID, error) {
-	if value == "" {
+	if !isVisibleASCIIIdentifier(value) {
 		return "", ErrInvalidUserID
 	}
 	return UserID(value), nil
@@ -42,7 +44,7 @@ func ParseUserID(value string) (UserID, error) {
 type OfferID string
 
 func ParseOfferID(value string) (OfferID, error) {
-	if value == "" {
+	if !isVisibleASCIIIdentifier(value) {
 		return "", ErrInvalidOfferID
 	}
 	return OfferID(value), nil
@@ -85,10 +87,27 @@ func ParsePrice(value string) (decimal.Decimal, error) {
 type CurrencyCode string
 
 func ParseCurrencyCode(value string) (CurrencyCode, error) {
-	if value == "" {
+	if len(value) != 3 {
 		return "", ErrInvalidCurrencyCode
 	}
+	for index := 0; index < len(value); index++ {
+		if value[index] < 'A' || value[index] > 'Z' {
+			return "", ErrInvalidCurrencyCode
+		}
+	}
 	return CurrencyCode(value), nil
+}
+
+func isVisibleASCIIIdentifier(value string) bool {
+	if len(value) < MinIdentifierLength || len(value) > MaxIdentifierLength {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		if value[index] < 0x21 || value[index] > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 type SaleOffer struct {

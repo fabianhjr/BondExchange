@@ -3,12 +3,14 @@ package rpcapi
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"slices"
 	"testing"
 	"time"
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/gen/go/bondexchange/v1"
+	"github.com/fabianhjr/BondExchange/internal/authn"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/shopspring/decimal"
 	"google.golang.org/grpc"
@@ -27,10 +29,8 @@ type applicationStub struct {
 	listErr        error
 	series         []exchange.BondSeries
 	seriesErr      error
-	buyer          string
 	buyOffer       string
 	createID       string
-	createSeller   string
 	createBond     string
 	createPrice    string
 	createCurrency string
@@ -39,45 +39,81 @@ type applicationStub struct {
 
 func (application *applicationStub) Buy(
 	_ context.Context,
-	buyer string,
+	_ exchange.AccessContext,
+	_ string,
 	offer string,
 ) (exchange.Purchase, error) {
-	application.buyer = buyer
 	application.buyOffer = offer
 	return application.purchase, application.buyErr
 }
 
 func (application *applicationStub) CreateSaleOffer(
 	_ context.Context,
+	_ exchange.AccessContext,
+	_ string,
 	id string,
-	seller string,
 	bond string,
 	price string,
 	currency string,
 ) (exchange.SaleOffer, error) {
 	application.createID = id
-	application.createSeller = seller
 	application.createBond = bond
 	application.createPrice = price
 	application.createCurrency = currency
 	return application.created, application.createErr
 }
 
-func (application *applicationStub) ActiveOffers(
+func (application *applicationStub) StreamActiveOffers(
 	_ context.Context,
+	_ exchange.AccessContext,
 	bond string,
-) ([]exchange.SaleOffer, error) {
+	yield func(exchange.SaleOffer) error,
+) error {
 	application.bond = bond
-	return application.offers, application.listErr
+	if application.listErr != nil {
+		return application.listErr
+	}
+	for _, offer := range application.offers {
+		if err := yield(offer); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (application *applicationStub) ActiveBondSeries(context.Context) ([]exchange.BondSeries, error) {
+func (application *applicationStub) ActiveBondSeries(context.Context, exchange.AccessContext) ([]exchange.BondSeries, error) {
 	return application.series, application.seriesErr
 }
 
-type healthStub struct{ err error }
+type healthStub struct {
+	err          error
+	authorizeErr error
+}
 
 func (health healthStub) Ping(context.Context) error { return health.err }
+func (health healthStub) Authorize(context.Context, exchange.AccessContext, string) error {
+	return health.authorizeErr
+}
+
+type authenticatorStub struct{ err error }
+
+func (stub authenticatorStub) Authenticate(_ context.Context, operation string, _ []byte, idempotent bool) (authn.Result, error) {
+	if stub.err != nil {
+		return authn.Result{}, stub.err
+	}
+	result := authn.Result{AccessContext: exchange.AccessContext{
+		Principal: exchange.Principal{ID: "principal-1", ClientID: "client-1"},
+		Operation: operation,
+	}}
+	if idempotent {
+		result.IdempotencyKey = "idempotency-key-1"
+	}
+	return result, nil
+}
+
+func testServer(application Application, health HealthChecker) *Server {
+	return NewServer(application, health, authenticatorStub{})
+}
 
 func TestGRPCServer(t *testing.T) {
 	t.Parallel()
@@ -105,19 +141,18 @@ func TestGRPCServer(t *testing.T) {
 		offers: []exchange.SaleOffer{{ID: "offer-2"}},
 		series: []exchange.BondSeries{"BND1", "GOV1"},
 	}
-	client := newClient(t, NewServer(application, healthStub{}))
+	client := newClient(t, testServer(application, healthStub{}))
 
 	purchase, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{
-		BuyerId:     "buyer-1",
 		SaleOfferId: "offer-1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if application.buyer != "buyer-1" || application.buyOffer != "offer-1" {
-		t.Fatalf("application received buyer %q and offer %q", application.buyer, application.buyOffer)
+	if application.buyOffer != "offer-1" {
+		t.Fatalf("application received offer %q", application.buyOffer)
 	}
-	if purchase.GetOffer().GetPrice() != "100.25" || purchase.GetBuyerId() != "buyer-1" {
+	if purchase.GetOffer().GetPrice() != "100.25" {
 		t.Fatalf("purchase = %v", purchase)
 	}
 	if !purchase.GetBoughtAt().AsTime().Equal(boughtAt) {
@@ -126,7 +161,6 @@ func TestGRPCServer(t *testing.T) {
 
 	created, err := client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{
 		Id:           "offer-2",
-		SellerId:     "seller-1",
 		BondSeries:   "bnd1",
 		Price:        "99.75",
 		CurrencyCode: "USD",
@@ -137,8 +171,7 @@ func TestGRPCServer(t *testing.T) {
 	if created.GetOffer().GetId() != "offer-2" || created.GetOffer().GetPrice() != "99.75" {
 		t.Fatalf("created offer = %v", created)
 	}
-	if application.createID != "offer-2" || application.createSeller != "seller-1" ||
-		application.createBond != "bnd1" || application.createPrice != "99.75" ||
+	if application.createID != "offer-2" || application.createBond != "bnd1" || application.createPrice != "99.75" ||
 		application.createCurrency != "USD" {
 		t.Fatalf("create input = %#v", application)
 	}
@@ -147,8 +180,16 @@ func TestGRPCServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(offers.GetOffers()) != 1 || offers.GetOffers()[0].GetId() != "offer-2" {
-		t.Fatalf("offers = %v", offers)
+	firstOffer, err := offers.Recv()
+	if err != nil || firstOffer.GetOffer().GetId() != "offer-2" {
+		t.Fatalf("first stream event = %v, %v", firstOffer, err)
+	}
+	complete, err := offers.Recv()
+	if err != nil || complete.GetComplete().GetOfferCount() != 1 {
+		t.Fatalf("complete stream event = %v, %v", complete, err)
+	}
+	if _, err := offers.Recv(); !errors.Is(err, io.EOF) {
+		t.Fatalf("stream terminal error = %v", err)
 	}
 	if application.bond != "bnd" {
 		t.Fatalf("application received bond %q", application.bond)
@@ -182,12 +223,12 @@ func TestGRPCErrors(t *testing.T) {
 		{name: "canceled", err: context.Canceled, code: codes.Canceled},
 		{name: "deadline", err: context.DeadlineExceeded, code: codes.DeadlineExceeded},
 		{name: "invalid", err: exchange.ErrInvalidUserID, code: codes.InvalidArgument},
-		{name: "not found", err: exchange.ErrBuyerNotFound, code: codes.NotFound},
+		{name: "identity inconsistency", err: exchange.ErrBuyerNotFound, code: codes.Internal},
 		{name: "internal", err: errors.New("boom"), code: codes.Internal},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			client := newClient(t, NewServer(&applicationStub{buyErr: test.err}, healthStub{}))
+			client := newClient(t, testServer(&applicationStub{buyErr: test.err}, healthStub{}))
 			_, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{})
 			if status.Code(err) != test.code {
 				t.Fatalf("code = %s, want %s", status.Code(err), test.code)
@@ -195,8 +236,11 @@ func TestGRPCErrors(t *testing.T) {
 		})
 	}
 
-	client := newClient(t, NewServer(&applicationStub{listErr: exchange.ErrInvalidBondSeries}, healthStub{}))
-	_, err := client.ListActiveOffers(context.Background(), &bondexchangev1.ListActiveOffersRequest{})
+	client := newClient(t, testServer(&applicationStub{listErr: exchange.ErrInvalidBondSeries}, healthStub{}))
+	stream, err := client.ListActiveOffers(context.Background(), &bondexchangev1.ListActiveOffersRequest{})
+	if err == nil {
+		_, err = stream.Recv()
+	}
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("list code = %s", status.Code(err))
 	}
@@ -207,13 +251,13 @@ func TestGRPCErrors(t *testing.T) {
 		code codes.Code
 	}{
 		{name: "invalid", err: exchange.ErrInvalidPrice, code: codes.InvalidArgument},
-		{name: "missing seller", err: exchange.ErrSellerNotFound, code: codes.NotFound},
+		{name: "missing seller", err: exchange.ErrSellerNotFound, code: codes.Internal},
 		{name: "missing bond", err: exchange.ErrBondNotFound, code: codes.NotFound},
 		{name: "duplicate", err: exchange.ErrOfferAlreadyExists, code: codes.AlreadyExists},
 		{name: "internal", err: errors.New("boom"), code: codes.Internal},
 	} {
 		t.Run("create "+test.name, func(t *testing.T) {
-			client := newClient(t, NewServer(&applicationStub{createErr: test.err}, healthStub{}))
+			client := newClient(t, testServer(&applicationStub{createErr: test.err}, healthStub{}))
 			_, err := client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{})
 			if status.Code(err) != test.code {
 				t.Fatalf("code = %s, want %s", status.Code(err), test.code)
@@ -221,16 +265,49 @@ func TestGRPCErrors(t *testing.T) {
 		})
 	}
 
-	client = newClient(t, NewServer(&applicationStub{seriesErr: errors.New("boom")}, healthStub{}))
+	client = newClient(t, testServer(&applicationStub{seriesErr: errors.New("boom")}, healthStub{}))
 	_, err = client.ListActiveBondSeries(context.Background(), &bondexchangev1.ListActiveBondSeriesRequest{})
 	if status.Code(err) != codes.Internal {
 		t.Fatalf("series code = %s", status.Code(err))
 	}
 
-	client = newClient(t, NewServer(&applicationStub{}, healthStub{err: errors.New("down")}))
+	client = newClient(t, testServer(&applicationStub{}, healthStub{err: errors.New("down")}))
 	_, err = client.CheckHealth(context.Background(), &bondexchangev1.CheckHealthRequest{})
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("health code = %s", status.Code(err))
+	}
+}
+
+func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
+	t.Parallel()
+	client := newClient(t, NewServer(&applicationStub{}, healthStub{}, authenticatorStub{err: exchange.ErrUnauthenticated}))
+	assertUnauthenticated := func(err error) {
+		t.Helper()
+		if status.Code(err) != codes.Unauthenticated || status.Convert(err).Message() != "authentication required" {
+			t.Fatalf("authentication error = %v", err)
+		}
+	}
+	_, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{SaleOfferId: "offer-1"})
+	assertUnauthenticated(err)
+	_, err = client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{})
+	assertUnauthenticated(err)
+	stream, err := client.ListActiveOffers(context.Background(), &bondexchangev1.ListActiveOffersRequest{Bond: "BND"})
+	if err == nil {
+		_, err = stream.Recv()
+	}
+	assertUnauthenticated(err)
+	_, err = client.ListActiveBondSeries(context.Background(), &bondexchangev1.ListActiveBondSeriesRequest{})
+	assertUnauthenticated(err)
+	_, err = client.CheckHealth(context.Background(), &bondexchangev1.CheckHealthRequest{})
+	assertUnauthenticated(err)
+}
+
+func TestGRPCHealthAuthorizationFailure(t *testing.T) {
+	t.Parallel()
+	client := newClient(t, testServer(&applicationStub{}, healthStub{authorizeErr: exchange.ErrPermissionDenied}))
+	_, err := client.CheckHealth(context.Background(), &bondexchangev1.CheckHealthRequest{})
+	if status.Code(err) != codes.PermissionDenied || status.Convert(err).Message() != "operation not permitted" {
+		t.Fatalf("authorization error = %v", err)
 	}
 }
 

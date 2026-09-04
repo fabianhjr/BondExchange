@@ -24,3 +24,5 @@ Alternatives considered sections.
 - [ADR-0006: Use Proto3 for the REST and gRPC API](0006-use-protobuf-for-rest-and-grpc-api.md)
 - [ADR-0007: Publish and discover sale offers through the API](0007-publish-and-discover-sale-offers.md)
 - [ADR-0008: Use isolated PostgreSQL lifecycles for tests and demos](0008-use-isolated-postgresql-lifecycles.md)
+- [ADR-0009: Bind federated authorization to idempotent operations](0009-bind-federated-authorization-to-idempotent-operations.md)
+- [ADR-0010: Replace runtime gRPC reflection with a versioned descriptor set](0010-replace-runtime-reflection-with-descriptor-set.md)
