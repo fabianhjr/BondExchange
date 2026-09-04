@@ -53,6 +53,13 @@ adapter. Transport types do not enter the domain or PostgreSQL packages.
 The API deliberately has no method for creating users or bonds yet. Those
 facts must be provisioned separately before publishing or buying sale offers.
 
+The repository also contains an internal Banxico SIE exchange-rate module. It
+fetches explicitly mapped currency series through the SIE latest-data and
+historical-range endpoints, parses values as exact decimals, and persists both
+the bounded source response and normalized observations in PostgreSQL. This
+module is not exposed by the REST or gRPC service and does not reprice offers or
+change purchase behavior.
+
 ## Run locally
 
 Start a complete disposable demo environment with one command:
@@ -149,6 +156,51 @@ binary floating-point numbers. A price must be greater than zero and fit ten
 integer and four fractional digits (maximum `9999999999.9999`); its currency
 remains explicit in `currency_code`.
 
+## Banxico SIE exchange rates
+
+`internal/exchangerates` owns provider-neutral types and the on-demand fetch
+workflow. `internal/sie` is the fixed-origin HTTPS adapter for
+`https://www.banxico.org.mx`, and `internal/postgres/exchange_rates.go` provides
+durable observations, coverage, leases, and provider-wide cooldown state. A
+caller supplies an explicit mapping from each SIE series ID to its base and
+quote currencies; titles returned by Banxico are not used to infer quote
+direction.
+
+`Latest` treats data as fresh for 15 minutes by default. One server instance
+claims an expired series/currency mapping in PostgreSQL before leaving the
+transaction to call SIE. Another instance returns a stored stale value or
+waits for a cold cache.
+`Range` expands requests into calendar-month coverage units, batches up to 20
+series sharing a period, and never refetches a successfully imported closed
+month. Empty successful ranges still establish coverage for weekends and
+holidays. `RevalidateRange` explicitly checks durable history again.
+
+Every successful upstream response is retained as an append-only import.
+Normalized observations are also append-only and a value equal to the current
+revision is ignored. If a historical value changes, the new value becomes the
+current revision while the prior value remains available as provenance. Cache
+and lease coordination is mutable operational state rather than a domain fact.
+
+Create the SIE client with a 64-character token obtained from Banxico. The
+client sends it only in the `Bmx-Token` header and never persists or logs it.
+The production origin is not configurable. Callers may inject an HTTP
+transport for tests.
+
+Offline parser tests replay the fixtures under
+`internal/sie/testdata/recordings`. The checked-in `.example.json` fixture is
+derived from Banxico's published documentation and is clearly labeled as such.
+To capture two real interactions—a latest FIX observation and a fixed
+historical range—into a sanitized cassette, run:
+
+```console
+BANXICO_SIE_TOKEN=... devenv tasks run sie:record
+```
+
+Recording is explicit and is never part of CI. The recorder rejects a response
+that echoes the supplied token, records the request credential only as
+`<REDACTED>`, retains only selected response headers, and writes the sanitized
+file atomically. Review the resulting `banxico_sie.json` before committing it.
+
 ## Verification
 
 Run focused checks with devenv tasks:
@@ -165,6 +217,10 @@ devenv tasks run go:coverage
 devenv tasks run go:mutation
 devenv tasks run security:check
 ```
+
+`sie:record` is intentionally omitted from the normal verification graph
+because it requires a real credential and external network access. Its output
+is exercised offline by `go:test`, coverage, and mutation checks.
 
 After editing the Proto3 source, regenerate every checked-in API artifact with
 `devenv tasks run api:generate`. `api:check` lints the contract and fails when

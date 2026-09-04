@@ -74,7 +74,7 @@
 | --- | --- |
 | Repository root | Project guidance, contributor documentation, and the devenv configuration. |
 | `api/` and `gen/go/` | Proto3 API source, generated Swagger contract, and generated Go transport bindings. |
-| `cmd/` and `internal/` | Stateless Go server, demo-only assertion issuer, domain logic, authentication, integration-event delivery orchestration, REST/gRPC adapters, and PostgreSQL adapter. |
+| `cmd/` and `internal/` | Stateless Go server, demo-only assertion issuer, domain logic, authentication, Banxico SIE exchange-rate ingestion and caching, integration-event delivery orchestration, REST/gRPC adapters, and PostgreSQL adapter. |
 | `db/` | Versioned database schema, disposable demo fixtures, and persistence documentation. |
 | `nix/` | Nix-packaged PostgreSQL lifecycle, demo, and development verification helpers. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |

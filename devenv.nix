@@ -237,6 +237,17 @@ in
     ];
   };
 
+  tasks."sie:record" = {
+    description = "Refresh sanitized Banxico SIE HTTP recordings (requires BANXICO_SIE_TOKEN)";
+    exec = ''
+      if [ -z "''${BANXICO_SIE_TOKEN:-}" ]; then
+        echo "BANXICO_SIE_TOKEN is required to record live SIE interactions." >&2
+        exit 1
+      fi
+      go test ./internal/sie -run '^TestRecordLiveSIE$' -count=1
+    '';
+  };
+
   tasks."go:coverage" = {
     description = "Require at least 95% statement coverage for internal Go packages";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${goCoverage}/bin/bond-exchange-go-coverage";

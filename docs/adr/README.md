@@ -29,3 +29,4 @@ Alternatives considered sections.
 - [ADR-0011: Use minimal transactional references for integration events](0011-use-minimal-transactional-event-references.md)
 - [ADR-0012: Use curated golangci-lint static analysis](0012-use-curated-golangci-lint.md)
 - [ADR-0013: Require 95 percent test quality gates](0013-require-95-percent-test-quality-gates.md)
+- [ADR-0014: Persist and coordinate Banxico SIE exchange rates](0014-persist-and-coordinate-banxico-sie-exchange-rates.md)
