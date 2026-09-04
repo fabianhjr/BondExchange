@@ -166,11 +166,12 @@ current gates either accept or do not cover.
   cadence, reports failures to an owner, and retains or publishes the evidence
   needed by the response policy.
 
-### F-013 — Governance-only changes bypass CI path filters (P3)
+### F-013 — Governance and FMEA-only changes bypass CI path filters (P3)
 
 - **Evidence:** The workflow filters include `README.md`, ADRs, and security
-  docs, but not `AGENTS.md` or this file. A change only to repository guidance
-  or the friction register therefore starts neither workflow.
+  docs, but not `AGENTS.md`, this file, or `docs/FMEA.md`. A change only to
+  repository guidance, the friction register, or the failure analysis therefore
+  starts neither workflow.
 - **Impact:** Important process claims can change without even the inexpensive
   formatting, migration, API, or specification consistency checks running.
 - **Complete when:** Governance documents trigger an appropriate documentation

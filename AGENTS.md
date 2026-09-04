@@ -11,7 +11,8 @@
   that is not implemented or verified.
 - Treat TLA+ modules, TLC configurations, Nix/devenv configuration, and GitHub
   Actions workflows as implementation for this rule. Treat root and scoped
-  READMEs, `FRICTIONS.md`, and ADRs as documentation.
+  READMEs, `FRICTIONS.md`, `docs/FMEA.md`, the security profile, and ADRs as
+  documentation.
 - Include both implementation impact and documentation impact when planning a
   change. If one side needs no edit, still verify that it remains accurate.
 - Record architecture-level decisions or changes in `docs/adr/`.
@@ -34,6 +35,29 @@
   TLA+ specification, migrations, configuration, and CI. If an apparent
   friction is an intentional long-term constraint, document that decision in
   the appropriate durable document and adjust the register accordingly.
+
+## Maintain the failure mode and effects analysis
+
+- Treat `docs/FMEA.md` as the living, system-level analysis of how the service
+  can fail, the effects of each failure, current prevention and detection
+  controls, residual risk, and required follow-up.
+- Review the FMEA whenever work is planned or completed. Update it in the same
+  change when functionality, data flows, dependencies, deployment assumptions,
+  controls, tests, operating procedures, or known incidents change a failure
+  mode, effect, cause, score, action, or status. Include FMEA impact in plans
+  alongside implementation, documentation, and friction impact.
+- Score residual risk after current verified controls using the rubric in the
+  FMEA. Do not lower occurrence or detection scores without implementation,
+  test, monitoring, or operational evidence. A low risk-priority number does
+  not waive explicit review of a high-severity effect.
+- Keep FMEA actions synchronized with `FRICTIONS.md`, the ASVS profile, ADRs,
+  READMEs, the TLA+ specification, migrations, configuration, and CI. The FMEA
+  analyzes failure paths; `FRICTIONS.md` remains the source of truth for
+  verified unresolved rough edges and their completion conditions.
+- Give new failure modes stable, sequential identifiers. Do not reuse an
+  identifier. Retain controlled failure modes so their safety mechanisms stay
+  visible; remove one only when the affected function or boundary no longer
+  exists, and update all references in the same change.
 
 ## Maintain the project map
 
@@ -78,6 +102,7 @@
 | `db/` | Versioned database schema, disposable demo fixtures, and persistence documentation. |
 | `nix/` | Nix-packaged PostgreSQL lifecycle, demo, and development verification helpers. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |
+| `docs/FMEA.md` | System-level failure mode, effects, controls, residual-risk, and follow-up analysis. |
 | `docs/adr/` | Architecture decision records and their index. |
 | `docs/security/` | ASVS application profile, requirement dispositions, and continuous-compliance evidence. |
 | `.github/workflows/` | Continuous integration workflows. |

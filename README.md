@@ -251,6 +251,9 @@ Coverage and mutation also run as separately visible CI gates.
 
 See the [formal model](spec/tla/README.md), [database design](db/README.md), and
 [architecture decisions](docs/adr/README.md) for the boundaries and rationale.
+The [failure mode and effects analysis](docs/FMEA.md) ranks system-level
+failure paths, records their current prevention and detection controls, and
+links residual risks to required follow-up.
 The [ASVS 5.0 Level 3 application profile](docs/security/ASVS.md) records
 requirement-level evidence and the deployment and identity controls that remain
 pending rather than assumed. The [repository friction register](FRICTIONS.md)
