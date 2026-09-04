@@ -48,7 +48,7 @@ func NewHandler(server bondexchangev1.BondExchangeServiceServer) (http.Handler, 
 
 func recoverPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		defer func() {
+		defer func() { //nolint:contextcheck // The recovery closure intentionally uses its enclosing request context.
 			if recovered := recover(); recovered != nil {
 				slog.ErrorContext(request.Context(), "recovered HTTP panic", "method", request.Method, "path", request.URL.Path)
 				writeRESTError(response, http.StatusInternalServerError, "internal server error")
@@ -110,6 +110,7 @@ func (writer *secureResponseWriter) Unwrap() http.ResponseWriter {
 }
 
 type activeOffersRESTStream struct {
+	//nolint:containedctx // grpc.ServerStream requires the request context to remain available for the stream lifetime.
 	context  context.Context
 	response http.ResponseWriter
 	started  bool
@@ -328,5 +329,7 @@ func writeError(
 func writeRESTError(response http.ResponseWriter, httpStatus int, message string) {
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
 	response.WriteHeader(httpStatus)
-	_ = json.NewEncoder(response).Encode(&bondexchangev1.Error{Error: message})
+	if err := json.NewEncoder(response).Encode(&bondexchangev1.Error{Error: message}); err != nil {
+		slog.Warn("failed to write REST error response", "error", err)
+	}
 }

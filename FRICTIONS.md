@@ -8,7 +8,7 @@ disposable demo: P1 blocks a credible production use, P2 is a material
 correctness, security, operability, or scaling concern, and P3 primarily
 affects maintainability or contributor experience.
 
-The repository was reviewed on 2026-09-03. `devenv test` passed at that point,
+The repository was reviewed on 2026-09-04. `devenv test` passed at that point,
 so there is no known failing quality gate; the items below are gaps that the
 current gates either accept or do not cover.
 
@@ -205,8 +205,8 @@ current gates either accept or do not cover.
 
 - **Evidence:** Package tests cover domain, authentication, adapters, and the
   PostgreSQL store, and the demo smoke test exercises happy paths and shutdown.
-  `cmd/server` has no focused tests, while coverage and mutation scores
-  intentionally measure only `internal/`.
+  `cmd/server` is compiled and statically analyzed but has no focused tests,
+  while coverage and mutation scores intentionally measure only `internal/`.
 - **Impact:** Environment parsing, listener composition, hard-coded pool and
   server limits, partial startup failures, and forced shutdown behavior can
   regress without a targeted failure identifying the boundary.

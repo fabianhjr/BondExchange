@@ -102,16 +102,17 @@ func run() error {
 	)
 	bondexchangev1.RegisterBondExchangeServiceServer(grpcServer, apiServer)
 
-	httpListener, err := net.Listen("tcp", restAddress)
+	listenConfig := net.ListenConfig{}
+	httpListener, err := listenConfig.Listen(ctx, "tcp", restAddress)
 	if err != nil {
 		return fmt.Errorf("listen for REST: %w", err)
 	}
-	defer httpListener.Close()
-	grpcListener, err := net.Listen("tcp", grpcAddress)
+	defer closeListener(httpListener, "REST")
+	grpcListener, err := listenConfig.Listen(ctx, "tcp", grpcAddress)
 	if err != nil {
 		return fmt.Errorf("listen for gRPC: %w", err)
 	}
-	defer grpcListener.Close()
+	defer closeListener(grpcListener, "gRPC")
 
 	serverErrors := make(chan error, 2)
 	go func() {
@@ -182,11 +183,11 @@ func loadAuthenticator(resolver authn.PrincipalResolver) (*authn.JWTAuthenticato
 	if issuer == "" || audience == "" || keySetPath == "" {
 		return nil, errors.New("BOND_EXCHANGE_ASSERTION_ISSUER, BOND_EXCHANGE_ASSERTION_AUDIENCE, and BOND_EXCHANGE_ASSERTION_JWKS_FILE are required")
 	}
-	file, err := os.Open(keySetPath)
+	file, err := os.Open(keySetPath) //nolint:gosec // The operator explicitly configures the JWKS file to read.
 	if err != nil {
 		return nil, fmt.Errorf("open assertion verification keys: %w", err)
 	}
-	defer file.Close()
+	defer closeReadFile(file, "assertion verification key")
 	encoded, err := io.ReadAll(io.LimitReader(file, 1024*1024+1))
 	if err != nil {
 		return nil, fmt.Errorf("read assertion verification keys: %w", err)
@@ -203,6 +204,18 @@ func loadAuthenticator(resolver authn.PrincipalResolver) (*authn.JWTAuthenticato
 		Audience: audience,
 		Keys:     keySet,
 	}, resolver)
+}
+
+func closeListener(listener net.Listener, name string) {
+	if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		slog.Warn("failed to close listener", "transport", name, "error", err)
+	}
+}
+
+func closeReadFile(file *os.File, purpose string) {
+	if err := file.Close(); err != nil {
+		slog.Warn("failed to close read-only file", "purpose", purpose, "error", err)
+	}
 }
 
 func shutdownServers(ctx context.Context, httpServer *http.Server, grpcServer *grpc.Server) error {

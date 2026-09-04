@@ -144,11 +144,12 @@ func (dispatcher *Dispatcher) publishOne(
 		return true, true, nil
 	}
 	errorClass := "publisher_error"
-	if loadFailed {
+	switch {
+	case loadFailed:
 		errorClass = "event_load_error"
-	} else if ctx.Err() != nil {
+	case ctx.Err() != nil:
 		errorClass = "context_canceled"
-	} else if errors.Is(err, context.DeadlineExceeded) {
+	case errors.Is(err, context.DeadlineExceeded):
 		errorClass = "publisher_timeout"
 	}
 	if markErr := dispatcher.store.MarkEventFailed(
@@ -185,8 +186,9 @@ func retryDelay(attempt int, ref SourceRef) time.Duration {
 		base = 5 * time.Minute
 	}
 	var hash uint32 = 2166136261
-	for _, character := range ref.TableName + "\x00" + ref.ID {
-		hash ^= uint32(character)
+	value := ref.TableName + "\x00" + ref.ID
+	for index := range len(value) {
+		hash ^= uint32(value[index])
 		hash *= 16777619
 	}
 	jitter := time.Duration(hash%501) * base / 1000

@@ -702,7 +702,7 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 		t.Fatalf("waitBeforeTransactionRetry() error = %v", err)
 	}
 	original := errors.New("original")
-	if classifyCreateSaleOfferError(original) != original {
+	if classifyCreateSaleOfferError(original) != original { //nolint:errorlint // This test requires exact passthrough identity.
 		t.Fatal("non-database error was reclassified")
 	}
 	attempts := 0

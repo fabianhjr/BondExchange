@@ -59,7 +59,7 @@ func run(arguments []string) error {
 }
 
 func initialize(directory string) error {
-	if err := os.MkdirAll(directory, 0o700); err != nil {
+	if err := os.MkdirAll(directory, 0o700); err != nil { //nolint:gosec // The caller chooses the development key directory.
 		return err
 	}
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -149,13 +149,14 @@ func requestMessage(operation string) (proto.Message, error) {
 	}
 }
 
-func readPrivateKey(path string) (jose.JSONWebKey, error) {
-	file, err := os.Open(path)
+func readPrivateKey(path string) (key jose.JSONWebKey, resultErr error) {
+	file, err := os.Open(path) //nolint:gosec // The caller explicitly selects the development signing key.
 	if err != nil {
 		return jose.JSONWebKey{}, err
 	}
-	defer file.Close()
-	var key jose.JSONWebKey
+	defer func() {
+		resultErr = errors.Join(resultErr, file.Close())
+	}()
 	decoder := json.NewDecoder(io.LimitReader(file, 64*1024))
 	if err := decoder.Decode(&key); err != nil {
 		return jose.JSONWebKey{}, err
@@ -171,5 +172,5 @@ func writeJSON(path string, value any, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(encoded, '\n'), mode)
+	return os.WriteFile(path, append(encoded, '\n'), mode) //nolint:gosec // initialize constructs the operator-selected output path.
 }

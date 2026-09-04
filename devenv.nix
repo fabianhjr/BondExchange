@@ -136,6 +136,7 @@ in
     pkgs.gawk
     pkgs.grpc-gateway
     pkgs.grpcurl
+    pkgs.golangci-lint
     pkgs.jdk21_headless
     pkgs.nixfmt
     pkgs.postgresql_17
@@ -173,7 +174,7 @@ in
   };
 
   tasks."go:check" = {
-    description = "Check Go formatting and run go vet";
+    description = "Check Go formatting and run curated static analysis";
     exec = ''
       unformatted="$(gofmt -l cmd gen internal)"
       if [ -n "$unformatted" ]; then
@@ -181,7 +182,10 @@ in
         echo "$unformatted"
         exit 1
       fi
-      go vet ./...
+      mkdir -p .artifacts/golangci-lint-cache
+      export GOLANGCI_LINT_CACHE="$PWD/.artifacts/golangci-lint-cache"
+      golangci-lint config verify
+      golangci-lint run ./...
     '';
     after = [
       "api:check"

@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/go-quality.yml"
       - ".gremlins.yaml"
+      - ".golangci.yml"
       - "api/**"
       - "cmd/**"
       - "db/**"
@@ -25,6 +26,7 @@ on:
     paths:
       - ".github/workflows/go-quality.yml"
       - ".gremlins.yaml"
+      - ".golangci.yml"
       - "api/**"
       - "cmd/**"
       - "db/**"

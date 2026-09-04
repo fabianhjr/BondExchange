@@ -11,8 +11,8 @@ Install [Nix](https://nixos.org/download/) and devenv:
 nix profile add nixpkgs#devenv
 ```
 
-`devenv.lock` pins Go, PostgreSQL, dbmate, TLA+, Gremlins, and the other
-development tools. They do not need to be installed globally.
+`devenv.lock` pins Go, PostgreSQL, dbmate, TLA+, golangci-lint, Gremlins, and
+the other development tools. They do not need to be installed globally.
 
 ## Architecture
 
@@ -159,6 +159,7 @@ devenv tasks run spec:check
 devenv tasks run db:migrate
 devenv tasks run postgres:lifecycle-check
 devenv tasks run demo:smoke
+devenv tasks run go:check
 devenv tasks run go:test
 devenv tasks run go:coverage
 devenv tasks run go:mutation
@@ -171,9 +172,14 @@ the generated Go, Swagger, or descriptor output was stale. Remote schema
 dependencies are content-addressed in `api/buf.lock`; update that lock intentionally with
 `devenv tasks run api:update-deps`.
 
+`go:check` verifies `gofmt` and runs the pinned golangci-lint standard set plus
+the curated correctness, security, context, resource-lifecycle, logging, test,
+and dependency-direction checks in `.golangci.yml`. Suppressions must identify
+one or more specific linters and explain why the flagged construct is safe.
 Coverage must be at least 90%, and mutation-test efficacy must be at least 80%.
 Both gates measure the implementation under `internal/`; the thin server
-entrypoint under `cmd/` is compiled and vetted but excluded from those scores.
+entrypoint under `cmd/` is compiled and statically analyzed but excluded from
+those scores.
 Every database-dependent task creates its own migrated PostgreSQL cluster on a
 private Unix socket and removes it on success, failure, or interruption. This
 makes repeated and parallel task invocations independent and avoids requiring a
@@ -181,9 +187,10 @@ manually managed database. A raw `go test` outside these tasks may skip the
 PostgreSQL integration package when `BOND_EXCHANGE_TEST_DATABASE_URL` is not
 set.
 
-Reports are written to `.artifacts/`. `devenv test` runs Nix and shell checks,
-API artifact verification, PostgreSQL lifecycle and demo smoke checks,
-race-enabled tests, coverage, mutation testing, and the TLC model check.
+Reports and the golangci-lint cache are written to `.artifacts/`. `devenv test`
+runs Nix and shell checks, Go formatting and static analysis, API artifact
+verification, PostgreSQL lifecycle and demo smoke checks, race-enabled tests,
+coverage, mutation testing, and the TLC model check.
 Coverage and mutation also run as separately visible CI gates.
 
 See the [formal model](spec/tla/README.md), [database design](db/README.md), and
