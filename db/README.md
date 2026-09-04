@@ -41,18 +41,28 @@ Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema
 source of truth, so automatic schema dumps are disabled.
 
-With `devenv up` running, apply pending migrations from the development shell:
-
-```console
-dbmate up
-```
-
-The `db:migrate` devenv task starts PostgreSQL when necessary and performs the
-same operation for tests and CI:
+Database-dependent devenv tasks do not share a long-lived PostgreSQL process.
+The Nix-packaged `bond-exchange-with-postgres` harness creates a fresh cluster
+and private Unix socket for each task, applies pending migrations, exports the
+test connection variables, runs the task, and stops and removes the cluster.
+Validate the full migration history in isolation with:
 
 ```console
 devenv tasks run db:migrate
 ```
+
+The lifecycle check covers successful, failing, repeated, and parallel harness
+invocations:
+
+```console
+devenv tasks run postgres:lifecycle-check
+```
+
+`devenv up` uses the same disposable lifecycle for the local demo. After
+migration it loads `demo/seed.sql`, which is deliberately separate from the
+production schema history. Demo facts are discarded when the process stops;
+the seed is never applied to an external database. To migrate a persistent or
+production-like database, set `DATABASE_URL` explicitly and run `dbmate up`.
 
 Create later migrations with `dbmate new <description>`. Do not edit an
 already-applied migration; add a new timestamp-versioned migration instead.

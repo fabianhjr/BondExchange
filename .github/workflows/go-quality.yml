@@ -11,6 +11,7 @@ on:
       - "docs/adr/**"
       - "gen/**"
       - "internal/**"
+      - "nix/**"
       - "README.md"
       - "go.mod"
       - "go.sum"
@@ -29,6 +30,7 @@ on:
       - "docs/adr/**"
       - "gen/**"
       - "internal/**"
+      - "nix/**"
       - "README.md"
       - "go.mod"
       - "go.sum"
@@ -66,6 +68,11 @@ jobs:
 
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
+
+      - name: Check PostgreSQL lifecycle and demo
+        env:
+          CI: "true"
+        run: devenv tasks run dev:smoke
 
       - name: Run coverage gate
         env:

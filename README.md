@@ -35,22 +35,35 @@ facts must be provisioned separately before publishing or buying sale offers.
 
 ## Run locally
 
-Start PostgreSQL in one shell. In another, apply pending migrations and run
-the server:
+Start a complete disposable demo environment with one command:
 
 ```console
 devenv up
-devenv shell dbmate up
-devenv shell go run ./cmd/server
 ```
+
+Devenv creates a temporary PostgreSQL cluster, applies every dbmate migration,
+loads the fixtures in `db/demo/seed.sql`, and starts both server transports.
+Stopping `devenv up` also stops PostgreSQL and removes the demo database. Each
+new demo therefore starts from the same known state with users `demo-seller`
+and `demo-buyer`, bonds `DEMO2026` and `DEMO2027`, and three active offers.
 
 The REST server listens on `:8080` and the gRPC server listens on `:9090` by
 default. Set `BOND_EXCHANGE_ADDRESS` and `BOND_EXCHANGE_GRPC_ADDRESS` to change
-the respective listener addresses, and `DATABASE_URL` to change the PostgreSQL
-connection string. Both listeners are plaintext; production deployments should
-provide transport security at the workload or ingress boundary. A production
-runtime role should receive only the required `SELECT` and `INSERT` privileges;
-schema ownership belongs to a separate migration role.
+the respective listener addresses. To use a persistent or externally managed
+database instead, supply its `DATABASE_URL` explicitly and start only the
+server:
+
+```console
+DATABASE_URL=postgresql://user:password@localhost/bond_exchange \
+  devenv shell go run ./cmd/server
+```
+
+Apply migrations to that external database separately with `dbmate up`; the
+application never migrates during startup. Both listeners are plaintext;
+production deployments should provide transport security at the workload or
+ingress boundary. A production runtime role should receive only the required
+`SELECT` and `INSERT` privileges; schema ownership belongs to a separate
+migration role.
 
 Available endpoints are:
 
@@ -78,7 +91,7 @@ and invoke the service. For example:
 ```console
 grpcurl -plaintext localhost:9090 list
 grpcurl -plaintext \
-  -d '{"buyer_id":"user-2","sale_offer_id":"offer-1"}' \
+  -d '{"buyer_id":"demo-buyer","sale_offer_id":"demo-offer-1"}' \
   localhost:9090 bondexchange.v1.BondExchangeService/Buy
 ```
 
@@ -99,6 +112,8 @@ Run focused checks with devenv tasks:
 devenv tasks run api:check
 devenv tasks run spec:check
 devenv tasks run db:migrate
+devenv tasks run postgres:lifecycle-check
+devenv tasks run demo:smoke
 devenv tasks run go:test
 devenv tasks run go:coverage
 devenv tasks run go:mutation
@@ -113,10 +128,17 @@ content-addressed in `api/buf.lock`; update that lock intentionally with
 Coverage must be at least 90%, and mutation-test efficacy must be at least 80%.
 Both gates measure the implementation under `internal/`; the thin server
 entrypoint under `cmd/` is compiled and vetted but excluded from those scores.
-Reports are written to `.artifacts/`. `devenv test` runs formatting, static
-analysis, pending dbmate migrations, race-enabled tests, coverage, mutation
-testing, and the TLC model check. Coverage and mutation also run as separately
-visible CI gates.
+Every database-dependent task creates its own migrated PostgreSQL cluster on a
+private Unix socket and removes it on success, failure, or interruption. This
+makes repeated and parallel task invocations independent and avoids requiring a
+manually managed database. A raw `go test` outside these tasks may skip the
+PostgreSQL integration package when `BOND_EXCHANGE_TEST_DATABASE_URL` is not
+set.
+
+Reports are written to `.artifacts/`. `devenv test` runs Nix and shell checks,
+API artifact verification, PostgreSQL lifecycle and demo smoke checks,
+race-enabled tests, coverage, mutation testing, and the TLC model check.
+Coverage and mutation also run as separately visible CI gates.
 
 See the [formal model](spec/tla/README.md), [database design](db/README.md), and
 [architecture decisions](docs/adr/README.md) for the boundaries and rationale.

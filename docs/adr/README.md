@@ -23,3 +23,4 @@ Alternatives considered sections.
 - [ADR-0005: Use shopspring/decimal for monetary amounts](0005-use-shopspring-decimal-for-monetary-amounts.md)
 - [ADR-0006: Use Proto3 for the REST and gRPC API](0006-use-protobuf-for-rest-and-grpc-api.md)
 - [ADR-0007: Publish and discover sale offers through the API](0007-publish-and-discover-sale-offers.md)
+- [ADR-0008: Use isolated PostgreSQL lifecycles for tests and demos](0008-use-isolated-postgresql-lifecycles.md)
