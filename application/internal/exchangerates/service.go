@@ -2,12 +2,12 @@ package exchangerates
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Provider interface {
@@ -423,9 +423,6 @@ func requireLatestObservations(request FetchRequest, result FetchResult) error {
 }
 
 func newLeaseToken() (string, error) {
-	var token [16]byte
-	if _, err := rand.Read(token[:]); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(token[:]), nil
+	token, err := uuid.NewRandom()
+	return token.String(), err
 }

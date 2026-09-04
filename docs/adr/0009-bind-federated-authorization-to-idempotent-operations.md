@@ -20,7 +20,7 @@ the domain package.
 Require every operation to carry a short-lived signed JWT assertion from one
 configured federated issuer. Bind it to the audience, one operation, the
 SHA-256 digest of the deterministic protobuf request, and, for mutations, one
-transport idempotency key. Accept only configured public JWKs and explicit
+transport UUIDv4 idempotency nonce. Require a UUIDv4 JWT `jti`. Accept only configured public JWKs and explicit
 EdDSA or ES256 algorithms. Resolve `(issuer, subject)` to an internal principal
 instead of accepting a user ID in a request. Record whether the principal is a
 human or automated client.
@@ -32,9 +32,9 @@ RBAC administration remains a separately authorized provisioning workflow;
 this API does not yet expose administration endpoints.
 
 Make `Buy` and `CreateSaleOffer` durably idempotent in a scope composed of
-principal, client ID, operation, and idempotency key. Store the request and
+principal, client ID, operation, and UUIDv4 idempotency nonce. Store the request and
 assertion digests with the operation claim and its result. An exact retry may
-present a freshly issued assertion but must keep the request and key. Reusing
+present a freshly issued assertion but must keep the request and nonce. Reusing
 the scope for another request is a conflict.
 
 Keep all domain, RBAC, and operation facts append-only. Do not return buyer or
@@ -58,7 +58,7 @@ are not introduced by this decision.
   destructive updates. Effective-access queries and audit storage grow with
   history.
 - Stateless instances can replay successful mutation results from PostgreSQL.
-  Clients must retain idempotency keys and request bytes for safe retries.
+  Clients must retain idempotency nonces and request bytes for safe retries.
 - The API compatibility break removes `buyer_id` and `seller_id`; their field
   numbers and names remain reserved in Proto3.
 - External identity lifecycle, TLS, secret delivery, mesh policy, telemetry

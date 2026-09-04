@@ -10,7 +10,7 @@ option go_package = "github.com/fabianhjr/BondExchange/application/gen/go/bondex
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "Bond Exchange API"
-    version: "1.0.0"
+    version: "2.0.0"
     description: "REST and gRPC API for publishing and buying sale offers."
   }
   consumes: "application/json"
@@ -47,7 +47,7 @@ service BondExchangeService {
       parameters: {
         headers: {
           name: "Idempotency-Key"
-          description: "A 16-128 character key bound into the operation assertion."
+          description: "A canonical UUIDv4 nonce bound into the operation assertion."
           type: STRING
           required: true
         }
@@ -101,7 +101,7 @@ service BondExchangeService {
       parameters: {
         headers: {
           name: "Idempotency-Key"
-          description: "A 16-128 character key bound into the operation assertion."
+          description: "A canonical UUIDv4 nonce bound into the operation assertion."
           type: STRING
           required: true
         }
@@ -136,7 +136,7 @@ service BondExchangeService {
       responses: {
         key: "409"
         value: {
-          description: "The sale-offer ID already exists."
+          description: "The generated sale-offer ID collided with an existing resource."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }
@@ -249,7 +249,7 @@ service BondExchangeService {
       parameters: {
         headers: {
           name: "Idempotency-Key"
-          description: "A 16-128 character key bound into the operation assertion; per-event leases coordinate overlapping drains."
+          description: "A canonical UUIDv4 nonce bound into the operation assertion; per-event leases coordinate overlapping drains."
           type: STRING
           required: true
         }
@@ -292,17 +292,17 @@ message BuyRequest {
 
   reserved 1;
   reserved "buyer_id";
+  // Canonical UUIDv7 returned by the service when the offer was created.
   string sale_offer_id = 2;
 }
 
 message CreateSaleOfferRequest {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    json_schema: {required: ["id", "bond_series", "price", "currency_code"]}
+    json_schema: {required: ["bond_series", "price", "currency_code"]}
   };
 
-  string id = 1;
-  reserved 2;
-  reserved "seller_id";
+  reserved 1, 2;
+  reserved "id", "seller_id";
   // Bond series to sell. The service canonicalizes this value to uppercase.
   string bond_series = 3;
   // Exact positive decimal monetary amount encoded as a string.
@@ -381,6 +381,7 @@ message SaleOffer {
     json_schema: {required: ["id", "bond_series", "price", "currency_code"]}
   };
 
+  // PostgreSQL-generated canonical UUIDv7.
   string id = 1;
   reserved 2;
   reserved "seller_id";

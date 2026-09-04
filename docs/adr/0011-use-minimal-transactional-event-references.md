@@ -3,6 +3,12 @@
 - Status: Accepted
 - Date: 2026-09-03
 
+ADR-0017 amends the identity details below: events and purchases now have
+independent UUIDv7 identities, source references use UUIDs, delivery uniqueness
+is `(destination_id, event_uuid)`, and consumers deduplicate by event UUID. The
+minimal payload, transactional recording, and explicit-recovery decisions
+remain accepted.
+
 ## Context
 
 Successful offer creation and buying may need to notify independently owned
@@ -19,11 +25,11 @@ long-lived representation without improving recovery.
 ## Decision
 
 When a successful `operation_results` fact is inserted, a PostgreSQL trigger
-atomically appends an integration-event reference. Its durable identity is the
-pair `(table_name, id)`: `sale_offers` with the offer ID for creation and
-`purchases` with the purchase's sale-offer ID for buying. The reference stores
-only that pair, a schema version, and the operation completion time. It has no
-separate event ID, sequence, payload, authentication context, or copied domain
+atomically appends an integration-event reference. Its durable identity is an
+independent UUIDv7. The source is the pair `(table_name, source_uuid)`:
+`sale_offers` with the offer UUID for creation and `purchases` with the purchase
+UUID for buying. The reference stores only those identifiers, a schema version,
+and the operation completion time. It has no sequence, payload, authentication context, or copied domain
 columns. The narrowly scoped trigger function uses its migration-owner rights
 and a fixed system search path, allowing an older application writer to keep
 working after the expand migration without receiving a new table privilege.
@@ -39,10 +45,10 @@ After a mutation commits, the application makes one immediate, bounded
 delivery attempt to every configured destination. Publisher errors and panics
 leave the reference pending and do not change the already committed API
 outcome. Each destination records mutable lease and delivery coordination
-against `(destination_id, table_name, id)`. Delivery is at least once: a
+against `(destination_id, event_uuid)` and uses a UUIDv4 lease nonce. Delivery is at least once: a
 destination may accept an event immediately before the process stops, leaving
 the database unable to record the acknowledgement. Consumers must therefore
-deduplicate using `(table_name, id)`.
+deduplicate using the event UUID.
 
 Do not run a startup sweep, timer, scheduled retry, or background polling
 worker. An authenticated `PublishPendingEvents` operation lets an authorized
@@ -50,7 +56,7 @@ operator explicitly attempt every visible pending event, either for one
 destination or for all configured destinations. It returns aggregate counts,
 continues past individual publisher failures, and leaves unvisited or failed
 events pending. Per-event leases coordinate overlapping immediate and manual
-attempts. The operation requires an idempotency key bound into its assertion;
+attempts. The operation requires a UUIDv4 idempotency nonce bound into its assertion;
 delivery records, rather than an operation result, prevent acknowledged events
 from being intentionally sent again.
 
@@ -71,9 +77,8 @@ publisher is configured.
 - The polymorphic source relationship cannot use one PostgreSQL foreign key;
   the closed table-name constraint, trigger, fixed loaders, and tests enforce
   it.
-- One integration event exists per append-only source fact. Multiple logical
-  events for one fact would require a new fact or reconsideration of the
-  composite identity.
+- One integration event exists per append-only source fact, enforced by the
+  unique `(table_name, source_uuid)` lookup key.
 - There is no global ordering guarantee. Recovery scans by the composite key
   and a transaction that commits after the scan remains pending for a later
   invocation.
@@ -91,12 +96,13 @@ This makes publication independent of source schemas but duplicates immutable
 domain data and expands retention and disclosure obligations. It was rejected
 because the source facts are already durable and cannot change.
 
-### Generate a separate event identifier or sequence
+### Use the source reference as the event identifier
 
-A new identity would duplicate the uniqueness already supplied by the source
-fact. A sequence also tempts checkpoint processing that can skip transactions
-committing out of allocation order. The composite source identity was selected
-instead.
+This was the original choice. ADR-0017 later selected a UUIDv7 event identity
+so consumers have one transport-neutral deduplication value while retaining a
+unique source reference. A separate numeric sequence remains rejected because
+checkpoint processing can skip transactions committing out of allocation
+order.
 
 ### Publish synchronously inside the database transaction
 

@@ -20,6 +20,7 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -74,11 +75,20 @@ func IssueToken(privateKeyPath, subject, operation, idempotencyKey, requestJSON 
 		return "", err
 	}
 	digest := sha256.Sum256(canonical)
-	if idempotencyKey == "-" {
+	requiresNonce := operation == exchange.OperationBuy ||
+		operation == exchange.OperationCreateSaleOffer ||
+		operation == exchange.OperationPublishPendingEvents
+	if idempotencyKey == "-" && requiresNonce {
+		return "", exchange.ErrInvalidIdempotencyKey
+	}
+	if idempotencyKey != "-" && (!requiresNonce || !exchange.IsValidIdempotencyKey(idempotencyKey)) {
+		return "", exchange.ErrInvalidIdempotencyKey
+	}
+	if !requiresNonce {
 		idempotencyKey = ""
 	}
-	nonce := make([]byte, 16)
-	if _, err := rand.Read(nonce); err != nil {
+	assertionID, err := uuid.NewRandom()
+	if err != nil {
 		return "", err
 	}
 	signer, err := jose.NewSigner(
@@ -90,7 +100,7 @@ func IssueToken(privateKeyPath, subject, operation, idempotencyKey, requestJSON 
 	}
 	serialized, err := jwt.Signed(signer).Claims(jwt.Claims{
 		Issuer: Issuer, Subject: subject, Audience: jwt.Audience{Audience},
-		ID: hex.EncodeToString(nonce), IssuedAt: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(2 * time.Minute)),
+		ID: assertionID.String(), IssuedAt: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(2 * time.Minute)),
 	}).Claims(operationClaims{
 		ClientID: "demo-cli",
 		AuthorizationDetails: []authorizationDetails{{

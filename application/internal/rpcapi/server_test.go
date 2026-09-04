@@ -32,7 +32,6 @@ type applicationStub struct {
 	series         []exchange.BondSeries
 	seriesErr      error
 	buyOffer       string
-	createID       string
 	createBond     string
 	createPrice    string
 	createCurrency string
@@ -56,12 +55,10 @@ func (application *applicationStub) CreateSaleOffer(
 	_ context.Context,
 	_ exchange.AccessContext,
 	_ string,
-	id string,
 	bond string,
 	price string,
 	currency string,
 ) (exchange.SaleOffer, error) {
-	application.createID = id
 	application.createBond = bond
 	application.createPrice = price
 	application.createCurrency = currency
@@ -189,7 +186,6 @@ func TestGRPCServer(t *testing.T) {
 	}
 
 	created, err := client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{
-		Id:           "offer-2",
 		BondSeries:   "bnd1",
 		Price:        "99.75",
 		CurrencyCode: "USD",
@@ -200,7 +196,7 @@ func TestGRPCServer(t *testing.T) {
 	if created.GetOffer().GetId() != "offer-2" || created.GetOffer().GetPrice() != "99.75" {
 		t.Fatalf("created offer = %v", created)
 	}
-	if application.createID != "offer-2" || application.createBond != "bnd1" || application.createPrice != "99.75" ||
+	if application.createBond != "bnd1" || application.createPrice != "99.75" ||
 		application.createCurrency != "USD" {
 		t.Fatalf("create input = %#v", application)
 	}

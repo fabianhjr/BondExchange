@@ -15,6 +15,17 @@ by
 Append-only Banxico SIE imports and exchange-rate observations, plus mutable
 fetch coordination, are added by
 [`migrations/20260904120000_add_sie_exchange_rates.sql`](migrations/20260904120000_add_sie_exchange_rates.sql).
+The PostgreSQL 18 UUID identity and nonce cutover is
+[`migrations/20260904130000_use_uuid_keys_and_nonces.sql`](migrations/20260904130000_use_uuid_keys_and_nonces.sql).
+
+PostgreSQL 18 is required. Every application table has a `uuid_id uuid`
+primary key generated with `uuidv7()` and constrained with
+`uuid_extract_version(uuid_id) = 7`. Natural identifiers remain unique lookup
+attributes. The migration retains legacy keys, foreign keys, views, and
+synchronization triggers for a rolling application transition; the current Go
+adapter uses only the UUID relationship graph. A later contract migration may
+remove compatibility structures only after old writers are retired and drift
+checks pass.
 
 The `bond_exchange.monetary_amount` domain is based on PostgreSQL
 `numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
@@ -26,28 +37,29 @@ rounding is not intended. The Go adapter converts the database's exact decimal
 text to `decimal.Decimal`; it never passes monetary values through binary
 floating point.
 
-A purchase records the buyer's binding order or reservation and uses its
-sale-offer ID as the primary key. Settlement, payment, custody, ownership
+A purchase records the buyer's binding order or reservation and has its own
+UUIDv7 primary key. Settlement, payment, custody, ownership
 transfer, expiry, and cancellation are not represented and remain pending.
-Concurrent inserts for the same offer therefore have one winner even when they
+The unique `sale_offer_uuid` constraint gives concurrent inserts for the same offer one winner even when they
 come from different server instances. The losing requests are reported as an
 unavailable offer, while the original offer row remains as history.
 
-The non-materialized `bond_exchange.active_offers` view excludes every offer
+The current adapter reads the non-materialized
+`bond_exchange.active_offers_v2` view, which excludes every offer
 that has a matching purchase. The API requires a bond series and returns all
 active offers for it in ID order; the
-`sale_offers_bond_series_id_idx` index supports that lookup. A separate
+`sale_offers_bond_series_uuid_id_idx` index supports that lookup. A separate
 distinct query derives the sorted list of bond series represented in the view.
-The purchase primary key supports the anti-join and enforces single-sale
+The unique offer constraint supports the anti-join and enforces single-sale
 concurrency. Purchase history by buyer is supported by
-`purchases_buyer_id_sale_offer_id_idx`. Add further indexes only for observed
+`purchases_buyer_uuid_sale_offer_uuid_idx`. Add further indexes only for observed
 query plans.
 
-The API creates sale offers with `INSERT ... RETURNING`. The sale-offer primary
-key serializes concurrent attempts to publish the same ID, while foreign keys
-require the seller and bond series to have been provisioned already. Creation
-does not require a schema migration because the existing append-only table
-already contains the complete sale-offer fact.
+The API creates sale offers with `INSERT ... RETURNING`; PostgreSQL generates
+the UUIDv7 resource identity. Clients do not supply an ID. UUID foreign keys
+require the authenticated seller and bond series to have been provisioned
+already. Idempotency, rather than a caller-selected resource key, serializes
+exact retries.
 
 Federated identities are linked to internal users by the unique
 `(issuer, subject)` pair in `principals`; the API never accepts that user ID as
@@ -64,18 +76,18 @@ initial operator grant is no longer effective. Operators use the versioned API
 descriptor set instead.
 
 Mutation idempotency uses `operation_claims`, uniquely scoped by principal,
-client ID, operation, and idempotency key. The claim keeps SHA-256 request and
+client ID, operation, and a canonical UUIDv4 nonce. The claim keeps SHA-256 request and
 assertion digests, and `operation_results` stores the immutable outcome. An
 exact retry can use a fresh assertion and recover the original resource; using
 the same scope for another request is rejected. These tables intentionally
 retain audit history and have no destructive down migration.
 
 An `AFTER INSERT` trigger on successful operation results maps `offers.create`
-to `(sale_offers, offer_id)` and `purchases.buy` to
-`(purchases, sale_offer_id)`. It appends that composite source reference, event
-schema version, and completion time to `integration_events` in the mutation's
-transaction. Rejections and unrelated operations append nothing. The table has
-no event ID, sequence, serialized payload, or copied domain columns. Event data
+to the sale-offer UUID and `purchases.buy` to the purchase UUID. It appends an
+independent event UUIDv7, source type and UUID, schema version, and completion
+time to `integration_events` in the mutation's transaction. Rejections and
+unrelated operations append nothing. The table has no sequence, serialized
+payload, or copied domain columns. Event data
 is reconstructed through fixed, versioned queries against the immutable source
 facts immediately before publication. The narrowly scoped trigger function runs
 as its migration owner with a fixed system search path, so applying the expand
@@ -83,13 +95,13 @@ migration does not require a previously deployed exchange writer to gain a new
 table privilege.
 
 `integration_event_deliveries` is mutable operational coordination rather than
-a domain-fact table. Its primary key adds a stable destination ID to the source
-reference. Short leases coordinate overlapping immediate and operator-triggered
+a domain-fact table. It has its own UUIDv7 key and a unique destination/event
+pair. UUIDv4 lease nonces coordinate overlapping immediate and operator-triggered
 attempts; delivery acknowledgement, attempt count, next-attempt time, and a
 sanitized error class are the only retained delivery data. External calls occur
 after the claiming transaction commits. A crash after destination acceptance
 but before acknowledgement can cause a duplicate, so consumers deduplicate by
-the composite source reference. Runtime `UPDATE` privilege is required only on
+the event UUID. Runtime `UPDATE` privilege is required only on
 this delivery table; integration events and all domain facts remain append-only.
 
 The application attempts publication once after each successful mutation. It
@@ -105,8 +117,9 @@ the response into exact positive PostgreSQL numeric values and explicit
 series/base/quote/date coordinates. The short importing transaction serializes
 each coordinate, makes a repeated current value a no-op, and appends any
 change—including a return to an older value—as a correction. The
-`current_sie_exchange_rates` view selects the greatest serialized revision ID
-without removing earlier values; it does not rely on transaction-start
+`current_sie_exchange_rates_v2` view returns a UUIDv7 revision ID but selects
+the greatest preserved bigint revision sequence without removing earlier
+values; it does not rely on transaction-start
 timestamps to order concurrent imports.
 
 Historical range coverage uses one deterministic calendar-month work unit per
@@ -117,7 +130,7 @@ interpreting weekends and holidays as missing imports while keeping closed
 historical data available without SIE.
 
 `sie_exchange_rate_fetch_coordination` is mutable operational data. Short
-leases ensure that at most one server instance actively fetches a mapped series
+UUIDv4 lease nonces ensure that at most one server instance actively fetches a mapped series
 and period; the external call occurs after the claiming transaction releases
 its connection. A crash after SIE responds but before the importing transaction
 commits can result in a later duplicate request after lease expiry, but the
@@ -130,6 +143,17 @@ Imports and observations are intentional durable provenance and have no
 destructive down migration. Fetch coordination and provider state require
 narrow `SELECT`, `INSERT`, and `UPDATE` runtime privileges; immutable imports
 and observations require only `SELECT` and `INSERT`.
+
+The UUID migration calls PostgreSQL 18 native functions and therefore cannot
+run on PostgreSQL 17. For an existing deployment, first take and verify a
+restorable backup, rehearse the selected PostgreSQL major-upgrade procedure,
+review extensions and collation changes, upgrade the cluster to 18, and verify
+`server_version_num` before running `dbmate up`. Supported choices include
+deployment-owned `pg_upgrade`, logical replication, or dump/restore. Do not
+start the UUID-aware application until the schema migration completes. During
+rollback, the migrated compatibility graph permits the previous application to
+run on PostgreSQL 18; do not downgrade the data directory or use the migration's
+non-destructive down section as a rollback mechanism.
 
 Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema

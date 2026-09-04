@@ -58,17 +58,36 @@ accept or do not cover.
 
 ### F-004 — Database constraints are looser than domain validation (P1)
 
-- **Evidence:** The initial migration only requires a nonempty user ID,
-  sale-offer IDs have no length or character constraint, and currency codes
-  only need to be nonempty. Go requires visible-ASCII IDs of 1–128 bytes and
-  exactly three uppercase ASCII letters for currency. This matters especially
-  while F-003 requires direct SQL provisioning, and the affected tables are
+- **Evidence:** Current primary keys are UUIDv7 and current mutation nonces are
+  UUIDv4 at both Go and PostgreSQL boundaries. The rolling-compatibility
+  columns still preserve the initial migration's loosely constrained text
+  aliases, and currency codes still need only be nonempty in PostgreSQL while
+  Go requires exactly three uppercase ASCII letters. This matters especially
+  while F-003 requires direct SQL provisioning and the affected facts are
   append-only.
 - **Impact:** A privileged or future alternate writer can create immutable
   facts that the Go domain rejects or cannot reliably process.
 - **Complete when:** A backward-compatible forward migration makes storage
   constraints and every sanctioned writer agree with the documented domain,
-  including a safe plan for any pre-existing nonconforming facts.
+  including a safe plan for pre-existing nonconforming facts and retirement of
+  the legacy aliases after the compatibility period.
+
+### F-018 — The UUID migration retains a dual identifier graph (P2)
+
+- **Evidence:** The PostgreSQL 18 migration makes UUIDv7 columns primary and
+  current foreign keys authoritative, but deliberately retains every legacy
+  key and relationship as a unique compatibility graph. Insert triggers and
+  versioned views keep old and current application versions writable during a
+  rolling transition. Historical non-UUID nonce values have a null UUID
+  counterpart.
+- **Impact:** The temporary graph consumes storage and index/write work, makes
+  sanctioned direct SQL more complex, and could drift if a future writer or
+  migration bypasses the synchronization triggers. Leaving it indefinitely
+  would preserve ambiguity about which columns integrations should use.
+- **Complete when:** Inventory and retire all legacy application and direct-SQL
+  writers, verify zero identifier and relationship drift, rehearse rollback,
+  and apply a corrective-forward contract migration that removes redundant
+  aliases, legacy views, constraints, and triggers without losing facts.
 
 ### F-005 — Append-only and event-delivery data has no lifecycle policy (P1)
 

@@ -169,7 +169,7 @@ func (authenticator *JWTAuthenticator) validateClaims(
 	idempotencyKey string,
 ) error {
 	now := authenticator.config.Now().UTC()
-	if !validClaimText(standard.Subject, 256) || !validClaimText(standard.ID, 128) || standard.IssuedAt == nil || standard.Expiry == nil {
+	if !validClaimText(standard.Subject, 256) || !exchange.IsValidIdempotencyKey(standard.ID) || standard.IssuedAt == nil || standard.Expiry == nil {
 		return errInvalidAssertion
 	}
 	if err := standard.ValidateWithLeeway(jwt.Expected{

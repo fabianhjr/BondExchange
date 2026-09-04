@@ -5,12 +5,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
 const (
-	MinIdentifierLength     = 1
-	MaxIdentifierLength     = 128
 	MinBondSeriesLength     = 3
 	MaxBondSeriesLength     = 40
 	MonetaryAmountPrecision = 14
@@ -20,8 +19,8 @@ const (
 var maxMonetaryAmount = decimal.New(99_999_999_999_999, -MonetaryAmountScale)
 
 var (
-	ErrInvalidUserID       = errors.New("user ID must contain 1-128 visible ASCII characters")
-	ErrInvalidOfferID      = errors.New("sale-offer ID must contain 1-128 visible ASCII characters")
+	ErrInvalidUserID       = errors.New("user ID must be a canonical UUIDv7")
+	ErrInvalidOfferID      = errors.New("sale-offer ID must be a canonical UUIDv7")
 	ErrInvalidBondSeries   = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
 	ErrInvalidPrice        = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
 	ErrInvalidCurrencyCode = errors.New("currency code must contain exactly three uppercase ASCII letters")
@@ -35,7 +34,7 @@ var (
 type UserID string
 
 func ParseUserID(value string) (UserID, error) {
-	if !isVisibleASCIIIdentifier(value) {
+	if !isCanonicalUUIDVersion(value, uuid.Version(7)) {
 		return "", ErrInvalidUserID
 	}
 	return UserID(value), nil
@@ -44,11 +43,13 @@ func ParseUserID(value string) (UserID, error) {
 type OfferID string
 
 func ParseOfferID(value string) (OfferID, error) {
-	if !isVisibleASCIIIdentifier(value) {
+	if !isCanonicalUUIDVersion(value, uuid.Version(7)) {
 		return "", ErrInvalidOfferID
 	}
 	return OfferID(value), nil
 }
+
+type PurchaseID string
 
 type BondSeries string
 
@@ -98,16 +99,9 @@ func ParseCurrencyCode(value string) (CurrencyCode, error) {
 	return CurrencyCode(value), nil
 }
 
-func isVisibleASCIIIdentifier(value string) bool {
-	if len(value) < MinIdentifierLength || len(value) > MaxIdentifierLength {
-		return false
-	}
-	for index := 0; index < len(value); index++ {
-		if value[index] < 0x21 || value[index] > 0x7e {
-			return false
-		}
-	}
-	return true
+func isCanonicalUUIDVersion(value string, version uuid.Version) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed.Version() == version && parsed.String() == value
 }
 
 type SaleOffer struct {
@@ -119,7 +113,8 @@ type SaleOffer struct {
 }
 
 type Purchase struct {
-	Offer    SaleOffer `json:"offer"`
-	BuyerID  UserID    `json:"buyer_id"`
-	BoughtAt time.Time `json:"bought_at"`
+	ID       PurchaseID `json:"id"`
+	Offer    SaleOffer  `json:"offer"`
+	BuyerID  UserID     `json:"buyer_id"`
+	BoughtAt time.Time  `json:"bought_at"`
 }

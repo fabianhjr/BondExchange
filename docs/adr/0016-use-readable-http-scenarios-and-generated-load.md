@@ -12,7 +12,7 @@ simple request/response document, and it does not provide repeatable workload
 generation or latency and status reports for sale offers, listings, and buys.
 
 Every request also needs a short-lived assertion bound to its deterministic
-protobuf request and, for mutations, its idempotency key. A useful load tool
+protobuf request and, for mutations, its UUIDv4 idempotency nonce. A useful load tool
 must therefore receive a separately signed target for every generated
 mutation rather than replaying one generic bearer token and body.
 
@@ -25,7 +25,7 @@ addition to the readable Hurl assertions.
 
 Use Vegeta for HTTP workload execution and reporting. A development-only Go
 command emits its JSON target format with unique request bodies, operation-
-bound assertions, and idempotency keys. Pipe targets directly to Vegeta so
+bound assertions, and UUIDv4 idempotency nonces. Pipe targets directly to Vegeta so
 credentials are not retained with result artifacts.
 
 Run both layers against the same isolated, migrated, seeded demo lifecycle.
