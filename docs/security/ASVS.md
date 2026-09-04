@@ -139,9 +139,11 @@ loopback by default:
 
 `devenv tasks run security:check` validates the complete profile, generates a
 Go module inventory, runs `govulncheck`, and exercises the security-focused Go
-tests. The task is part of `devenv test` and the Go quality workflow. Existing
-API generation, race tests, PostgreSQL integration, coverage, mutation, and
-TLC checks remain independent evidence layers.
+tests. The Go quality gate also runs pinned, curated source analysis including
+`gosec`, dangerous-Unicode checks, context propagation, error handling, and
+resource-lifecycle checks. These tasks are part of `devenv test` and the Go
+quality workflow. API generation, race tests, PostgreSQL integration, coverage,
+mutation, and TLC checks remain independent evidence layers.
 
 For every security-relevant change:
 

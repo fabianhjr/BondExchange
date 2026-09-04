@@ -234,7 +234,7 @@ func TestActiveOffersHandler(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("missing query status = %d", response.Code)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/active-offers?bond=BND", strings.NewReader(`{}`))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/active-offers?bond=BND", strings.NewReader(`{}`))
 	request.ContentLength = -1
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -452,14 +452,14 @@ func TestRESTStreamInterfaceAndPanicRecovery(t *testing.T) {
 func TestRequestBodyLimitsAndMediaType(t *testing.T) {
 	t.Parallel()
 	handler := newHandler(t, &applicationStub{}, healthStub{})
-	request := httptest.NewRequest(http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
 	request.Header.Set("Content-Type", "text/plain")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("media type status = %d", response.Code)
 	}
-	request = httptest.NewRequest(http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
+	request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
 	request.Header.Set("Content-Type", "application/jsonp")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -467,7 +467,7 @@ func TestRequestBodyLimitsAndMediaType(t *testing.T) {
 		t.Fatalf("JSONP media type status = %d", response.Code)
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/buys", strings.NewReader(`{"value":"`+strings.Repeat("x", 70*1024)+`"}`))
+	request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/buys", strings.NewReader(`{"value":"`+strings.Repeat("x", 70*1024)+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -486,7 +486,7 @@ func newHandler(t *testing.T, application *applicationStub, health healthStub) h
 }
 
 func performRequest(handler http.Handler, method string, target string, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(method, target, strings.NewReader(body))
+	request := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer test")
 	if method == http.MethodPost {
 		request.Header.Set("Content-Type", "application/json")

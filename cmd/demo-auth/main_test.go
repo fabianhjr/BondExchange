@@ -30,7 +30,7 @@ func TestDemoAssertionIsAcceptedByProductionAuthenticator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := os.ReadFile(filepath.Join(directory, "public.jwks"))
+	encoded, err := os.ReadFile(filepath.Join(directory, "public.jwks")) //nolint:gosec // The path is inside t.TempDir().
 	if err != nil {
 		t.Fatal(err)
 	}
