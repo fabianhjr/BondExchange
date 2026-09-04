@@ -4,6 +4,10 @@ This directory is the Go module for the Bond Exchange service. It contains:
 
 - `cmd/server`, the production composition root;
 - `cmd/demo-auth`, the development-only assertion issuer;
+- `cmd/load-targets`, the development-only authenticated Vegeta target
+  generator;
+- `cmd/internal/demoauth`, shared assertion support for those development
+  commands;
 - `internal/`, the domain, application services, and transport and persistence
   adapters; and
 - `gen/go/`, the checked-in Go bindings generated from the Proto3 contract in

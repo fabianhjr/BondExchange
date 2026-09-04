@@ -106,4 +106,5 @@
 | `docs/FMEA.md` | System-level failure mode, effects, controls, residual-risk, and follow-up analysis. |
 | `docs/adr/` | Architecture decision records and their index. |
 | `docs/security/` | ASVS application profile, requirement dispositions, and continuous-compliance evidence. |
+| `tests/integration/` | Executable REST interaction documentation and generated load-test scenarios. |
 | `.github/workflows/` | Continuous integration workflows. |

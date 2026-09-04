@@ -115,8 +115,10 @@ production-readiness decision.
 - **Current controls and detection:** `purchases.sale_offer_id` is the primary
   key; each authorization decision and insert occurs in one PostgreSQL
   transaction; the losing request reports the offer unavailable. Integration
-  tests exercise concurrency, and TLC checks that an offer cannot be both
-  active and purchased or purchased twice.
+  tests exercise store-level concurrency, and a generated full-server workload
+  requires exactly one success when independent buys contend for one offer.
+  TLC checks that an offer cannot be both active and purchased or purchased
+  twice.
 - **Action:** Preserve the database constraint as the cross-instance authority.
   Re-score and update PostgreSQL tests and TLA+ invariants whenever purchase,
   cancellation, partial-fill, or settlement behavior changes.
@@ -140,7 +142,9 @@ production-readiness decision.
   RBAC in the mutation transaction. A unique operation scope and stored digest
   make an exact retry return the prior result and reject changed input. Focused
   negative, integration, race, coverage, mutation, and TLC checks exercise the
-  boundary; structured security logs record safe decision metadata.
+  boundary. The full-server REST journey also retries a buy with a freshly
+  signed assertion and verifies identity minimization; structured security logs
+  record safe decision metadata.
 - **Action:** Preserve these controls and add a negative test for every new
   operation or authentication input. Reassess deployment identity assurance,
   telemetry, and key lifecycle under FM-008 and FM-009.
@@ -200,10 +204,14 @@ production-readiness decision.
 - **Current controls and detection:** Streaming applies backpressure and closes
   rows and transactions on cancellation; server input/message sizes, HTTP
   timeouts, gRPC concurrent streams, and the pool are bounded. Those ceilings
-  limit individual resources but do not guarantee fair or complete service.
+  limit individual resources but do not guarantee fair or complete service. A
+  generated REST workload records latency, errors, and status distributions for
+  populated offer books, but has no production threshold and does not exercise
+  slow readers or both transports.
 - **Action:** Choose bounded pagination/snapshot semantics or measured hard
-  limits shared by both transports, then add load, slow-reader, cancellation,
-  and concurrency tests plus pool/snapshot saturation alerts.
+  limits shared by both transports, then add slow-reader and cross-transport
+  cancellation tests, production-scale load thresholds, and pool/snapshot
+  saturation alerts.
 - **Traceability:** [F-006](../FRICTIONS.md#f-006--read-apis-have-unbounded-resource-use-p1)
   and [F-007](../FRICTIONS.md#f-007--swagger-does-not-describe-the-rest-stream-on-active-offers-p2).
 
@@ -338,22 +346,20 @@ production-readiness decision.
   branch or remains present after a dependency vulnerability is disclosed.
 - **Effects:** Any domain, confidentiality, integrity, or availability failure
   can persist without a bounded discovery or remediation start time.
-- **Causes:** Security scanning is change-triggered rather than scheduled;
-  governance-only paths bypass CI; raw Go tests can skip PostgreSQL; server
-  composition has limited direct tests; and current coverage metrics exclude
-  `application/cmd/`.
+- **Causes:** Security scanning is change-triggered rather than scheduled; raw
+  Go tests can skip PostgreSQL; server composition has limited direct
+  failure-path tests; and current coverage metrics exclude `application/cmd/`.
 - **Current controls and detection:** `devenv test` composes formatting, static
   analysis, API generation checks, migration and lifecycle checks, demo smoke,
-  race tests, at least 95% internal-package statement coverage and mutation
-  efficacy, `govulncheck`, ASVS evidence checks, and TLC. Separate CI jobs run
-  on configured path changes, but no idle-repository vulnerability cadence or
-  complete composition coverage exists.
-- **Action:** Schedule owned security scans, make governance/FMEA changes
-  trigger an appropriate consistency check, ensure the default test path cannot
+  readable full-server REST scenarios, a generated load check, race tests, at
+  least 95% internal-package statement coverage and mutation efficacy,
+  `govulncheck`, ASVS evidence checks, and TLC. Governance, FMEA, and integration
+  test paths trigger that workflow, but no idle-repository vulnerability cadence
+  or complete composition coverage exists.
+- **Action:** Schedule owned security scans, ensure the default test path cannot
   silently skip integration coverage, and test server configuration, partial
   startup, and forced shutdown. Keep remediation evidence and alert ownership.
 - **Traceability:** [F-012](../FRICTIONS.md#f-012--security-checks-are-change-triggered-rather-than-continuous-p2),
-  [F-013](../FRICTIONS.md#f-013--governance-and-fmea-only-changes-bypass-ci-path-filters-p3),
   [F-015](../FRICTIONS.md#f-015--the-default-contributor-path-can-silently-reduce-test-coverage-p3),
   and [F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3).
 
