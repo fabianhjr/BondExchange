@@ -48,6 +48,7 @@ linters:
           list-mode: lax
           files:
             - "**/internal/exchange/**/*.go"
+            - "**/internal/exchangerates/**/*.go"
           deny:
             - pkg: github.com/fabianhjr/BondExchange/internal
               desc: the domain package must not depend on internal adapters

@@ -12,6 +12,9 @@ The reflection-permission retirement is
 Minimal integration-event references and their delivery coordination are added
 by
 [`migrations/20260903130000_add_integration_event_references.sql`](migrations/20260903130000_add_integration_event_references.sql).
+Append-only Banxico SIE imports and exchange-rate observations, plus mutable
+fetch coordination, are added by
+[`migrations/20260904120000_add_sie_exchange_rates.sql`](migrations/20260904120000_add_sie_exchange_rates.sql).
 
 The `bond_exchange.monetary_amount` domain is based on PostgreSQL
 `numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
@@ -93,6 +96,40 @@ The application attempts publication once after each successful mutation. It
 does not scan pending events on startup or run a scheduled worker. An authorized
 API operation performs an explicit recovery scan. With no configured concrete
 publisher, references accumulate without delivery.
+
+Each successful Banxico SIE request appends one bounded
+`sie_exchange_rate_imports` row containing its canonical series/date scope,
+sanitized JSON response, SHA-256 digest, and database fetch time. Tokens and
+request headers are never stored. `sie_exchange_rate_observations` normalizes
+the response into exact positive PostgreSQL numeric values and explicit
+series/base/quote/date coordinates. The short importing transaction serializes
+each coordinate, makes a repeated current value a no-op, and appends any
+change—including a return to an older value—as a correction. The
+`current_sie_exchange_rates` view selects the greatest serialized revision ID
+without removing earlier values; it does not rely on transaction-start
+timestamps to order concurrent imports.
+
+Historical range coverage uses one deterministic calendar-month work unit per
+series and explicit base/quote mapping. A completed closed month remains
+covered even when it contained no observations. The current partial month has
+a freshness deadline and is fetched only through the current date. This avoids
+interpreting weekends and holidays as missing imports while keeping closed
+historical data available without SIE.
+
+`sie_exchange_rate_fetch_coordination` is mutable operational data. Short
+leases ensure that at most one server instance actively fetches a mapped series
+and period; the external call occurs after the claiming transaction releases
+its connection. A crash after SIE responds but before the importing transaction
+commits can result in a later duplicate request after lease expiry, but the
+observation uniqueness constraint prevents duplicate normalized values.
+`sie_provider_state` carries the token-wide reset deadline returned by SIE so
+one rate-limit response suppresses requests for other series across all server
+instances.
+
+Imports and observations are intentional durable provenance and have no
+destructive down migration. Fetch coordination and provider state require
+narrow `SELECT`, `INSERT`, and `UPDATE` runtime privileges; immutable imports
+and observations require only `SELECT` and `INSERT`.
 
 Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema

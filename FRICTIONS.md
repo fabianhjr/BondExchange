@@ -71,16 +71,18 @@ current gates either accept or do not cover.
 
 ### F-005 — Append-only and event-delivery data has no lifecycle policy (P1)
 
-- **Evidence:** Operation claims/results, RBAC facts, domain facts, minimal
-  integration-event references, and per-destination delivery records grow
-  without deletion. [`docs/security/ASVS.md`](docs/security/ASVS.md) leaves
+- **Evidence:** Operation claims/results, RBAC facts, domain facts, Banxico SIE
+  response imports and exchange-rate revisions, minimal integration-event
+  references, and per-destination delivery records grow without deletion.
+  [`docs/security/ASVS.md`](docs/security/ASVS.md) leaves
   capacity, retention, protected backups, immutable log storage, and erasure
   semantics to future deployment and legal decisions.
 - **Impact:** Storage and query costs grow indefinitely, while retention and
   data-subject obligations cannot yet be evaluated against a concrete policy.
 - **Complete when:** Capacity and retention targets, archival or partitioning,
   backup handling, monitoring, and any corrective/erasure semantics are
-  decided and verified without weakening the append-only audit model.
+  decided and verified without weakening the append-only audit model or the
+  exchange-rate correction history.
 
 ## API and runtime
 
@@ -140,8 +142,8 @@ current gates either accept or do not cover.
 - **Evidence:** The server provides plaintext loopback listeners and no
   production package. The ASVS profile still has `pending-deployment` and
   `pending-external-identity` dispositions for TLS/workload identity, ingress
-  trust, rate limiting, secret delivery, database roles and protection,
-  telemetry, identity assurance, and related controls.
+  trust, rate limiting, Banxico token and other secret delivery, database roles
+  and protection, telemetry, identity assurance, and related controls.
 - **Impact:** Passing application tests does not establish a secure or operable
   production system, and several controls cannot be verified until the hosting
   architecture exists.

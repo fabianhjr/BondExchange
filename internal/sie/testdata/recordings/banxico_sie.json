@@ -1,0 +1,95 @@
+{
+  "format_version": 1,
+  "capture_mode": "live-banxico-sie",
+  "recorded_at": "2026-09-04T17:54:01Z",
+  "interactions": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/SieAPIRest/service/v1/series/SF43718/datos/oportuno",
+        "headers": {
+          "Accept": [
+            "application/json"
+          ],
+          "Bmx-Token": [
+            "\u003cREDACTED\u003e"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": [
+            "application/json;charset=UTF-8"
+          ]
+        },
+        "body": {
+          "bmx": {
+            "series": [
+              {
+                "idSerie": "SF43718",
+                "titulo": "Tipo de cambio                                          Pesos por dólar E.U.A. Tipo de cambio para solventar obligaciones denominadas en moneda extranjera Fecha de determinación (FIX)",
+                "datos": [
+                  {
+                    "fecha": "03/09/2026",
+                    "dato": "16.9560"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/SieAPIRest/service/v1/series/SF43718/datos/2024-01-01/2024-01-05",
+        "headers": {
+          "Accept": [
+            "application/json"
+          ],
+          "Bmx-Token": [
+            "\u003cREDACTED\u003e"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": [
+            "application/json;charset=UTF-8"
+          ]
+        },
+        "body": {
+          "bmx": {
+            "series": [
+              {
+                "idSerie": "SF43718",
+                "titulo": "Tipo de cambio                                          Pesos por dólar E.U.A. Tipo de cambio para solventar obligaciones denominadas en moneda extranjera Fecha de determinación (FIX)",
+                "datos": [
+                  {
+                    "fecha": "02/01/2024",
+                    "dato": "17.0297"
+                  },
+                  {
+                    "fecha": "03/01/2024",
+                    "dato": "17.0492"
+                  },
+                  {
+                    "fecha": "04/01/2024",
+                    "dato": "17.0458"
+                  },
+                  {
+                    "fecha": "05/01/2024",
+                    "dato": "16.8987"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

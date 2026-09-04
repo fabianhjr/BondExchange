@@ -47,7 +47,11 @@ Sale-offer and purchase responses deliberately omit seller and buyer
 identifiers. The database retains those immutable identifiers for restricted
 audit. This prioritizes auditability over erasure while avoiding disclosure
 through market-data responses. Assertions, authorization headers, request
-bodies, issuer subjects, and signing keys must never be logged.
+bodies, issuer subjects, signing keys, and external-service credentials must
+never be logged. The internal Banxico SIE client accepts a 64-character
+provider token only at construction and sends it in the `Bmx-Token` header to
+a fixed HTTPS origin. It does not place the token in a URL, database row,
+recording, error, or log.
 
 `Buy` records a binding order or reservation against an offer. Payment,
 custody, ownership transfer, finality, cancellation, expiry, and all other
@@ -67,7 +71,18 @@ three-letter uppercase currency codes, 64 KiB message/body limits, HTTP
 read/header/idle timeouts, a refreshed 30-second streaming write deadline,
 bounded PostgreSQL connections, and no runtime gRPC reflection. A checked-in
 descriptor set supports offline tooling without exposing service discovery.
-Unexpected errors and panics produce generic responses.
+Unexpected errors and panics produce generic responses. SIE responses are
+limited to 1 MiB, require JSON on success, and are decoded into validated
+series IDs, dates, and positive exact decimals. The HTTP client has a
+five-second default deadline and rejects redirects outside Banxico's HTTPS
+origin. PostgreSQL leases coordinate duplicate fetches without holding a
+transaction across the network call. Token-wide rate-limit reset state is
+shared across instances.
+
+Successful SIE imports and normalized observations are append-only. Recordings
+are offline fixtures with the token replaced by `<REDACTED>`; live capture is
+an explicit developer task, rejects credential reflection in the response,
+and is not invoked by CI.
 
 Successful offer creation and buying atomically record only an integration
 event's immutable source-table name, source ID, schema version, and completion
@@ -110,6 +125,7 @@ panics are logged without request or credential contents.
 | AD-12 | Expected domain failures stay detailed unless detail would enable identity or credential enumeration. | Authentication and authorization failures are generic; unexpected failures never expose database, token, or stack details. |
 | AD-13 | Runtime gRPC reflection is absent; clients use a versioned descriptor set. | Operators lose live discovery and must select an artifact matching the deployed API. |
 | AD-14 | Integration events persist only immutable source references and use immediate best-effort delivery with explicit manual recovery. | Source loaders must remain compatible for the retention period, delivery is at least once, and pending events can remain indefinitely without operator action. |
+| AD-15 | Banxico SIE responses and exact exchange-rate revisions are durable; PostgreSQL leases and cooldowns coordinate on-demand fetches. | Durable provenance grows over time, stale latest values are possible during refresh failures, and a crash before import commit can cause a repeated upstream request. |
 
 ## Pending non-code and deployment decisions
 
@@ -123,7 +139,8 @@ loopback by default:
   per-principal rate limits, connection limits, and anti-automation controls;
 - identity-provider assurance, human MFA, automated workload credentials,
   account recovery, factor lifecycle, and authorization-server policy;
-- secret injection and rotation for `DATABASE_URL` and verification keys;
+- secret injection and rotation for `DATABASE_URL`, verification keys, and any
+  runtime `BANXICO_SIE_TOKEN`;
 - PostgreSQL encryption, backup protection, runtime/migration roles, high
   availability, capacity, and retention;
 - OpenTelemetry agent/collector selection, authenticated export, sampling,
@@ -161,7 +178,8 @@ for high, 30 days for medium, and 90 days for low. Unsupported components are
 high severity at minimum. Exceptions require an ADR with compensating controls
 and an expiry date. Dependencies come only from the locked Go module graph,
 Buf lock, and Nix/devenv lock. No currently selected component is classified
-as risky. Dangerous boundaries are the JSON/JWT parsers, protobuf gateway,
-cryptographic verification, SQL adapter, and demo-only private-key parser;
+as risky. Dangerous boundaries are the JSON/JWT and SIE response parsers,
+outbound SIE HTTP client, protobuf gateway, cryptographic verification, SQL
+adapter, and demo-only private-key parser;
 they are isolated behind size limits, strict decoding, prepared parameters,
 public-key-only server configuration, and focused negative tests.

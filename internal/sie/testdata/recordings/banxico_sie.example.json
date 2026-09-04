@@ -1,0 +1,41 @@
+{
+  "format_version": 1,
+  "capture_mode": "official-documentation-derived-example",
+  "recorded_at": "",
+  "interactions": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/SieAPIRest/service/v1/series/SF43718/datos/oportuno",
+        "headers": {
+          "Accept": ["application/json"],
+          "Bmx-Token": ["<REDACTED>"]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": ["application/json;charset=UTF-8"]
+        },
+        "body": {"bmx":{"series":[{"idSerie":"SF43718","titulo":"Tipo de cambio Pesos por dólar E.U.A. FIX","datos":[{"fecha":"02/01/2024","dato":"16.9666"}]}]}}
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/SieAPIRest/service/v1/series/SF43718/datos/2024-01-01/2024-01-05",
+        "headers": {
+          "Accept": ["application/json"],
+          "Bmx-Token": ["<REDACTED>"]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": ["application/json;charset=UTF-8"]
+        },
+        "body": {"bmx":{"series":[{"idSerie":"SF43718","titulo":"Tipo de cambio Pesos por dólar E.U.A. FIX","datos":[{"fecha":"02/01/2024","dato":"16.9666"},{"fecha":"03/01/2024","dato":"16.9557"},{"fecha":"04/01/2024","dato":"16.9803"},{"fecha":"05/01/2024","dato":"16.9343"}]}]}}
+      }
+    }
+  ]
+}
