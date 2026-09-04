@@ -36,6 +36,9 @@ BOND_EXCHANGE_LOAD_WORKERS=40 \
 `BOND_EXCHANGE_LOAD_COUNT` must be divisible by
 `BOND_EXCHANGE_LOAD_RATE`; their quotient is the attack duration in seconds and
 must not exceed 90 seconds so the demo assertions remain valid.
+The manual task defaults to 1,000 operations per main phase at 50 requests per
+second with at most 20 workers. The CI smoke profile uses 120 operations per
+main phase at 12 requests per second with at most 12 workers.
 The load runner creates unique authenticated targets for these scenarios:
 
 | Scenario | Required result |
