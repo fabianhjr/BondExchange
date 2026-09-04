@@ -170,4 +170,6 @@ See the [formal model](spec/tla/README.md), [database design](db/README.md), and
 [architecture decisions](docs/adr/README.md) for the boundaries and rationale.
 The [ASVS 5.0 Level 3 application profile](docs/security/ASVS.md) records
 requirement-level evidence and the deployment and identity controls that remain
-pending rather than assumed.
+pending rather than assumed. The [repository friction register](FRICTIONS.md)
+collects verified product, implementation, operations, and contributor rough
+edges that remain unresolved.

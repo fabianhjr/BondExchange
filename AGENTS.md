@@ -11,10 +11,29 @@
   that is not implemented or verified.
 - Treat TLA+ modules, TLC configurations, Nix/devenv configuration, and GitHub
   Actions workflows as implementation for this rule. Treat root and scoped
-  READMEs and ADRs as documentation.
+  READMEs, `FRICTIONS.md`, and ADRs as documentation.
 - Include both implementation impact and documentation impact when planning a
   change. If one side needs no edit, still verify that it remains accurate.
 - Record architecture-level decisions or changes in `docs/adr/`.
+
+## Maintain the friction register
+
+- Treat `FRICTIONS.md` as the living register of verified, unresolved product,
+  implementation, security, operations, and contributor-experience rough edges.
+- Review `FRICTIONS.md` whenever work is planned or completed. Update it in the
+  same change when that work resolves, mitigates, invalidates, reprioritizes, or
+  discovers a friction; include friction impact in plans alongside implementation
+  and documentation impact.
+- Keep entries concrete and evidence-based. Each entry should identify the
+  affected area, practical impact, and the condition that would resolve it.
+  Do not use the register as an unbounded feature wish list.
+- Remove resolved entries instead of retaining a completed-work log. Preserve
+  architecture rationale in ADRs and history, and do not reuse an old friction
+  identifier for an unrelated issue.
+- Keep `FRICTIONS.md` consistent with READMEs, ADRs, the security profile, the
+  TLA+ specification, migrations, configuration, and CI. If an apparent
+  friction is an intentional long-term constraint, document that decision in
+  the appropriate durable document and adjust the register accordingly.
 
 ## Maintain the project map
 
