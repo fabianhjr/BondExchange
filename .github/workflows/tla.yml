@@ -11,8 +11,8 @@ on:
       - "db/migrations/**"
       - "docs/adr/**"
       - "docs/security/**"
-      - "internal/exchange/**"
-      - "internal/postgres/**"
+      - "application/internal/exchange/**"
+      - "application/internal/postgres/**"
       - "spec/tla/**"
   push:
     branches:
@@ -26,8 +26,8 @@ on:
       - "db/migrations/**"
       - "docs/adr/**"
       - "docs/security/**"
-      - "internal/exchange/**"
-      - "internal/postgres/**"
+      - "application/internal/exchange/**"
+      - "application/internal/postgres/**"
       - "spec/tla/**"
   workflow_dispatch:
 

@@ -84,7 +84,11 @@ let
       pkgs.go
       pkgs.stdenv.cc
     ];
-    text = "go test -race ./...";
+    text = ''
+      application_root="''${DEVENV_ROOT:-$PWD}/application"
+      cd "$application_root"
+      go test -race ./...
+    '';
   };
 
   goCoverage = pkgs.writeShellApplication {
@@ -96,13 +100,15 @@ let
       pkgs.stdenv.cc
     ];
     text = ''
-      mkdir -p .artifacts
+      project_root="''${DEVENV_ROOT:-$PWD}"
+      cd "$project_root/application"
+      mkdir -p "$project_root/.artifacts"
       go test \
         -covermode=atomic \
         -coverpkg=./internal/... \
-        -coverprofile=.artifacts/coverage.out \
+        -coverprofile="$project_root/.artifacts/coverage.out" \
         ./internal/...
-      coverage="$(go tool cover -func=.artifacts/coverage.out | awk '/^total:/ { gsub(/%/, "", $3); print $3 }')"
+      coverage="$(go tool cover -func="$project_root/.artifacts/coverage.out" | awk '/^total:/ { gsub(/%/, "", $3); print $3 }')"
       echo "Statement coverage: $coverage%"
       awk -v coverage="$coverage" 'BEGIN { if (coverage + 0 < 95) exit 1 }'
     '';
@@ -117,7 +123,9 @@ let
       gremlins
     ];
     text = ''
-      mkdir -p .artifacts
+      project_root="''${DEVENV_ROOT:-$PWD}"
+      cd "$project_root/application"
+      mkdir -p "$project_root/.artifacts"
       gremlins unleash
     '';
   };
@@ -176,7 +184,7 @@ in
   tasks."go:check" = {
     description = "Check Go formatting and run curated static analysis";
     exec = ''
-      unformatted="$(gofmt -l cmd gen internal)"
+      unformatted="$(gofmt -l application/cmd application/gen application/internal)"
       if [ -n "$unformatted" ]; then
         echo "The following Go files need formatting:"
         echo "$unformatted"
@@ -184,8 +192,11 @@ in
       fi
       mkdir -p .artifacts/golangci-lint-cache
       export GOLANGCI_LINT_CACHE="$PWD/.artifacts/golangci-lint-cache"
-      golangci-lint config verify
-      golangci-lint run ./...
+      (
+        cd application
+        golangci-lint config verify
+        golangci-lint run ./...
+      )
     '';
     after = [
       "api:check"
@@ -213,7 +224,7 @@ in
     description = "Lint Proto3 and verify that generated API artifacts are current";
     exec = ''
       snapshot_api() {
-        find gen/go api/openapi api/descriptors -type f -print0 2>/dev/null \
+        find application/gen/go api/openapi api/descriptors -type f -print0 2>/dev/null \
           | sort -z \
           | xargs -0 sha256sum
       }
@@ -244,7 +255,7 @@ in
         echo "BANXICO_SIE_TOKEN is required to record live SIE interactions." >&2
         exit 1
       fi
-      go test ./internal/sie -run '^TestRecordLiveSIE$' -count=1
+      (cd application && go test ./internal/sie -run '^TestRecordLiveSIE$' -count=1)
     '';
   };
 
@@ -269,9 +280,9 @@ in
     exec = ''
       mkdir -p .artifacts
       ${asvsProfileCheck}/bin/bond-exchange-asvs-profile-check
-      go list -m -json all > .artifacts/go-modules.json
-      govulncheck ./...
-      go test ./internal/authn ./internal/httpapi ./internal/postgres ./internal/rpcapi
+      (cd application && go list -m -json all) > .artifacts/go-modules.json
+      (cd application && govulncheck ./...)
+      (cd application && go test ./internal/authn ./internal/httpapi ./internal/postgres ./internal/rpcapi)
     '';
     after = [
       "api:check"

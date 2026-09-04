@@ -115,9 +115,9 @@ current gates either accept or do not cover.
 
 ### F-008 — Verification-key and issuer changes require a restart (P2)
 
-- **Evidence:** `cmd/server` reads one issuer, one audience, and one local JWKS
-  file during startup. The authenticator retains that in-memory key set and has
-  no refresh mechanism.
+- **Evidence:** `application/cmd/server` reads one issuer, one audience, and one
+  local JWKS file during startup. The authenticator retains that in-memory key
+  set and has no refresh mechanism.
 - **Impact:** Key rotation and emergency revocation depend on coordinated
   process replacement, and serving multiple trusted issuers requires separate
   deployments or code changes.
@@ -194,10 +194,11 @@ current gates either accept or do not cover.
 
 ### F-015 — The default contributor path can silently reduce test coverage (P3)
 
-- **Evidence:** A raw `go test ./...` skips PostgreSQL integration tests when
-  `BOND_EXCHANGE_TEST_DATABASE_URL` is absent. The recommended devenv tasks fix
-  this, but the README bootstrap installs an unpinned `nixpkgs#devenv` CLI
-  before the repository's lock and task graph take effect.
+- **Evidence:** A raw `go test ./...` from `application/` skips PostgreSQL
+  integration tests when `BOND_EXCHANGE_TEST_DATABASE_URL` is absent. The
+  recommended devenv tasks fix this, but the README bootstrap installs an
+  unpinned `nixpkgs#devenv` CLI before the repository's lock and task graph take
+  effect.
 - **Impact:** Familiar Go commands can look green without persistence coverage,
   and onboarding can change when the external devenv package advances.
 - **Complete when:** The ordinary contributor command fails loudly or always
@@ -208,8 +209,9 @@ current gates either accept or do not cover.
 
 - **Evidence:** Package tests cover domain, authentication, adapters, and the
   PostgreSQL store, and the demo smoke test exercises happy paths and shutdown.
-  `cmd/server` is compiled and statically analyzed but has no focused tests,
-  while coverage and mutation scores intentionally measure only `internal/`.
+  `application/cmd/server` is compiled and statically analyzed but has no
+  focused tests, while coverage and mutation scores intentionally measure only
+  `application/internal/`.
 - **Impact:** Environment parsing, listener composition, hard-coded pool and
   server limits, partial startup failures, and forced shutdown behavior can
   regress without a targeted failure identifying the boundary.

@@ -74,8 +74,9 @@
 - Keep TLA+ focused on domain behavior. Do not model HTTP, SQL, deployment, or
   input-canonicalization mechanics; update the specification when domain
   behavior or invariants change.
-- Preserve the Go dependency direction: `cmd/server` performs composition;
-  HTTP and PostgreSQL adapters depend on `internal/exchange`, never the reverse.
+- Preserve the Go dependency direction: `application/cmd/server` performs
+  composition; HTTP and PostgreSQL adapters depend on
+  `application/internal/exchange`, never the reverse.
 - Keep server instances stateless. Cross-instance buy serialization belongs to
   PostgreSQL's one-purchase-per-offer constraint, not process-local locking.
 - Keep domain-fact tables append-only. Corrections or reversals require new
@@ -97,8 +98,8 @@
 | Area | Responsibility |
 | --- | --- |
 | Repository root | Project guidance, contributor documentation, and the devenv configuration. |
-| `api/` and `gen/go/` | Proto3 API source, generated Swagger contract, and generated Go transport bindings. |
-| `cmd/` and `internal/` | Stateless Go server, demo-only assertion issuer, domain logic, authentication, Banxico SIE exchange-rate ingestion and caching, integration-event delivery orchestration, REST/gRPC adapters, and PostgreSQL adapter. |
+| `api/` | Proto3 API source, generated Swagger contract, and versioned descriptor set. |
+| `application/` | Go module containing the stateless server, demo-only assertion issuer, generated Go transport bindings, domain logic, authentication, Banxico SIE exchange-rate ingestion and caching, integration-event delivery orchestration, REST/gRPC adapters, PostgreSQL adapter, and Go quality configuration. |
 | `db/` | Versioned database schema, disposable demo fixtures, and persistence documentation. |
 | `nix/` | Nix-packaged PostgreSQL lifecycle, demo, and development verification helpers. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |

@@ -6,19 +6,19 @@
 ## Context
 
 The repository required 90 percent aggregate statement coverage for packages
-under `internal/` and 80 percent mutation-test efficacy. Both thresholds passed,
-but the remaining uncovered code included authentication, event-publication,
-HTTP failure, transport, and PostgreSQL error paths whose behavior is important
-to security and recovery. The mutation suite already demonstrated efficacy
-above a stricter threshold.
+under `application/internal/` and 80 percent mutation-test efficacy. Both
+thresholds passed, but the remaining uncovered code included authentication,
+event-publication, HTTP failure, transport, and PostgreSQL error paths whose
+behavior is important to security and recovery. The mutation suite already
+demonstrated efficacy above a stricter threshold.
 
 ## Decision
 
-Require at least 95 percent aggregate statement coverage for `internal/...` and
-at least 95 percent mutation-test efficacy. Keep the existing measurement
-boundaries: coverage uses the PostgreSQL-backed aggregate profile, and Gremlins
-mutates implementation under `internal/` while excluding generated and command
-packages.
+Require at least 95 percent aggregate statement coverage for
+`application/internal/...` and at least 95 percent mutation-test efficacy. Keep
+the existing measurement boundaries: coverage uses the PostgreSQL-backed
+aggregate profile, and Gremlins mutates implementation under
+`application/internal/` while excluding generated and command packages.
 
 Meet the coverage threshold with focused behavior and failure-path tests. Do
 not omit packages, remove statements from the coverage profile, or add

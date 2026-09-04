@@ -341,7 +341,7 @@ production-readiness decision.
 - **Causes:** Security scanning is change-triggered rather than scheduled;
   governance-only paths bypass CI; raw Go tests can skip PostgreSQL; server
   composition has limited direct tests; and current coverage metrics exclude
-  `cmd/`.
+  `application/cmd/`.
 - **Current controls and detection:** `devenv test` composes formatting, static
   analysis, API generation checks, migration and lifecycle checks, demo smoke,
   race tests, at least 95% internal-package statement coverage and mutation

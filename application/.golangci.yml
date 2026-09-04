@@ -1,0 +1,66 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - depguard
+    - durationcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gocritic
+    - gomoddirectives
+    - gosec
+    - makezero
+    - misspell
+    - musttag
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - sloglint
+    - thelper
+    - unconvert
+    - unparam
+    - wastedassign
+  settings:
+    depguard:
+      rules:
+        domain-dependency-direction:
+          list-mode: lax
+          files:
+            - "**/internal/exchange/**/*.go"
+            - "**/internal/exchangerates/**/*.go"
+          deny:
+            - pkg: github.com/fabianhjr/BondExchange/application/internal
+              desc: the domain package must not depend on internal adapters
+            - pkg: github.com/fabianhjr/BondExchange/application/cmd
+              desc: the domain package must not depend on composition commands
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    generated: strict
+    warn-unused: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

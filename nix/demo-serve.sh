@@ -15,6 +15,7 @@ if [[ "$grpc_display" == :* ]]; then
 fi
 
 psql -v ON_ERROR_STOP=1 -f "$project_root/db/demo/seed.sql"
+cd "$project_root/application"
 go build -o "$server_binary" ./cmd/server
 auth_root="$BOND_EXCHANGE_RUNTIME_ROOT/auth"
 go run ./cmd/demo-auth init "$auth_root"

@@ -16,17 +16,18 @@ tool versions and suppression behavior.
 
 Use golangci-lint from the nixpkgs revision pinned by `devenv.lock`, and run it
 through `devenv tasks run go:check` after the existing `gofmt` verification.
-The version-2 configuration in `.golangci.yml` uses `linters.default: standard`
-and adds an explicit, reviewed set of correctness, security, context,
-resource-lifecycle, API, logging, test, and maintenance analyzers. The standard
-set intentionally follows golangci-lint: when the pinned tool is deliberately
-updated, any newly standard analyzer becomes part of the reviewed update.
+The version-2 configuration in `application/.golangci.yml` uses
+`linters.default: standard` and adds an explicit, reviewed set of correctness,
+security, context, resource-lifecycle, API, logging, test, and maintenance
+analyzers. The standard set intentionally follows golangci-lint: when the
+pinned tool is deliberately updated, any newly standard analyzer becomes part
+of the reviewed update.
 
-Use `depguard` to enforce that `internal/exchange` does not import internal
-adapters or command composition. Generated Go files are recognized only by the
-strict Go generated-code marker. Production and test code otherwise share the
-same gate, and CI analyzes the complete repository rather than only changed
-lines.
+Use `depguard` to enforce that `application/internal/exchange` does not import
+internal adapters or command composition. Generated Go files are recognized
+only by the strict Go generated-code marker. Production and test code otherwise
+share the same gate, and CI analyzes the complete Go module rather than only
+changed lines.
 
 Every suppression must name the applicable linter and explain why the construct
 is safe. Prefer correcting a finding. Use a narrow suppression only when the

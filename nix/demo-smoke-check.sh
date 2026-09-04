@@ -54,7 +54,8 @@ if (( auth_ready != 1 )); then
 fi
 private_key="$asserted_runtime_root/auth/private.jwk"
 issue_token() {
-  go run "$project_root/cmd/demo-auth" token "$private_key" "$1" "$2" "$3" "$4"
+  go -C "$project_root/application" run ./cmd/demo-auth \
+    token "$private_key" "$1" "$2" "$3" "$4"
 }
 
 health_token="$(issue_token demo-buyer health.read - '{}')"
