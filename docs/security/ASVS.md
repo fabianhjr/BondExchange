@@ -48,7 +48,10 @@ identifiers. The database retains those immutable identifiers for restricted
 audit. This prioritizes auditability over erasure while avoiding disclosure
 through market-data responses. Assertions, authorization headers, request
 bodies, issuer subjects, signing keys, and external-service credentials must
-never be logged. The internal Banxico SIE client accepts a 64-character
+never be logged. The integration harness passes assertions to Hurl as redacted
+secrets and pipes generated Vegeta targets directly to the load runner; result
+artifacts contain response measurements but not request headers, target bodies,
+or the ephemeral private key. The internal Banxico SIE client accepts a 64-character
 provider token only at construction and sends it in the `Bmx-Token` header to
 a fixed HTTPS origin. It does not place the token in a URL, database row,
 recording, error, or log.
@@ -62,7 +65,9 @@ Active-offer listing remains unbounded in count but is streamed with
 backpressure from one repeatable-read PostgreSQL snapshot. Native gRPC sends
 one event per offer and a terminal count event. REST uses RFC 7464 JSON Text
 Sequences (`application/json-seq`), using the same event schema. There is no
-implicit truncation or pagination.
+implicit truncation or pagination. A small generated workload exercises
+populated REST listings and records response size and latency, but it is not a
+rate-limit control or production capacity claim.
 
 Input controls include typed protobuf decoding, unknown-field rejection,
 duplicate-key rejection at every JSON object depth, a single top-level JSON
@@ -156,11 +161,15 @@ loopback by default:
 
 `devenv tasks run security:check` validates the complete profile, generates a
 Go module inventory, runs `govulncheck`, and exercises the security-focused Go
-tests. The Go quality gate also runs pinned, curated source analysis including
-`gosec`, dangerous-Unicode checks, context propagation, error handling, and
-resource-lifecycle checks. These tasks are part of `devenv test` and the Go
-quality workflow. API generation, race tests, PostgreSQL integration, coverage,
-mutation, and TLC checks remain independent evidence layers.
+tests. `integration:test` verifies a freshly signed idempotent retry and
+response identity minimization through the complete REST server, while
+`integration:load-smoke` verifies authenticated status distributions under a
+small generated workload. The Go quality gate also runs pinned, curated source
+analysis including `gosec`, dangerous-Unicode checks, context propagation,
+error handling, and resource-lifecycle checks. These tasks are part of
+`devenv test` and the Go quality workflow. API generation, race tests,
+PostgreSQL integration, coverage, mutation, and TLC checks remain independent
+evidence layers.
 
 For every security-relevant change:
 

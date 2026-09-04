@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - ".github/workflows/go-quality.yml"
+      - "AGENTS.md"
+      - "FRICTIONS.md"
       - "application/**"
       - "api/**"
       - "db/**"
       - "docs/adr/**"
+      - "docs/FMEA.md"
       - "docs/security/**"
       - "nix/**"
+      - "tests/**"
       - "README.md"
       - "devenv.nix"
       - "devenv.yaml"
@@ -19,12 +23,16 @@ on:
       - main
     paths:
       - ".github/workflows/go-quality.yml"
+      - "AGENTS.md"
+      - "FRICTIONS.md"
       - "application/**"
       - "api/**"
       - "db/**"
       - "docs/adr/**"
+      - "docs/FMEA.md"
       - "docs/security/**"
       - "nix/**"
+      - "tests/**"
       - "README.md"
       - "devenv.nix"
       - "devenv.yaml"
@@ -65,6 +73,14 @@ jobs:
         env:
           CI: "true"
         run: devenv tasks run dev:smoke
+
+      - name: Upload integration load reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: integration-load-smoke
+          path: .artifacts/integration-load/
+          if-no-files-found: ignore
 
       - name: Check ASVS profile and application security
         env:

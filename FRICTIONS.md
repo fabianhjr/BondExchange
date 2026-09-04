@@ -8,9 +8,10 @@ disposable demo: P1 blocks a credible production use, P2 is a material
 correctness, security, operability, or scaling concern, and P3 primarily
 affects maintainability or contributor experience.
 
-The repository was reviewed on 2026-09-04. `devenv test` passed at that point,
-so there is no known failing quality gate; the items below are gaps that the
-current gates either accept or do not cover.
+The repository was reviewed on 2026-09-04. `devenv test` and the default
+configurable integration load task passed at that point, so there is no known
+failing quality gate; the items below are gaps that the current gates either
+accept or do not cover.
 
 ## Product and domain
 
@@ -93,7 +94,10 @@ current gates either accept or do not cover.
   connection. Active bond-series discovery instead collects every series into
   one unary response. The gRPC server caps each outbound message at 64 KiB, so
   a sufficiently large series set can fail on native gRPC even though the
-  in-process REST path can return it.
+  in-process REST path can return it. A small generated REST workload now
+  exercises populated offer books and concurrent reads, but it defines no
+  production cardinality, latency, or saturation threshold and does not model
+  slow readers.
 - **Impact:** Slow or numerous readers can exhaust the fixed 20-connection
   pool, and large datasets can cause transport divergence or failed discovery.
 - **Complete when:** Bounded pagination/snapshots or explicit, measured limits
@@ -166,18 +170,6 @@ current gates either accept or do not cover.
   cadence, reports failures to an owner, and retains or publishes the evidence
   needed by the response policy.
 
-### F-013 — Governance and FMEA-only changes bypass CI path filters (P3)
-
-- **Evidence:** The workflow filters include `README.md`, ADRs, and security
-  docs, but not `AGENTS.md`, this file, or `docs/FMEA.md`. A change only to
-  repository guidance, the friction register, or the failure analysis therefore
-  starts neither workflow.
-- **Impact:** Important process claims can change without even the inexpensive
-  formatting, migration, API, or specification consistency checks running.
-- **Complete when:** Governance documents trigger an appropriate documentation
-  or repository-consistency check, without requiring unrelated expensive jobs
-  unless their scope warrants them.
-
 ### F-014 — The ASVS assessment input is not reproducible from the repository (P2)
 
 - **Evidence:** The security profile records an absolute path under one
@@ -208,10 +200,11 @@ current gates either accept or do not cover.
 ### F-016 — Server composition has limited direct test coverage (P3)
 
 - **Evidence:** Package tests cover domain, authentication, adapters, and the
-  PostgreSQL store, and the demo smoke test exercises happy paths and shutdown.
+  PostgreSQL store. The demo smoke test and REST integration/load scenarios
+  exercise composed happy paths, contention, and shutdown. However,
   `application/cmd/server` is compiled and statically analyzed but has no
-  focused tests, while coverage and mutation scores intentionally measure only
-  `application/internal/`.
+  focused failure-path tests, while coverage and mutation scores intentionally
+  measure only `application/internal/`.
 - **Impact:** Environment parsing, listener composition, hard-coded pool and
   server limits, partial startup failures, and forced shutdown behavior can
   regress without a targeted failure identifying the boundary.

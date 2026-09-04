@@ -218,12 +218,42 @@ devenv tasks run spec:check
 devenv tasks run db:migrate
 devenv tasks run postgres:lifecycle-check
 devenv tasks run demo:smoke
+devenv tasks run integration:test
+devenv tasks run integration:load-smoke
 devenv tasks run go:check
 devenv tasks run go:test
 devenv tasks run go:coverage
 devenv tasks run go:mutation
 devenv tasks run security:check
 ```
+
+`integration:test` starts the complete disposable server and runs the readable
+sale-offer lifecycle in
+[`tests/integration/http/sale-offer-lifecycle.hurl`](tests/integration/http/sale-offer-lifecycle.hurl).
+It covers active-series and active-offer listings, sale-offer creation, buying,
+idempotent retry, and removal from the active book. `integration:load-smoke`
+uses generated request-bound assertions to exercise distinct creates and buys,
+both listings, and a contended buy with exactly one winner.
+
+For a larger local run, set the request count, rate per second, and maximum
+workers. The count must be divisible by the rate:
+
+```console
+BOND_EXCHANGE_LOAD_COUNT=1000 \
+BOND_EXCHANGE_LOAD_RATE=100 \
+BOND_EXCHANGE_LOAD_WORKERS=40 \
+  devenv tasks run integration:load
+```
+
+Each resulting load phase is limited to 90 seconds so its short-lived demo
+assertions remain valid.
+
+Vegeta reports are written under `.artifacts/integration-load/`. They are
+repeatable local baselines rather than production service objectives; the
+default gate checks response correctness and status distributions, not an
+absolute latency threshold. See the
+[`integration test guide`](tests/integration/README.md) for the scenarios and
+artifact format.
 
 `sie:record` is intentionally omitted from the normal verification graph
 because it requires a real credential and external network access. Its output
@@ -253,8 +283,9 @@ tasks may skip the PostgreSQL integration package when
 
 Reports and the golangci-lint cache are written to `.artifacts/`. `devenv test`
 runs Nix and shell checks, Go formatting and static analysis, API artifact
-verification, PostgreSQL lifecycle and demo smoke checks, race-enabled tests,
-coverage, mutation testing, and the TLC model check.
+verification, PostgreSQL lifecycle and demo smoke checks, readable HTTP
+integration tests, a small generated load check, race-enabled tests, coverage,
+mutation testing, and the TLC model check.
 Coverage and mutation also run as separately visible CI gates.
 
 See the [formal model](spec/tla/README.md), [database design](db/README.md), and

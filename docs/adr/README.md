@@ -31,3 +31,4 @@ Alternatives considered sections.
 - [ADR-0013: Require 95 percent test quality gates](0013-require-95-percent-test-quality-gates.md)
 - [ADR-0014: Persist and coordinate Banxico SIE exchange rates](0014-persist-and-coordinate-banxico-sie-exchange-rates.md)
 - [ADR-0015: Place the Go module under `application/`](0015-place-go-module-under-application.md)
+- [ADR-0016: Use readable HTTP scenarios and generated load targets](0016-use-readable-http-scenarios-and-generated-load.md)

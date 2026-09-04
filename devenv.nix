@@ -64,18 +64,81 @@ let
     '';
   };
 
-  demoSmokeCheck = pkgs.writeShellApplication {
-    name = "bond-exchange-demo-smoke-check";
+  demoServerHarness = pkgs.writeShellApplication {
+    name = "bond-exchange-with-demo-server";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.go
+      pkgs.jq
+      pkgs.stdenv.cc
+      pkgs.util-linux
+      demo
+    ];
+    text = builtins.readFile ./nix/with-demo-server.sh;
+  };
+
+  demoSmokeScenario = pkgs.writeShellApplication {
+    name = "bond-exchange-demo-smoke-scenario";
     runtimeInputs = [
       pkgs.coreutils
       pkgs.curl
       pkgs.grpcurl
-      pkgs.go
       pkgs.jq
-      pkgs.stdenv.cc
-      demo
+    ];
+    text = builtins.readFile ./nix/demo-smoke-scenario.sh;
+  };
+
+  demoSmokeCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-demo-smoke-check";
+    runtimeInputs = [
+      demoServerHarness
+      demoSmokeScenario
     ];
     text = builtins.readFile ./nix/demo-smoke-check.sh;
+  };
+
+  integrationScenario = pkgs.writeShellApplication {
+    name = "bond-exchange-integration-scenario";
+    runtimeInputs = [
+      pkgs.curl
+      pkgs.hurl
+      pkgs.jq
+    ];
+    text = builtins.readFile ./nix/integration-test.sh;
+  };
+
+  integrationCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-integration-check";
+    runtimeInputs = [
+      demoServerHarness
+      integrationScenario
+    ];
+    text = ''
+      exec bond-exchange-with-demo-server bond-exchange-integration-scenario
+    '';
+  };
+
+  integrationLoadScenario = pkgs.writeShellApplication {
+    name = "bond-exchange-integration-load-scenario";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.jq
+      pkgs.vegeta
+    ];
+    text = builtins.readFile ./nix/integration-load.sh;
+  };
+
+  integrationLoad = pkgs.writeShellApplication {
+    name = "bond-exchange-integration-load";
+    runtimeInputs = [
+      demoServerHarness
+      integrationLoadScenario
+    ];
+    text = ''
+      exec bond-exchange-with-demo-server bond-exchange-integration-load-scenario
+    '';
   };
 
   goTest = pkgs.writeShellApplication {
@@ -144,6 +207,7 @@ in
     pkgs.gawk
     pkgs.grpc-gateway
     pkgs.grpcurl
+    pkgs.hurl
     pkgs.golangci-lint
     pkgs.jdk21_headless
     pkgs.nixfmt
@@ -152,11 +216,14 @@ in
     pkgs.protoc-gen-go
     pkgs.protoc-gen-go-grpc
     pkgs.shellcheck
+    pkgs.vegeta
     pkgs.govulncheck
     tlaPlus
     gremlins
     postgresHarness
     demo
+    integrationCheck
+    integrationLoad
   ];
 
   env = {
@@ -309,11 +376,40 @@ in
     before = [ "devenv:enterTest" ];
   };
 
+  tasks."integration:test" = {
+    description = "Exercise documented sale-offer, listing, and buy interactions over REST";
+    exec = "${integrationCheck}/bin/bond-exchange-integration-check";
+    after = [
+      "go:check"
+      "postgres:lifecycle-check"
+    ];
+    before = [ "devenv:enterTest" ];
+  };
+
+  tasks."integration:load-smoke" = {
+    description = "Run a small correctness-gated generated HTTP workload";
+    exec = ''
+      BOND_EXCHANGE_LOAD_COUNT=12 \
+      BOND_EXCHANGE_LOAD_RATE=12 \
+      BOND_EXCHANGE_LOAD_WORKERS=12 \
+        ${integrationLoad}/bin/bond-exchange-integration-load
+    '';
+    after = [ "integration:test" ];
+    before = [ "devenv:enterTest" ];
+  };
+
+  tasks."integration:load" = {
+    description = "Run configurable generated HTTP load and write reports under .artifacts";
+    exec = "${integrationLoad}/bin/bond-exchange-integration-load";
+  };
+
   tasks."dev:smoke" = {
     description = "Run PostgreSQL lifecycle and local demo smoke checks";
     exec = "true";
     after = [
       "demo:smoke"
+      "integration:load-smoke"
+      "integration:test"
       "postgres:lifecycle-check"
     ];
   };
