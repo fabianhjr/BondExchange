@@ -31,6 +31,12 @@ func (publisher *recordingPublisher) Publish(_ context.Context, event eventing.E
 	return publisher.err
 }
 
+type rowScannerFunc func(...any) error
+
+func (scan rowScannerFunc) Scan(destinations ...any) error {
+	return scan(destinations...)
+}
+
 const testDatabaseEnvironment = "BOND_EXCHANGE_TEST_DATABASE_URL"
 
 func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
@@ -571,6 +577,23 @@ VALUES ('sale_offers', $1, 2, transaction_timestamp())`, offer); err != nil {
 	}); err == nil {
 		t.Fatal("missing event reference loaded")
 	}
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.integration_events (table_name, id, schema_version, completed_at)
+VALUES ('sale_offers', 'missing-source', 1, transaction_timestamp())`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LoadEvent(context.Background(), eventing.SourceRef{
+		TableName: eventing.TableSaleOffers,
+		ID:        "missing-source",
+	}); !errors.Is(err, eventing.ErrUnsupportedEvent) {
+		t.Fatalf("missing source error = %v", err)
+	}
+	if err := store.MarkEventDelivered(context.Background(), "sink", eventing.SourceRef{
+		TableName: eventing.TableSaleOffers,
+		ID:        "missing-source",
+	}, "missing-lease"); err == nil {
+		t.Fatal("missing delivery lease was accepted")
+	}
 }
 
 func TestBuyIdempotencyReplaysOriginalBinding(t *testing.T) {
@@ -705,6 +728,30 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 	if classifyCreateSaleOfferError(original) != original { //nolint:errorlint // This test requires exact passthrough identity.
 		t.Fatal("non-database error was reclassified")
 	}
+	databaseError := &pgconn.PgError{ConstraintName: "other_constraint"}
+	if classifyCreateSaleOfferError(databaseError) != databaseError { //nolint:errorlint // This test requires exact passthrough identity.
+		t.Fatal("unrecognized database error was reclassified")
+	}
+	if equalDigest([]byte("short"), [sha256.Size]byte{}) {
+		t.Fatal("short digest was accepted")
+	}
+	wantScanError := errors.New("scan failed")
+	if _, err := scanPurchase(rowScannerFunc(func(...any) error { return wantScanError })); !errors.Is(err, wantScanError) {
+		t.Fatalf("scanPurchase() scan error = %v", err)
+	}
+	if _, err := scanPurchase(rowScannerFunc(func(destinations ...any) error {
+		*destinations[3].(*string) = "invalid" //nolint:forcetypeassert // scanPurchase controls this destination's concrete type.
+		return nil
+	})); !errors.Is(err, exchange.ErrInvalidPrice) {
+		t.Fatalf("scanPurchase() price error = %v", err)
+	}
+	canceledContext, cancelRetry := context.WithCancel(context.Background())
+	cancelRetry()
+	if _, err := retryTransaction(canceledContext, func() (string, error) {
+		return "", &pgconn.PgError{Code: "40001"}
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled retryTransaction() error = %v", err)
+	}
 	attempts := 0
 	value, err := retryTransaction(context.Background(), func() (string, error) {
 		attempts++
@@ -796,6 +843,9 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	if err := store.Ping(ctx); err == nil {
 		t.Fatal("Ping() succeeded with closed pool")
 	}
+	if err := store.Authorize(ctx, access("reader", exchange.OperationListActiveOffers), exchange.PermissionListActiveOffers); err == nil {
+		t.Fatal("Authorize() succeeded with closed pool")
+	}
 	if _, err := store.Buy(ctx, mutation("buyer", exchange.OperationBuy, "idempotency-key-1", "offer"), "offer"); err == nil {
 		t.Fatal("Buy() succeeded with closed pool")
 	}
@@ -807,6 +857,25 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	}
 	if _, err := store.ActiveBondSeries(ctx, access("reader", exchange.OperationListBondSeries)); err == nil {
 		t.Fatal("ActiveBondSeries() succeeded with closed pool")
+	}
+	ref := eventing.SourceRef{TableName: eventing.TableSaleOffers, ID: "offer"}
+	if _, err := store.LoadEvent(ctx, ref); err == nil {
+		t.Fatal("LoadEvent() succeeded with closed pool")
+	}
+	if _, _, err := store.ClaimEvent(ctx, "sink", ref, "lease", time.Second, false); err == nil {
+		t.Fatal("ClaimEvent() succeeded with closed pool")
+	}
+	if err := store.MarkEventDelivered(ctx, "sink", ref, "lease"); err == nil {
+		t.Fatal("MarkEventDelivered() succeeded with closed pool")
+	}
+	if err := store.MarkEventFailed(ctx, "sink", ref, "lease", "publisher_error", time.Second); err == nil {
+		t.Fatal("MarkEventFailed() succeeded with closed pool")
+	}
+	if _, err := store.PendingEvents(ctx, "sink", eventing.SourceRef{}, 100); err == nil {
+		t.Fatal("PendingEvents() succeeded with closed pool")
+	}
+	if _, err := store.CountPendingEvents(ctx, "sink"); err == nil {
+		t.Fatal("CountPendingEvents() succeeded with closed pool")
 	}
 }
 

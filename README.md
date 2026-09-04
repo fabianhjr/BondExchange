@@ -176,7 +176,7 @@ dependencies are content-addressed in `api/buf.lock`; update that lock intention
 the curated correctness, security, context, resource-lifecycle, logging, test,
 and dependency-direction checks in `.golangci.yml`. Suppressions must identify
 one or more specific linters and explain why the flagged construct is safe.
-Coverage must be at least 90%, and mutation-test efficacy must be at least 80%.
+Coverage and mutation-test efficacy must each be at least 95%.
 Both gates measure the implementation under `internal/`; the thin server
 entrypoint under `cmd/` is compiled and statically analyzed but excluded from
 those scores.

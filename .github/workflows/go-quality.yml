@@ -52,7 +52,7 @@ concurrency:
 
 jobs:
   coverage:
-    name: Coverage (minimum 90%)
+    name: Coverage (minimum 95%)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -105,7 +105,7 @@ jobs:
           if-no-files-found: ignore
 
   mutation:
-    name: Mutation efficacy (minimum 80%)
+    name: Mutation efficacy (minimum 95%)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 

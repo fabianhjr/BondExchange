@@ -14,6 +14,7 @@ import (
 	"github.com/fabianhjr/BondExchange/internal/eventing"
 	"github.com/fabianhjr/BondExchange/internal/exchange"
 	"github.com/shopspring/decimal"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -122,6 +123,21 @@ func (stub authenticatorStub) Authenticate(_ context.Context, operation string, 
 		result.IdempotencyKey = "idempotency-key-1"
 	}
 	return result, nil
+}
+
+type listStreamStub struct {
+	grpc.ServerStream
+	//nolint:containedctx // The gRPC stream test double must return its configured request context.
+	ctx     context.Context
+	sendErr error
+}
+
+func (stream *listStreamStub) Context() context.Context {
+	return stream.ctx
+}
+
+func (stream *listStreamStub) Send(*bondexchangev1.ListActiveOffersResponse) error {
+	return stream.sendErr
 }
 
 func testServer(application Application, health HealthChecker) *Server {
@@ -247,8 +263,12 @@ func TestGRPCErrors(t *testing.T) {
 	}{
 		{name: "canceled", err: context.Canceled, code: codes.Canceled},
 		{name: "deadline", err: context.DeadlineExceeded, code: codes.DeadlineExceeded},
+		{name: "unauthenticated", err: exchange.ErrUnauthenticated, code: codes.Unauthenticated},
+		{name: "permission", err: exchange.ErrPermissionDenied, code: codes.PermissionDenied},
 		{name: "invalid", err: exchange.ErrInvalidUserID, code: codes.InvalidArgument},
+		{name: "missing offer", err: exchange.ErrOfferUnavailable, code: codes.NotFound},
 		{name: "identity inconsistency", err: exchange.ErrBuyerNotFound, code: codes.Internal},
+		{name: "idempotency conflict", err: exchange.ErrIdempotencyConflict, code: codes.AlreadyExists},
 		{name: "internal", err: errors.New("boom"), code: codes.Internal},
 	}
 	for _, test := range tests {
@@ -319,6 +339,34 @@ func TestGRPCErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGRPCNilAuthenticatorStreamFailuresAndTraceLogging(t *testing.T) {
+	t.Parallel()
+	server := NewServer(&applicationStub{}, healthStub{}, nil)
+	if _, err := server.Buy(context.Background(), &bondexchangev1.BuyRequest{}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("nil authenticator error = %v", err)
+	}
+
+	want := errors.New("send failed")
+	server = testServer(&applicationStub{offers: []exchange.SaleOffer{{ID: "offer"}}}, healthStub{})
+	if err := server.ListActiveOffers(&bondexchangev1.ListActiveOffersRequest{}, &listStreamStub{ctx: context.Background(), sendErr: want}); status.Code(err) != codes.Internal {
+		t.Fatalf("offer send error = %v", err)
+	}
+	server = testServer(&applicationStub{}, healthStub{})
+	if err := server.ListActiveOffers(&bondexchangev1.ListActiveOffersRequest{}, &listStreamStub{ctx: context.Background(), sendErr: want}); status.Code(err) != codes.Unknown {
+		t.Fatalf("completion send error = %v", err)
+	}
+
+	var traceID trace.TraceID
+	traceID[0] = 1
+	var spanID trace.SpanID
+	spanID[0] = 1
+	ctx := trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID,
+		SpanID:  spanID,
+	}))
+	logSecurityOperation(ctx, exchange.OperationCheckHealth, nil, nil)
 }
 
 func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
