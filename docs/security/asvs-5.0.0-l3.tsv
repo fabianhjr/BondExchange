@@ -319,8 +319,8 @@
 16.1.1	2	verified	application/internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.1.
 16.2.1	2	verified	application/internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.2.
 16.2.2	2	pending-deployment	docs/security/ASVS.md	Clock synchronization is a runtime and infrastructure responsibility.
-16.2.3	2	pending-deployment	docs/security/ASVS.md	Approved log destinations depend on the telemetry collector and runtime configuration.
-16.2.4	2	pending-deployment	docs/security/ASVS.md	The application emits JSON, but compatibility with the selected log processor requires deployment verification.
+16.2.3	2	pending-deployment	docs/observability.md	Approved protected log destinations remain deployment-owned even though the local OTLP collector is validated.
+16.2.4	2	pending-deployment	docs/observability.md	The application emits correlated JSON, but compatibility with the production log processor requires deployment verification.
 16.2.5	2	verified	application/internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.2.
 16.3.1	2	verified	application/internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.3.
 16.3.2	2	verified	application/internal/rpcapi/server.go	Application control is implemented and linked to tests and design evidence for section 16.3.

@@ -130,12 +130,15 @@ classification, and operational invocation remain deployment decisions.
 
 Security events are JSON logs with source-code location and the operation,
 outcome, safe error class, principal audit ID, client ID/class, assertion ID,
-request digest, and stream count where applicable. When an OpenTelemetry span
-is present, logs include its trace and span IDs. This is compatible with the
-OpenTelemetry Go automatic-instrumentation agent; the application does not
-embed an exporter or collector address. Malformed input, authentication and
+request digest, and stream count where applicable. Every context-aware log adds
+its OpenTelemetry trace ID, span ID, and sampled state when a valid span is
+present. The application owns OTLP trace and metric provider lifecycle but
+enables export only through standard `OTEL_*` configuration; no destination or
+credential is compiled into the binary. Malformed input, authentication and
 authorization decisions, domain outcomes, unexpected errors, and recovered
-panics are logged without request or credential contents.
+panics are logged without request or credential contents. Metric labels and
+general span attributes exclude audit IDs, financial terms, request contents,
+credentials, and dynamic resource identifiers.
 
 ## Architecture decisions and tradeoffs
 
@@ -150,7 +153,7 @@ panics are logged without request or credential contents.
 | AD-8 | Both mutations are idempotent using a durable operation scope and request digest. | Operation records grow append-only and need deployment-owned capacity/retention monitoring. |
 | AD-9 | Application resource ceilings are local; mesh/sidecar rate limiting and service identity are pending. | A mesh can centralize policy but creates another parser and authorization boundary that must be assessed end to end. |
 | AD-10 | Domain, RBAC, and operation facts are append-only; response minimization protects user identity. | Audit records cannot satisfy erasure semantics without a future legal and architectural decision. |
-| AD-11 | Logs are structured JSON and enrich automatic OpenTelemetry context. | Automatic instrumentation and the collector are runtime concerns; telemetry data must be classified and protected. |
+| AD-11 | The application owns OpenTelemetry trace/metric instrumentation and OTLP lifecycle; JSON security logs correlate with active spans. | Collector routing, protected storage, access, alerting, retention, and production sampling remain deployment concerns. |
 | AD-12 | Expected domain failures stay detailed unless detail would enable identity or credential enumeration. | Authentication and authorization failures are generic; unexpected failures never expose database, token, or stack details. |
 | AD-13 | Runtime gRPC reflection is absent; clients use a versioned descriptor set. | Operators lose live discovery and must select an artifact matching the deployed API. |
 | AD-14 | Integration events persist only immutable source references and use immediate best-effort delivery with explicit manual recovery. | Source loaders must remain compatible for the retention period, delivery is at least once, and pending events can remain indefinitely without operator action. |
@@ -174,7 +177,7 @@ loopback by default:
   runtime `BANXICO_SIE_TOKEN`;
 - PostgreSQL encryption, backup protection, runtime/migration roles, high
   availability, capacity, and retention;
-- OpenTelemetry agent/collector selection, authenticated export, sampling,
+- OpenTelemetry collector/backend selection, authenticated export, production sampling,
   clock synchronization, immutable log storage, access, alerting, and
   retention;
 - integration-event destination selection, publisher credentials and network
@@ -201,7 +204,10 @@ error handling, and resource-lifecycle checks. These tasks are part of
 itself to the test entry point without joining one, so security evidence cannot
 be produced locally while being absent from CI. API generation, race tests,
 PostgreSQL integration, coverage, mutation, and TLC checks remain independent
-evidence layers.
+evidence layers. `observability:check` separately validates the loopback
+collector, OTLP export and flush, REST/gRPC propagation, bounded metric and
+route attributes, trace/log correlation, and the Banxico propagation boundary;
+its JSON report is retained by continuous integration.
 
 For every security-relevant change:
 

@@ -2,10 +2,10 @@
 
 This system-level failure mode and effects analysis (FMEA) covers the Bond
 Exchange domain, API, authentication and authorization, PostgreSQL persistence,
-integration-event delivery, Banxico SIE ingestion, runtime composition, and
-verification workflow. It evaluates the repository as implemented on
-2026-09-04. It does not assert that the disposable demo is production-ready or
-that deployment-owned controls exist.
+integration-event delivery, Banxico SIE ingestion, runtime and telemetry
+composition, and verification workflow. It evaluates the repository as
+implemented on 2026-09-05. It does not assert that the disposable demo is
+production-ready or that deployment-owned controls exist.
 
 The FMEA is a prioritization aid, not a quantitative prediction, security
 certification, incident log, or acceptance of a high risk. The
@@ -66,6 +66,7 @@ production-readiness decision.
 | FM-018 | Decimal conversion or rounding creates the wrong MXN terms. | 8 | 2 | 2 | 32 | Monitored | Intake/data | Controlled |
 | FM-019 | A quote is accepted by the wrong seller, for changed terms, after expiry, or more than once. | 8 | 2 | 2 | 32 | Monitored | Intake/data | Controlled |
 | FM-020 | Legacy non-MXN offers are hidden by the new binary or still served by an old binary during rollout. | 8 | 5 | 4 | 160 | Medium | Release/product | Open disposition |
+| FM-021 | Telemetry is silently lost, unsafe, misleading, or unavailable during an incident. | 8 | 5 | 7 | 280 | High | Platform/operations | Open deployment control |
 
 ## Detailed analysis
 
@@ -149,7 +150,9 @@ production-readiness decision.
   negative, integration, race, coverage, mutation, and TLC checks exercise the
   boundary. The full-server REST journey also retries a buy with a freshly
   signed assertion and verifies identity minimization; structured security logs
-  record safe decision metadata.
+  record safe decision metadata and correlate it with application-owned REST,
+  gRPC, authentication, and database spans. Bounded operation metrics exclude
+  audit and request identifiers.
 - **Action:** Preserve these controls and add a negative test for every new
   operation or authentication input. Reassess deployment identity assurance,
   telemetry, and key lifecycle under FM-008 and FM-009.
@@ -199,8 +202,10 @@ production-readiness decision.
   protected-backup, or erasure policy. The restricted legacy-identifier
   archive preserves migration evidence but is not a lifecycle policy.
 - **Current controls and detection:** Purpose-built indexes exist for current
-  queries and the schema preserves provenance. No repository-owned capacity
-  thresholds, alerts, or lifecycle mechanism detect or prevent exhaustion.
+  queries and the schema preserves provenance. Native pgx pool metrics and
+  query spans expose per-instance pressure when OTLP is configured. No
+  repository-owned shared-database capacity thresholds, alerts, or lifecycle
+  mechanism detect or prevent exhaustion.
 - **Action:** Establish measured growth and service objectives, capacity alerts,
   protected backup/restore tests, and a reviewed retention or archival design
   that preserves required append-only facts and correction history.
@@ -223,7 +228,9 @@ production-readiness decision.
   timeouts, gRPC concurrent streams, and the pool are bounded. Those ceilings
   limit individual resources but do not guarantee fair or complete service. A
   generated REST workload records latency, errors, and status distributions for
-  populated offer books, but has no production threshold.
+  populated offer books, but has no production threshold. Standard HTTP/gRPC
+  metrics, pgx pool metrics, and a bounded emitted-offer histogram expose
+  request and stream pressure when OTLP is configured.
   `TestStreamActiveOffersReleasesConnectionsOnEveryExit` proves that a stream
   releases its connection, snapshot, and rows on normal completion, on an
   abandoning reader, and on mid-stream cancellation, repeating each exit past
@@ -255,8 +262,10 @@ production-readiness decision.
   unspecified hosting and external-identity architecture.
 - **Current controls and detection:** The default binds to loopback, application
   authentication always runs, inputs are bounded, errors are minimized, and
-  the README states required boundaries. These controls neither build nor
-  verify a production environment.
+  the README states required boundaries. Application-owned OTLP traces and
+  metrics, correlated JSON logs, a loopback collector, and contract/privacy
+  tests cover the development boundary. These controls neither build nor
+  verify protected production telemetry or another production boundary.
 - **Action:** Keep production use blocked until owners define and test TLS,
   workload identity, ingress trust, rate limits, secret delivery/rotation,
   least-privilege database roles, backups, availability, and protected
@@ -305,8 +314,9 @@ production-readiness decision.
 - **Current controls and detection:** A database trigger atomically records a
   minimal reference with the successful operation result. Per-destination
   delivery state, leases, error classes, and an authenticated manual recovery
-  operation support bounded retries. No current destination or monitoring
-  detects the resulting backlog.
+  operation support bounded retries. Metrics expose that zero publishers are
+  configured and classify claimed attempts, but no current destination or
+  continuously monitored shared backlog detects an undelivered event.
 - **Action:** Deploy a reviewed destination and authenticated transport,
   backlog monitoring, payload approval, recovery ownership and runbook, and
   tested retry behavior; alternatively accept database-only retention in an
@@ -327,6 +337,8 @@ production-readiness decision.
   deduplication key, independently of its source reference. UUIDv4 delivery
   leases prevent concurrent
   intentional sends, but cannot resolve an ambiguous external acknowledgement.
+  Delivery spans and bounded outcome/error-class metrics are ready for a future
+  publisher but have no consumer-side evidence.
 - **Action:** Make idempotent consumer handling by event UUID an
   acceptance criterion for every destination; exercise acknowledgement-loss
   and replay tests and monitor duplicate outcomes before enabling it.
@@ -351,8 +363,9 @@ production-readiness decision.
   seven days, and persists the rate and resulting quote before acceptance.
   Strict SIE parsing, exact decimal persistence, focused rejection tests, the
   full-server USD journey, and immutable provenance make the selected inputs
-  detectable after the fact. A later correction does not mutate an accepted
-  quote.
+  detectable after the fact. Rate cache/fetch outcomes, provider latency, and
+  accepted observation age are now emitted without financial terms or dynamic
+  identifiers. A later correction does not mutate an accepted quote.
 - **Action:** Before production, assign rate-policy ownership, confirm the
   seven-day ceiling against bank holidays and applicable trading rules, alert
   on stale/over-age rejection and corrections affecting unexpired quotes, and
@@ -376,7 +389,9 @@ production-readiness decision.
   at construction, sends it only in `Bmx-Token` to a fixed HTTPS origin, and
   excludes it from persistence and errors. Live recording is explicit, rejects
   reflected credentials, redacts request authentication, limits headers, and
-  writes atomically; ordinary tests use offline fixtures. Production secret
+  writes atomically; ordinary tests use offline fixtures. The instrumented HTTP
+  transport is tested not to propagate trace or baggage headers to Banxico, and
+  telemetry contract tests reject credential-bearing output. Production secret
   delivery, access, and rotation are not defined.
 - **Action:** Define a least-privilege secret store, injection and rotation
   procedure, egress policy, log/artifact scanning, response plan, and owner as
@@ -414,15 +429,18 @@ production-readiness decision.
   silently. Environment parsing, verification-key loading, pool and transport
   limits, listener binding including partial-startup release, and graceful and
   forced shutdown now live in `internal/serverruntime`, so the coverage and
-  mutation gates measure them; `application/cmd/server` retains only wiring.
+  mutation gates measure them; `application/cmd/server` retains only wiring. A
+  dedicated observability gate validates collector configuration, OTLP
+  export/flush, propagation, bounded labels and routes, and credential
+  exclusion; a focused command test covers instrumented gRPC composition.
 - **Action:** Keep remediation evidence with the response ownership recorded in
   `SECURITY.md` and `.github/CODEOWNERS`. Detection improves from 8 to 6 on the
   implemented scan cadence and reporting path; severity and occurrence are
   unchanged because scanning cannot find a defect class it does not analyze, and
   because the composition wiring that remains in the command package is still
-  measured only by the demo smoke and integration scenarios. Re-score again once
-  the schedule has operational history, and note that GitHub suspends scheduled
-  workflows in an idle repository.
+  measured by the demo smoke, integration scenarios, and a focused gRPC test.
+  Re-score again once the schedule has operational history, and note that GitHub
+  suspends scheduled workflows in an idle repository.
 - **Traceability:** [F-015](../FRICTIONS.md#f-015--the-default-contributor-path-can-silently-reduce-test-coverage-p3),
   [ADR-0013](adr/0013-require-95-percent-test-quality-gates.md),
   and [ADR-0021](adr/0021-schedule-security-scanning-and-name-a-response-owner.md).
@@ -443,7 +461,9 @@ production-readiness decision.
   connection to either listener, which needs no credential and no database. The
   two dependency failures stay distinguishable at the API and are covered by
   `internal/rpcapi` tests: a database failure returns `Unavailable` and an
-  authorization failure returns `PermissionDenied`.
+  authorization failure returns `PermissionDenied`. HTTP/gRPC and operation
+  telemetry can correlate readiness latency and failures when a collector
+  exists.
 - **Action:** Apply the contract in whatever deployment manifests are eventually
   written, and revisit if a wedged-but-listening process is ever observed, since
   a TCP check cannot detect one. Occurrence drops from 5 to 3 on the published
@@ -500,7 +520,9 @@ production-readiness decision.
 - **Current controls and detection:** The quote endpoint returns a specific
   unavailable status and never creates an offer without an accepted rate.
   Provider leases, stale fallback metadata, cooldowns, timeouts, durable cache,
-  and exact quote replay bound upstream work. The dependency is composed only
+  and exact quote replay bound upstream work. Rate fetch/cache outcome metrics,
+  provider spans, and accepted-observation age improve diagnosis when exported.
+  The dependency is composed only
   into intake, so the core has no rate call on create-MXN, list, or buy paths.
 - **Action:** Define an availability objective and alerts for quote rejection,
   cache age, token authentication, rate limits, and lease recovery. If USD
@@ -579,6 +601,36 @@ production-readiness decision.
 - **Traceability:** [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md),
   [F-018](../FRICTIONS.md#f-018--legacy-non-mxn-offers-have-no-seller-disposition-workflow-p1),
   and [database behavior](../db/README.md).
+
+### FM-021 — Telemetry is lost, unsafe, or misleading
+
+- **Function and failure:** Traces, metrics, or correlated logs are silently
+  dropped, duplicated, mislabeled, exposed to an unauthorized destination, or
+  unavailable when an incident needs them.
+- **Effects:** Operators miss or misdiagnose transaction, dependency, capacity,
+  and security failures; unsafe attributes can disclose protected operational
+  or audit data; misleading telemetry can trigger harmful remediation.
+- **Causes:** Collector or exporter outage, invalid credentials or TLS,
+  incompatible instrumentation, duplicate automatic and native probes,
+  excessive cardinality, unreviewed sampling, queue exhaustion, clock skew, or
+  missing alert and retention ownership.
+- **Current controls and detection:** The application owns one native OTLP
+  pipeline with bounded queues and shutdown flush, uses stable route and metric
+  dimensions, keeps Banxico outside the propagation domain, and logs safe
+  exporter error types without failing business traffic. Deterministic tests
+  inspect spans, metric labels, log correlation, OTLP/HTTP export, secret
+  exclusion, and both REST and gRPC propagation. Devenv pins and validates a
+  loopback collector. There is no protected production backend, collector
+  self-alert, delivery SLO, clock evidence, or tested retention and access
+  policy, so scores are not reduced.
+- **Action:** Assign a platform owner; deploy authenticated encrypted export and
+  protected storage; define sampling, retention, access, and overhead budgets;
+  alert on collector refusals, queue saturation, drops, and signal absence; and
+  exercise collector outage, recovery, and incident-query runbooks before
+  production use.
+- **Traceability:** [ADR-0025](adr/0025-own-application-opentelemetry-instrumentation.md),
+  [observability contract](observability.md), and
+  [F-011](../FRICTIONS.md#f-011--the-production-deployment-boundary-is-unspecified-p1).
 
 ## Maintenance and review procedure
 

@@ -8,7 +8,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const pendingBatchSize = 100
@@ -33,6 +35,10 @@ func NewDispatcher(store Store, destinations []Destination, publishLimit time.Du
 			return nil, errorsForConfiguration("destination IDs must be unique")
 		}
 		registered[destination.ID] = destination.Publisher
+	}
+	telemetry.RecordEventPublisherCount(context.Background(), len(registered))
+	if len(registered) == 0 {
+		slog.Warn("no integration-event publisher configured", "event", "integration_event.configuration", "publisher_count", 0)
 	}
 	return &Dispatcher{
 		store:        store,
@@ -130,7 +136,12 @@ func (dispatcher *Dispatcher) publishOne(
 	if !claimed {
 		return false, false, nil
 	}
-	publishContext, cancel := context.WithTimeout(ctx, dispatcher.publishLimit)
+	deliveryContext, span := telemetry.Start(ctx, "integration_event.deliver",
+		attribute.String("messaging.destination.name", destinationID),
+		attribute.Bool("delivery.forced", force),
+	)
+	started := time.Now()
+	publishContext, cancel := context.WithTimeout(deliveryContext, dispatcher.publishLimit)
 	defer cancel()
 	event, err := dispatcher.store.LoadEvent(publishContext, ref)
 	loadFailed := err != nil
@@ -139,8 +150,12 @@ func (dispatcher *Dispatcher) publishOne(
 	}
 	if err == nil {
 		if err := dispatcher.store.MarkEventDelivered(ctx, destinationID, ref, leaseToken); err != nil {
+			telemetry.RecordEventDelivery(deliveryContext, "failed", "mark_delivery_error", time.Since(started))
+			telemetry.End(span, "mark_delivery_error")
 			return false, true, err
 		}
+		telemetry.RecordEventDelivery(deliveryContext, "delivered", "", time.Since(started))
+		telemetry.End(span, "")
 		return true, true, nil
 	}
 	errorClass := "publisher_error"
@@ -160,8 +175,12 @@ func (dispatcher *Dispatcher) publishOne(
 		errorClass,
 		retryDelay(attempt, ref),
 	); markErr != nil {
+		telemetry.RecordEventDelivery(deliveryContext, "failed", "mark_failure_error", time.Since(started))
+		telemetry.End(span, "mark_failure_error")
 		return false, true, markErr
 	}
+	telemetry.RecordEventDelivery(deliveryContext, "failed", errorClass, time.Since(started))
+	telemetry.End(span, errorClass)
 	return false, true, err
 }
 

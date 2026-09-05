@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -109,7 +111,16 @@ func (authenticator *JWTAuthenticator) Authenticate(
 	operation string,
 	canonicalRequest []byte,
 	idempotent bool,
-) (Result, error) {
+) (result Result, resultErr error) {
+	ctx, span := telemetry.Start(ctx, "authn.authenticate", attribute.String("bondexchange.operation", operation))
+	defer func() {
+		outcome := "succeeded"
+		if resultErr != nil {
+			outcome = "rejected"
+		}
+		span.SetAttributes(attribute.String("outcome", outcome))
+		span.End()
+	}()
 	rawAssertion, err := singleBearerToken(ctx)
 	if err != nil {
 		return Result{}, exchange.ErrUnauthenticated

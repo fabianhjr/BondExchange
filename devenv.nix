@@ -267,6 +267,17 @@ let
     runtimeInputs = [ pkgs.postgresql_18 ];
     text = builtins.readFile ./nix/canonical-mxn-readiness.sh;
   };
+
+  observabilityCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-observability-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.go
+      pkgs.opentelemetry-collector-contrib
+      pkgs.stdenv.cc
+    ];
+    text = builtins.readFile ./nix/observability-check.sh;
+  };
 in
 {
   packages = [
@@ -280,6 +291,7 @@ in
     pkgs.golangci-lint
     pkgs.jdk21_headless
     pkgs.nixfmt
+    pkgs.opentelemetry-collector-contrib
     pkgs.postgresql_18
     pkgs.protobuf
     pkgs.protoc-gen-go
@@ -296,6 +308,7 @@ in
     uuidContractReadiness
     uuidContractHistoryTest
     canonicalMxnReadiness
+    observabilityCheck
   ];
 
   env = {
@@ -304,7 +317,16 @@ in
     DBMATE_STRICT = "true";
   };
 
-  processes.demo.exec = "${demo}/bin/bond-exchange-demo";
+  processes.demo.exec = ''
+    OTEL_SERVICE_NAME=bond-exchange \
+    OTEL_TRACES_EXPORTER=otlp \
+    OTEL_METRICS_EXPORTER=otlp \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+    OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
+    OTEL_METRIC_EXPORT_INTERVAL=5000 \
+      ${demo}/bin/bond-exchange-demo
+  '';
+  processes.otel-collector.exec = "${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config nix/otel-collector.yaml";
 
   tasks."db:migrate" = {
     description = "Validate migrations against a fresh temporary PostgreSQL database";
@@ -485,6 +507,12 @@ in
     exec = "${integrationLoad}/bin/bond-exchange-integration-load";
   };
 
+  tasks."observability:check" = {
+    description = "Validate the local collector and OpenTelemetry signal contracts";
+    exec = "${observabilityCheck}/bin/bond-exchange-observability-check";
+    after = [ "go:test" ];
+  };
+
   tasks."dev:smoke" = {
     description = "Run PostgreSQL lifecycle and local demo smoke checks";
     exec = "true";
@@ -517,6 +545,7 @@ in
       "go:test"
       "integration:load-smoke"
       "integration:test"
+      "observability:check"
       "postgres:lifecycle-check"
       "security:check"
       "spec:check"

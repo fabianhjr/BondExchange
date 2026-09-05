@@ -18,6 +18,11 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 	"github.com/fabianhjr/BondExchange/application/internal/rpcapi"
 	"github.com/shopspring/decimal"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -43,6 +48,61 @@ type applicationStub struct {
 	publishSummary eventing.Summary
 	publishErr     error
 	destinationID  string
+}
+
+func TestHandlerCreatesStableHTTPRouteSpans(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	otel.SetTracerProvider(provider)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	handler := newHandler(t, &applicationStub{}, healthStub{})
+
+	for index, path := range []string{"/healthz", "/users/01991a20-0000-7000-8000-000000000999"} {
+		request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil)
+		request.Header.Set("Authorization", "Bearer super-secret-assertion")
+		request.Header.Set("User-Agent", "super-secret-agent")
+		request.Host = "super-secret-host.example"
+		if index == 0 {
+			request.Header.Set("Traceparent", "00-01000000000000000000000000000000-0200000000000000-01")
+		} else {
+			request.URL.RawQuery = "token=super-secret-query"
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+	}
+	var names []string
+	var healthTraceID string
+	routes := make(map[string]string)
+	for _, span := range spanRecorder.Ended() {
+		if span.SpanKind() == trace.SpanKindServer {
+			names = append(names, span.Name())
+			for _, item := range span.Attributes() {
+				value := item.Value.String()
+				if strings.Contains(value, "super-secret") || strings.Contains(value, "01991a20") {
+					t.Fatalf("HTTP span leaked sensitive or dynamic input in %q=%q", item.Key, value)
+				}
+				if item.Key == "http.route" {
+					routes[span.Name()] = value
+				}
+			}
+			if span.Name() == "GET /healthz" {
+				healthTraceID = span.SpanContext().TraceID().String()
+			}
+		}
+	}
+	if len(names) != 2 || names[0] != "GET /healthz" || names[1] != "GET unmatched" {
+		t.Fatalf("HTTP server span names = %v", names)
+	}
+	if healthTraceID != "01000000000000000000000000000000" {
+		t.Fatalf("propagated health trace ID = %q", healthTraceID)
+	}
+	if routes["GET /healthz"] != "/healthz" || routes["GET unmatched"] != "unmatched" {
+		t.Fatalf("HTTP route attributes = %v", routes)
+	}
+	if routeTemplate("/buys") != "/buys" || routeTemplate("/buys/secret-id") != "unmatched" {
+		t.Fatal("route templates are not bounded")
+	}
 }
 
 func (application *applicationStub) Buy(

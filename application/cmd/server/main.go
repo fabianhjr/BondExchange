@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	bondexchangev1 "github.com/fabianhjr/BondExchange/application/gen/go/bondexchange/v1"
 	"github.com/fabianhjr/BondExchange/application/internal/authn"
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
@@ -21,21 +23,23 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/rpcapi"
 	"github.com/fabianhjr/BondExchange/application/internal/serverruntime"
 	"github.com/fabianhjr/BondExchange/application/internal/sie"
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true})))
+	slog.SetDefault(slog.New(telemetry.NewLogHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true}))))
 	if err := run(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run() (runErr error) {
 	config, err := serverruntime.Load(nil)
 	if err != nil {
 		return err
@@ -47,15 +51,28 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	shutdownTelemetry, err := telemetry.Setup(ctx, telemetry.Config{})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		runErr = errors.Join(runErr, shutdownTelemetry(shutdownContext))
+	}()
 	poolConfig, err := serverruntime.PoolConfig(config.DatabaseURL)
 	if err != nil {
 		return err
 	}
+	poolConfig.ConnConfig.Tracer = otelpgx.NewTracer()
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
+	if err := otelpgx.RecordStats(pool); err != nil {
+		return fmt.Errorf("record PostgreSQL pool metrics: %w", err)
+	}
 
 	store := postgresstore.NewStore(pool)
 	if err := store.Ping(ctx); err != nil {
@@ -93,8 +110,7 @@ func run() error {
 		return err
 	}
 	httpServer := serverruntime.HTTPServer(config.RESTAddress, httpHandler)
-	grpcServer := grpc.NewServer(serverruntime.GRPCServerOptions(recoverUnaryPanic, recoverStreamPanic)...)
-	bondexchangev1.RegisterBondExchangeServiceServer(grpcServer, apiServer)
+	grpcServer := newGRPCServer(apiServer)
 
 	listeners, err := serverruntime.Listen(ctx, config)
 	if err != nil {
@@ -135,6 +151,14 @@ func run() error {
 		return serveErr
 	}
 	return shutdownErr
+}
+
+func newGRPCServer(apiServer bondexchangev1.BondExchangeServiceServer) *grpc.Server {
+	options := serverruntime.GRPCServerOptions(recoverUnaryPanic, recoverStreamPanic)
+	options = append(options, grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	server := grpc.NewServer(options...)
+	bondexchangev1.RegisterBondExchangeServiceServer(server, apiServer)
+	return server
 }
 
 func recoverUnaryPanic(

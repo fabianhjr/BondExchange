@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchangerates"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const testToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -83,6 +87,44 @@ func TestFetchLatestAndRange(t *testing.T) {
 	})
 	if err != nil || len(result.Observations) != 0 || requests != 2 {
 		t.Fatalf("range result/error/requests = %#v/%v/%d", result, err, requests)
+	}
+}
+
+func TestFetchCreatesClientSpanWithoutCrossBoundaryPropagation(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+
+	client := newTestClient(t, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Header.Get("Traceparent") != "" || request.Header.Get("Baggage") != "" {
+			t.Fatalf("trace context crossed the Banxico boundary: %v", request.Header)
+		}
+		return response(http.StatusOK, "application/json", `{"bmx":{"series":[{"idSerie":"SF43718","datos":[{"fecha":"04/09/2026","dato":"19.8765"}]}]}}`), nil
+	}))
+	ctx, root := provider.Tracer("test").Start(context.Background(), "root")
+	_, err := client.Fetch(ctx, exchangerates.FetchRequest{Kind: exchangerates.FetchLatest, SeriesIDs: []exchangerates.SeriesID{"SF43718"}})
+	root.End()
+	if err != nil {
+		t.Fatal(err)
+	}
+	spans := spanRecorder.Ended()
+	foundClient := false
+	for _, span := range spans {
+		if span.SpanKind() == trace.SpanKindClient {
+			foundClient = true
+			for _, item := range span.Attributes() {
+				if strings.Contains(item.Value.String(), testToken) {
+					t.Fatalf("client span leaked the Banxico token in %q", item.Key)
+				}
+			}
+			if span.Parent().SpanID() != root.SpanContext().SpanID() {
+				t.Fatalf("client span parent = %s, want %s", span.Parent().SpanID(), root.SpanContext().SpanID())
+			}
+		}
+	}
+	if !foundClient {
+		t.Fatalf("client span not found in %d spans", len(spans))
 	}
 }
 
