@@ -225,3 +225,24 @@ accept or do not cover.
 - **Complete when:** The owner selects a license, adds it at the repository
   root, states how it relates to the separately licensed ASVS source, and
   records the choice where contributors will find it.
+
+### F-022 — Marketplace and authorization behavior are model-checked separately (P3)
+
+- **Evidence:** [`spec/tla/README.md`](spec/tla/README.md) documents three TLC
+  instances. `BondExchange.cfg` explores contention between buyers with
+  authorization fixed, and `BondExchangeAuthorization.cfg` explores grants,
+  revocations, and suspensions over a single-offer market. A first attempt at
+  one combined instance exceeded four million distinct states at depth six
+  without terminating, so the concerns were separated to keep `spec:check`
+  tractable. `MaxGrantGeneration` also bounds re-granting at two generations.
+- **Impact:** No checked behavior interleaves a contended binding order with a
+  concurrent revocation or suspension. The service authorizes, claims, and
+  commits inside one transaction, so that interleaving is not expected to
+  produce a fact the model would reject, but the expectation is reasoned rather
+  than verified. A defect that appears only when both concerns interact would
+  not be found by TLC.
+- **Complete when:** A combined instance is tractable — through a sound symmetry
+  set, a state constraint, or a smaller abstraction of authorization — and
+  covers contention and revocation together, or an ADR records that the
+  separation is sufficient and states why the interaction cannot produce a
+  distinct failure.
