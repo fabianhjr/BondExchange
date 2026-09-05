@@ -50,17 +50,17 @@ production-readiness decision.
 | FM-002 | Unsupported market-integrity behavior is accepted as valid trading. | 9 | 5 | 9 | 405 | High | Product/domain | Open |
 | FM-003 | More than one buyer acquires the same offer. | 9 | 2 | 2 | 36 | Monitored; severity review | Domain/data | Controlled |
 | FM-004 | An unauthorized, altered, or replayed operation changes domain state. | 10 | 2 | 3 | 60 | Monitored; severity review | Security/data | Controlled |
-| FM-005 | Direct or alternate writers append facts outside domain constraints. | 8 | 6 | 8 | 384 | High | Data/security | Open |
+| FM-005 | Direct or alternate writers append facts outside domain constraints. | 8 | 4 | 6 | 192 | Medium | Data/security | Open |
 | FM-006 | Unbounded immutable history exhausts storage or degrades queries. | 8 | 6 | 7 | 336 | High | Data/operations | Open |
-| FM-007 | Read workloads exhaust database or transport capacity. | 8 | 6 | 7 | 336 | High | API/operations | Open |
+| FM-007 | Read workloads exhaust database or transport capacity. | 8 | 5 | 6 | 240 | High | API/operations | Open |
 | FM-008 | A deployment exposes traffic, credentials, or privileged infrastructure. | 10 | 8 | 8 | 640 | High | Platform/security | Production blocker |
-| FM-009 | Verification-key or issuer rotation causes an outage or stale trust. | 8 | 5 | 5 | 200 | High | Identity/operations | Open |
+| FM-009 | Verification-key or issuer rotation causes an outage or stale trust. | 8 | 3 | 4 | 96 | Monitored | Identity/operations | Controlled by procedure |
 | FM-010 | A committed integration event is never delivered. | 7 | 10 | 9 | 630 | High | Integration/operations | Present by design |
 | FM-011 | An integration event is delivered more than once and applied twice. | 7 | 4 | 8 | 224 | High | Integration/consumer | Open external control |
 | FM-012 | A stale, future, over-age, corrected, or incorrectly directed FIX rate becomes accepted offer terms. | 9 | 2 | 3 | 54 | Monitored; severity review | Rates/intake | Controlled |
 | FM-013 | The reusable Banxico SIE token is disclosed. | 8 | 3 | 6 | 144 | Medium | Platform/security | Deployment action open |
 | FM-014 | A high-impact defect or vulnerability remains undetected. | 9 | 5 | 6 | 270 | High | Engineering/security | Open |
-| FM-015 | Dependency failure is misclassified as process failure, causing restart churn. | 7 | 5 | 4 | 140 | Medium | Platform/operations | Open |
+| FM-015 | Dependency failure is misclassified as process failure, causing restart churn. | 7 | 3 | 4 | 84 | Monitored | Platform/operations | Controlled by contract |
 | FM-016 | A migration loses facts or breaks the previously deployed application. | 10 | 2 | 4 | 80 | Monitored; severity review | Data/release | Controlled by workflow |
 | FM-017 | SIE or its cache is unavailable when a seller requests a USD quote. | 5 | 5 | 3 | 75 | Monitored | Rates/operations | Controlled degradation |
 | FM-018 | Decimal conversion or rounding creates the wrong MXN terms. | 8 | 2 | 2 | 32 | Monitored | Intake/data | Controlled |
@@ -165,18 +165,28 @@ production-readiness decision.
   correction is difficult because domain-fact tables reject destructive
   changes.
 - **Causes:** Provisioning and security administration currently require direct
-  SQL, while several database constraints are looser than service validation.
+  SQL. Storage now rejects the value classes the domain rejects, except that
+  `numeric(14,4)` rounds an over-precise price at cast time before any `CHECK`
+  observes it.
 - **Current controls and detection:** Go validates API inputs, foreign keys and
   PostgreSQL UUID-version checks reject invalid current identifiers and nonces,
   and append-only triggers prevent silent rewriting. Operational legacy aliases
-  have been contracted, but currency constraints remain looser and there is no supported provisioning path
-  or complete storage-level constraint equivalence, and no pre-insert detection
-  for privileged SQL.
-- **Action:** Define and test a supported administration workflow and add a
-  backward-compatible migration that aligns storage constraints with every
-  sanctioned writer after safely classifying existing facts.
-- **Traceability:** [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1)
-  and [F-004](../FRICTIONS.md#f-004--database-constraints-are-looser-than-domain-validation-p1).
+  have been contracted. `sale_offers.currency_code` now requires `^[A-Z]{3}$`,
+  canonical terms require MXN, and submission provenance requires MXN or USD.
+  `TestStorageConstraintsMatchDomainValidation` compares each Go validation rule
+  against a direct SQL insert and fails on a disagreement in either direction,
+  so constraint drift is detected rather than discovered. The constraint was
+  added `NOT VALID` and validated separately, and the validation migration
+  refuses to proceed while nonconforming history exists. There is still no
+  supported provisioning path and no pre-insert detection for privileged SQL.
+- **Action:** Define and test a supported administration workflow, and decide
+  whether the monetary representation should reject rather than round an
+  over-precise price. Occurrence drops from 6 to 4 and detection from 8 to 6 on
+  the implemented constraints and the equivalence test; severity is unchanged
+  because a nonconforming fact remains permanent.
+- **Traceability:** [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1),
+  [F-004](../FRICTIONS.md#f-004--database-constraints-are-looser-than-domain-validation-p1),
+  and [ADR-0023](adr/0023-align-storage-constraints-with-domain-validation.md).
 
 ### FM-006 — Storage or query exhaustion from retained history
 
@@ -213,12 +223,22 @@ production-readiness decision.
   timeouts, gRPC concurrent streams, and the pool are bounded. Those ceilings
   limit individual resources but do not guarantee fair or complete service. A
   generated REST workload records latency, errors, and status distributions for
-  populated offer books, but has no production threshold and does not exercise
-  slow readers or both transports.
+  populated offer books, but has no production threshold.
+  `TestStreamActiveOffersReleasesConnectionsOnEveryExit` proves that a stream
+  releases its connection, snapshot, and rows on normal completion, on an
+  abandoning reader, and on mid-stream cancellation, repeating each exit past
+  the pool size against a deliberately bounded pool so a leak blocks rather than
+  hides. `TestConcurrentSlowReadersDoNotExhaustThePool` runs twice as many slow
+  readers as connections and requires that saturation makes them queue rather
+  than fail. Both are bounded-pool tests, not production capacity claims, and
+  neither exercises the gRPC transport.
 - **Action:** Choose bounded pagination/snapshot semantics or measured hard
-  limits shared by both transports, then add slow-reader and cross-transport
-  cancellation tests, production-scale load thresholds, and pool/snapshot
-  saturation alerts.
+  limits shared by both transports, then add cross-transport cancellation tests,
+  production-scale load thresholds, and pool/snapshot saturation alerts. Note
+  that a connection cancelled mid-query is destroyed rather than returned, so a
+  burst of cancellations churns the pool; that cost is unmeasured. Occurrence
+  drops from 6 to 5 and detection from 7 to 6 on the release and saturation
+  tests; severity is unchanged because no bound on result cardinality exists.
 - **Traceability:** [F-006](../FRICTIONS.md#f-006--read-apis-have-unbounded-resource-use-p1)
   and [F-007](../FRICTIONS.md#f-007--swagger-does-not-describe-the-rest-stream-on-active-offers-p2).
 
@@ -252,15 +272,24 @@ production-readiness decision.
 - **Effects:** All authenticated operations can become unavailable, or a
   compromised signer can remain effective until every process is replaced.
 - **Causes:** One issuer, audience, and local JWKS are loaded only at startup;
-  there is no refresh, overlap protocol, or multi-issuer trust configuration.
+  there is no refresh or multi-issuer trust configuration, so rotation depends
+  on correctly sequenced process replacement.
 - **Current controls and detection:** Startup fails closed for missing or
   malformed configuration and validates public signing keys, unique key IDs,
-  algorithms, and use. Health checks exercise authenticated access but do not
-  prove that all client keys overlap correctly.
-- **Action:** Either document and test coordinated restart-based rotation,
-  including overlap and emergency revocation, or implement bounded fail-safe
-  refresh and multi-issuer behavior with negative and outage tests.
-- **Traceability:** [F-008](../FRICTIONS.md#f-008--verification-key-and-issuer-changes-require-a-restart-p2)
+  algorithms, and use; a key set with duplicate key IDs is refused, which is
+  what makes an overlap window unambiguous. ADR-0024 publishes the three-step
+  rotation procedure and its overlap sizing, and
+  `TestVerificationKeyRotationOverlap` executes those steps as three key sets,
+  asserting which signer each accepts. `TestVerificationKeySetRejectsDuplicateKeyIDs`
+  pins the startup refusal. Configuration parsing and key-set loading are
+  covered by `internal/serverruntime` tests rather than only by a running
+  process.
+- **Action:** Rehearse the procedure against the real deployment tooling once a
+  deployment exists, and revisit bounded refresh if emergency revocation must be
+  faster than a restart. Occurrence drops from 5 to 3 and detection from 5 to 4
+  on the published, tested procedure; severity is unchanged because a mistaken
+  rotation still affects every authenticated operation.
+- **Traceability:** [ADR-0024](adr/0024-define-probe-and-key-rotation-contracts.md)
   and [authentication configuration](../README.md#run-locally).
 
 ### FM-010 — Committed event remains undelivered
@@ -382,18 +411,20 @@ production-readiness decision.
   matching change. `docs:check` verifies that documentation links, anchors,
   indexes, and register identifiers still resolve, and the ASVS profile is
   compared against its pinned upstream source, so security evidence cannot decay
-  silently. Composition coverage remains incomplete.
-- **Action:** Test server configuration, partial startup, and forced shutdown,
-  and keep remediation evidence with the response ownership recorded in
+  silently. Environment parsing, verification-key loading, pool and transport
+  limits, listener binding including partial-startup release, and graceful and
+  forced shutdown now live in `internal/serverruntime`, so the coverage and
+  mutation gates measure them; `application/cmd/server` retains only wiring.
+- **Action:** Keep remediation evidence with the response ownership recorded in
   `SECURITY.md` and `.github/CODEOWNERS`. Detection improves from 8 to 6 on the
   implemented scan cadence and reporting path; severity and occurrence are
-  unchanged because scanning cannot find a defect class it does not analyze and
-  composition failure paths remain untested
-  ([F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3)).
-  Re-score again once the schedule has operational history, and note that
-  GitHub suspends scheduled workflows in an idle repository.
+  unchanged because scanning cannot find a defect class it does not analyze, and
+  because the composition wiring that remains in the command package is still
+  measured only by the demo smoke and integration scenarios. Re-score again once
+  the schedule has operational history, and note that GitHub suspends scheduled
+  workflows in an idle repository.
 - **Traceability:** [F-015](../FRICTIONS.md#f-015--the-default-contributor-path-can-silently-reduce-test-coverage-p3),
-  [F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3),
+  [ADR-0013](adr/0013-require-95-percent-test-quality-gates.md),
   and [ADR-0021](adr/0021-schedule-security-scanning-and-name-a-response-owner.md).
 
 ### FM-015 — Dependency failure causes restart churn
@@ -404,14 +435,21 @@ production-readiness decision.
 - **Effects:** A dependency incident is amplified into process churn, slower
   recovery, avoidable load, and loss of diagnostic continuity.
 - **Causes:** The only health operation checks authorization and database
-  readiness; there is no distinct process-only liveness contract.
+  readiness. Without a stated contract an orchestrator can reasonably wire it to
+  a liveness probe.
 - **Current controls and detection:** Startup pings PostgreSQL and the demo smoke
-  test verifies health and shutdown. The authenticated health response detects
-  readiness loss but cannot distinguish it for an orchestrator without an
-  external probe policy.
-- **Action:** Define deployment health semantics and test separate liveness and
-  readiness behavior, dependency failures, thresholds, and restart policy.
-- **Traceability:** [F-010](../FRICTIONS.md#f-010--there-is-no-orchestration-friendly-liveness-endpoint-p2)
+  test verifies health and shutdown. ADR-0024 states the contract: `CheckHealth`
+  is readiness and must never drive a restart, while liveness is a TCP
+  connection to either listener, which needs no credential and no database. The
+  two dependency failures stay distinguishable at the API and are covered by
+  `internal/rpcapi` tests: a database failure returns `Unavailable` and an
+  authorization failure returns `PermissionDenied`.
+- **Action:** Apply the contract in whatever deployment manifests are eventually
+  written, and revisit if a wedged-but-listening process is ever observed, since
+  a TCP check cannot detect one. Occurrence drops from 5 to 3 on the published
+  contract; detection is unchanged because the repository cannot observe how an
+  orchestrator is configured.
+- **Traceability:** [ADR-0024](adr/0024-define-probe-and-key-rotation-contracts.md)
   and [runtime endpoints](../README.md#run-locally).
 
 ### FM-016 — Lossy or incompatible database migration

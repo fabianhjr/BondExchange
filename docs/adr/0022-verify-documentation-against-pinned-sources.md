@@ -72,7 +72,7 @@ the registers by anchor, so the link checks still cover their navigable claims.
 - Verifying the baseline requires roughly 160 MB of upstream checkout for the
   332 KB actually read, because the ASVS repository retains every prior version
   of the standard. `security:check` and therefore `devenv test` fail without it.
-  F-018 records this cost and its completion conditions.
+  F-020 records this cost and its completion conditions.
 - The anchor checker implements GitHub's slug algorithm rather than reusing it.
   A future upstream change to that algorithm would make the checker wrong in
   either direction; the rule is simple enough that this is an acceptable risk
@@ -87,7 +87,7 @@ the registers by anchor, so the link checks still cover their navigable claims.
 
 Copying `5.0/en` into the repository would avoid the 160 MB checkout and the
 submodule workflow entirely. It would also copy CC BY-SA licensed text into a
-repository that has no license of its own (F-019), and it would replace a
+repository that has no license of its own (F-021), and it would replace a
 verifiable upstream pin with a local copy whose provenance depends on the
 diligence of whoever pasted it. A submodule keeps provenance mechanical.
 

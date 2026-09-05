@@ -28,6 +28,10 @@ Canonical view names and business-code column names are finalized by
 Canonical MXN offer terms, conversion quotes, and submission provenance are
 added by
 [`migrations/20260904180000_add_canonical_mxn_offer_terms.sql`](migrations/20260904180000_add_canonical_mxn_offer_terms.sql).
+The canonical currency-code constraint is introduced by
+[`migrations/20260905000000_constrain_currency_codes.sql`](migrations/20260905000000_constrain_currency_codes.sql)
+and proved against retained history by
+[`migrations/20260905010000_validate_currency_codes.sql`](migrations/20260905010000_validate_currency_codes.sql).
 
 PostgreSQL 18 is required. Every application table has a `uuid_id uuid`
 primary key generated with `uuidv7()` and constrained with
@@ -53,6 +57,24 @@ digits, so provisioning code must validate the scale before insertion when
 rounding is not intended. The Go adapter converts the database's exact decimal
 text to `decimal.Decimal`; it never passes monetary values through binary
 floating point.
+
+That rounding is the one place where storage remains more permissive than the
+Go domain. Rounding happens when the value is cast into `numeric(14,4)`, before
+any `CHECK` constraint observes it, so no column constraint can reject an
+over-precise input; closing it would require changing the monetary domain's
+base type. Every other sale-offer value class now agrees, and
+`TestStorageConstraintsMatchDomainValidation` compares the two directly:
+`sale_offers.currency_code` must match `^[A-Z]{3}$`, matching
+`exchange.ParseCurrencyCode`, and the test fails if the documented rounding
+divergence is ever closed without updating this README and the register.
+
+The currency constraint is added `NOT VALID` and validated by a separate
+migration. Adding it constrains every subsequent insert immediately without
+scanning history, so it cannot fail on existing rows and the previously
+deployed application keeps working. The validation migration then proves the
+retained history conforms; because sale offers are append-only it cannot repair
+a nonconforming row, so it reports the count and stops, leaving the operator to
+represent the correction as new facts under review.
 
 A purchase records the buyer's binding order or reservation and has its own
 UUIDv7 primary key. Settlement, payment, custody, ownership

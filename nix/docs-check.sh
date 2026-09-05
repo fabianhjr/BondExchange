@@ -127,6 +127,24 @@ if [[ -z "$defined_frictions" || -z "$defined_failure_modes" ]]; then
   fail "could not read friction or failure-mode identifiers from their registers"
 fi
 
+# Two entries sharing an identifier is how a concurrent branch silently reuses a
+# number. The registers forbid reuse precisely because references are by
+# identifier, so a duplicate definition must fail rather than resolve to
+# whichever heading a reader happens to reach first.
+duplicate_identifiers() {
+  grep -oE "^### $1-[0-9]{3}" "$2" | grep -oE "$1-[0-9]{3}" | sort | uniq -d
+}
+
+while IFS= read -r identifier; do
+  [[ -z "$identifier" ]] && continue
+  fail "FRICTIONS.md defines $identifier more than once"
+done < <(duplicate_identifiers F FRICTIONS.md)
+
+while IFS= read -r identifier; do
+  [[ -z "$identifier" ]] && continue
+  fail "docs/FMEA.md defines $identifier more than once"
+done < <(duplicate_identifiers FM docs/FMEA.md)
+
 for document in "${documents[@]}"; do
   case "$document" in
     docs/adr/*) continue ;;

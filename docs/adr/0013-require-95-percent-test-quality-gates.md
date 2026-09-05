@@ -32,8 +32,16 @@ mutation gate being tightened by this decision.
   and PostgreSQL failure paths have stronger regression coverage.
 - A change that adds untested internal behavior or leaves more than five percent
   of viable tested mutants alive fails the contributor and CI task graph.
-- Command composition remains outside the percentage calculations and is still
-  tracked by F-016 in the friction register.
+- Command composition remains outside the percentage calculations. That
+  exclusion was later made deliberate rather than tolerated: the composition
+  logic that carries failure modes — environment parsing, verification-key
+  loading, pool and transport limits, listener binding and partial-startup
+  release, and graceful and forced shutdown — moved into
+  `internal/serverruntime`, where these gates measure it. What stays in
+  `application/cmd/server` is wiring whose failure the demo smoke and
+  integration scenarios already surface, so command packages are intentionally
+  excluded from the percentages instead of being an untracked gap. This resolved
+  F-016, which the register no longer carries.
 - A 95 percent aggregate result does not imply that every function or branch is
   covered, so review remains responsible for risk-based test selection.
 

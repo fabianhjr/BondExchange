@@ -11,6 +11,9 @@ This directory is the Go module for the Bond Exchange service. It contains:
 - `internal/exchange`, the MXN-only marketplace core;
 - `internal/offerintake`, the outer MXN/USD submission and accepted FIX-quote
   workflow;
+- `internal/serverruntime`, the composition decisions the server command used
+  to make inline: environment parsing, verification-key loading, pool and
+  transport limits, listener binding, and shutdown;
 - the remaining `internal/` packages, including provider-neutral rates, SIE,
   transport, eventing, and PostgreSQL adapters; and
 - `gen/go/`, the checked-in Go bindings generated from the Proto3 contract in
@@ -36,5 +39,9 @@ quality gates. Generated bindings must be changed through the root
 `api:generate` task, not edited directly.
 
 `cmd/server` requires `BANXICO_SIE_TOKEN` because USD quotation is part of the
-composed API. The token remains owned by the SIE adapter. The marketplace core
-does not import the intake or exchange-rate packages and accepts only MXN.
+composed API. The token remains owned by the SIE adapter, which is its only
+consumer and validates its format; `internal/serverruntime` reads it alongside
+the rest of the environment so that a missing credential fails startup with
+every other missing variable named at once, and it is never logged or
+persisted. The marketplace core does not import the intake or exchange-rate
+packages and accepts only MXN.

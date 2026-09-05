@@ -58,18 +58,24 @@ accept or do not cover.
 
 ### F-004 — Database constraints are looser than domain validation (P1)
 
-- **Evidence:** Current primary keys are UUIDv7 and current mutation nonces are
-  UUIDv4 at both Go and PostgreSQL boundaries. The legacy identifier graph has
-  been contracted. Canonical offer terms are constrained to MXN and submission
-  provenance to MXN/USD, but the compatibility `sale_offers.currency_code`
-  still needs only be nonempty while Go requires exactly three uppercase ASCII
-  letters. This matters especially while F-003 requires direct SQL
-  provisioning and the affected facts are append-only.
-- **Impact:** A privileged or future alternate writer can create immutable
-  facts that the Go domain rejects or cannot reliably process.
-- **Complete when:** A backward-compatible forward migration makes storage
-  constraints and every sanctioned writer agree with the documented domain,
-  including a safe plan for pre-existing nonconforming facts.
+- **Evidence:** Identifier, nonce, and currency-code constraints now agree with
+  the Go domain: `sale_offers.currency_code` requires `^[A-Z]{3}$`, canonical
+  offer terms are MXN, and submission provenance is MXN or USD. One divergence
+  remains. `price` is `numeric(14,4)`, and PostgreSQL rounds an input with more
+  than four fractional digits at cast time, before any `CHECK` observes it, so
+  no column constraint can reject what `exchange.ParsePrice` refuses. Closing it
+  requires changing the monetary domain's base type on append-only columns. This
+  matters while F-003 keeps direct SQL a sanctioned writer and the affected
+  facts are append-only.
+- **Impact:** A privileged or future alternate writer can still append a sale
+  offer whose price was silently rounded to a value the seller did not submit.
+  Every other value class is now rejected at storage as well as at the boundary.
+- **Complete when:** The monetary representation rejects rather than rounds an
+  over-precise value for every sanctioned writer, with a backward-compatible
+  forward migration and a safe plan for pre-existing rounded facts, or an ADR
+  records the rounding as an accepted permanent constraint. The equivalence is
+  pinned by `TestStorageConstraintsMatchDomainValidation`, which fails if the
+  divergence closes without this entry being updated.
 
 ### F-018 — Legacy non-MXN offers have no seller disposition workflow (P1)
 
@@ -136,30 +142,6 @@ accept or do not cover.
   describes the streaming representation, or the REST endpoint adopts a
   representation the generated contract can express and verify.
 
-### F-008 — Verification-key and issuer changes require a restart (P2)
-
-- **Evidence:** `application/cmd/server` reads one issuer, one audience, and one
-  local JWKS file during startup. The authenticator retains that in-memory key
-  set and has no refresh mechanism.
-- **Impact:** Key rotation and emergency revocation depend on coordinated
-  process replacement, and serving multiple trusted issuers requires separate
-  deployments or code changes.
-- **Complete when:** The deployment contract explicitly accepts restart-based
-  rotation with a tested overlap procedure, or bounded, failure-safe key and
-  issuer refresh is implemented and tested.
-
-### F-010 — There is no orchestration-friendly liveness endpoint (P2)
-
-- **Evidence:** `CheckHealth` requires a short-lived operation-bound assertion,
-  principal resolution, `health.read`, and a successful database ping. There
-  is no separate process-only liveness signal.
-- **Impact:** A scheduler must continuously mint application credentials for a
-  probe, and identity or database outages can cause healthy processes to be
-  restarted instead of merely removed from service.
-- **Complete when:** Deployment health semantics are decided and documented,
-  with distinct liveness/readiness behavior where required and tests for each
-  dependency failure.
-
 ### F-011 — The production deployment boundary is unspecified (P1)
 
 - **Evidence:** The server provides plaintext loopback listeners and no
@@ -192,22 +174,6 @@ accept or do not cover.
   provisions required integration dependencies, and the bootstrap toolchain is
   pinned or has an explicitly tested compatibility range.
 
-### F-016 — Server composition has limited direct test coverage (P3)
-
-- **Evidence:** Package tests cover domain, authentication, adapters, and the
-  PostgreSQL store. The demo smoke test and REST integration/load scenarios
-  exercise composed happy paths, contention, and shutdown. However,
-  `application/cmd/server` is compiled and statically analyzed but has no
-  focused failure-path tests, while coverage and mutation scores intentionally
-  measure only `application/internal/`.
-- **Impact:** Environment parsing, listener composition, hard-coded pool and
-  server limits, partial startup failures, and forced shutdown behavior can
-  regress without a targeted failure identifying the boundary.
-- **Complete when:** Composition is factored into testable units or covered by
-  focused process tests for invalid configuration, listener failures, startup,
-  and graceful/forced shutdown, with an explicit decision on whether command
-  packages belong in quality metrics.
-
 ### F-017 — Integration-event recovery is manual and has no destination (P2)
 
 - **Evidence:** Successful mutations record durable event references and make
@@ -224,7 +190,7 @@ accept or do not cover.
   recovery runbook are deployed, or an ADR deliberately accepts database-only
   event retention and removes the outbound-delivery claim.
 
-### F-018 — Verifying the ASVS baseline requires a large upstream checkout (P3)
+### F-020 — Verifying the ASVS baseline requires a large upstream checkout (P3)
 
 - **Evidence:** [`docs/security/ASVS.md`](docs/security/ASVS.md) is verified
   against the `third_party/asvs` submodule, pinned to OWASP/ASVS
@@ -241,7 +207,7 @@ accept or do not cover.
   machine-readable requirement artifact, or a reviewed vendored extract with an
   automated provenance check — or the cost is measured and accepted in an ADR.
 
-### F-019 — The repository has no license (P2)
+### F-021 — The repository has no license (P2)
 
 - **Evidence:** There is no `LICENSE` file at the repository root and no
   copyright statement in the READMEs, so the default is exclusive copyright.
