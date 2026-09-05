@@ -27,14 +27,16 @@ SELECT
   inserted_purchase.uuid_id,
   sale_offer.uuid_id,
   sale_offer.seller_uuid,
-  sale_offer.bond_series,
+  bond.series,
   sale_offer.price,
   sale_offer.currency_code,
   inserted_purchase.buyer_uuid,
   inserted_purchase.bought_at
 FROM inserted_purchase
 JOIN bond_exchange.sale_offers AS sale_offer
-  ON sale_offer.uuid_id = inserted_purchase.sale_offer_uuid`
+  ON sale_offer.uuid_id = inserted_purchase.sale_offer_uuid
+JOIN bond_exchange.bonds AS bond
+  ON bond.uuid_id = sale_offer.bond_uuid`
 
 const classifyFailedBuyQuery = `
 SELECT
@@ -46,7 +48,7 @@ SELECT
   purchase.uuid_id,
   sale_offer.uuid_id,
   sale_offer.seller_uuid,
-  sale_offer.bond_series,
+  bond.series,
   sale_offer.price,
   sale_offer.currency_code,
   purchase.buyer_uuid,
@@ -54,15 +56,23 @@ SELECT
 FROM bond_exchange.purchases AS purchase
 JOIN bond_exchange.sale_offers AS sale_offer
   ON sale_offer.uuid_id = purchase.sale_offer_uuid
+JOIN bond_exchange.bonds AS bond
+  ON bond.uuid_id = sale_offer.bond_uuid
 WHERE purchase.sale_offer_uuid = $1`
 
 const createSaleOfferQuery = `
-INSERT INTO bond_exchange.sale_offers
-  (seller_uuid, bond_uuid, bond_series, price, currency_code)
-SELECT $1, bond.uuid_id, bond.series, $3::numeric, $4
-FROM bond_exchange.bonds AS bond
-WHERE bond.series = $2
-RETURNING uuid_id, seller_uuid, bond_series, price, currency_code`
+WITH inserted_offer AS (
+  INSERT INTO bond_exchange.sale_offers
+    (seller_uuid, bond_uuid, price, currency_code)
+  SELECT $1, bond.uuid_id, $3::numeric, $4
+  FROM bond_exchange.bonds AS bond
+  WHERE bond.series = $2
+  RETURNING uuid_id, seller_uuid, bond_uuid, price, currency_code
+)
+SELECT inserted_offer.uuid_id, inserted_offer.seller_uuid, bond.series,
+       inserted_offer.price, inserted_offer.currency_code
+FROM inserted_offer
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = inserted_offer.bond_uuid`
 
 const activeOffersQuery = `
 SELECT id, seller_id, bond_series, price, currency_code
@@ -507,9 +517,10 @@ func (store *Store) replayCreatedOffer(
 	var offer exchange.SaleOffer
 	var priceText string
 	err = store.pool.QueryRow(ctx, `
-SELECT uuid_id, seller_uuid, bond_series, price, currency_code
-FROM bond_exchange.sale_offers
-WHERE uuid_id = $1`, resourceID).Scan(
+SELECT offer.uuid_id, offer.seller_uuid, bond.series, offer.price, offer.currency_code
+FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
+WHERE offer.uuid_id = $1`, resourceID).Scan(
 		&offer.ID,
 		&offer.SellerID,
 		&offer.BondSeries,

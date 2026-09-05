@@ -239,7 +239,6 @@ SET
       THEN transaction_timestamp() + ($4 * interval '1 microsecond')
     ELSE NULL
   END,
-  lease_token = NULL,
   lease_nonce = NULL,
   lease_until = NULL,
   next_attempt_at = transaction_timestamp(),
@@ -266,7 +265,6 @@ func (store *Store) Fail(
 		command, err := store.pool.Exec(ctx, `
 UPDATE bond_exchange.sie_exchange_rate_fetch_coordination
 SET
-  lease_token = NULL,
   lease_nonce = NULL,
   lease_until = NULL,
   next_attempt_at = transaction_timestamp() + ($3 * interval '1 microsecond'),

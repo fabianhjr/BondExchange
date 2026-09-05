@@ -279,7 +279,7 @@ func TestDomainFactTablesRejectMutation(t *testing.T) {
 	user := insertUser(t, pool, "immutable")
 
 	for _, statement := range []string{
-		`UPDATE bond_exchange.users SET id = id WHERE uuid_id = $1`,
+		`UPDATE bond_exchange.users SET uuid_id = uuid_id WHERE uuid_id = $1`,
 		`DELETE FROM bond_exchange.users WHERE uuid_id = $1`,
 	} {
 		_, err := pool.Exec(context.Background(), statement, user)
@@ -290,11 +290,10 @@ func TestDomainFactTablesRejectMutation(t *testing.T) {
 	}
 
 	offer := insertOffer(t, pool, user, insertBond(t, pool))
-	eventID := uniqueID(t, "event")
 	var eventUUID string
 	if _, err := pool.Exec(context.Background(), `
-		INSERT INTO bond_exchange.integration_events (table_name, id, source_uuid, schema_version, completed_at)
-		VALUES ('sale_offers', $1, $2, 1, transaction_timestamp())`, eventID, offer); err != nil {
+		INSERT INTO bond_exchange.integration_events (table_name, source_uuid, schema_version, completed_at)
+		VALUES ('sale_offers', $1, 1, transaction_timestamp())`, offer); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(context.Background(), `SELECT uuid_id FROM bond_exchange.integration_events WHERE table_name = 'sale_offers' AND source_uuid = $1`, offer).Scan(&eventUUID); err != nil {
@@ -590,8 +589,8 @@ func TestLoadEventRejectsUnsupportedVersionAndMissingReference(t *testing.T) {
 	bond := insertBond(t, pool)
 	offer := insertOffer(t, pool, seller, bond)
 	if _, err := pool.Exec(context.Background(), `
-		INSERT INTO bond_exchange.integration_events (table_name, id, source_uuid, schema_version, completed_at)
-		VALUES ('sale_offers', $1, $2, 2, transaction_timestamp())`, uniqueID(t, "event"), offer); err != nil {
+		INSERT INTO bond_exchange.integration_events (table_name, source_uuid, schema_version, completed_at)
+		VALUES ('sale_offers', $1, 2, transaction_timestamp())`, offer); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.LoadEvent(context.Background(), eventing.SourceRef{
@@ -660,26 +659,24 @@ func TestAppendOnlyRBACRevocationTakesEffect(t *testing.T) {
 	if err := store.Authorize(ctx, access(principal, exchange.OperationBuy), exchange.PermissionBuy); err != nil {
 		t.Fatalf("initial Authorize() error = %v", err)
 	}
-	var grantID, principalLegacyID string
+	var grantID string
 	if err := pool.QueryRow(ctx, `
-		SELECT principal_role_grant.id, principal.id
+		SELECT principal_role_grant.uuid_id
 		FROM bond_exchange.principal_role_grants AS principal_role_grant
-		JOIN bond_exchange.principals AS principal
-		  ON principal.uuid_id = principal_role_grant.principal_uuid
 		JOIN bond_exchange.roles AS role
 		  ON role.uuid_id = principal_role_grant.role_uuid
-		WHERE principal_role_grant.principal_uuid = $1 AND role.id = 'trader'`, principal).Scan(&grantID, &principalLegacyID); err != nil {
+		WHERE principal_role_grant.principal_uuid = $1 AND role.id = 'trader'`, principal).Scan(&grantID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
-INSERT INTO bond_exchange.principal_role_revocations (id, grant_id, revoked_by, reason)
-VALUES ($1, $2, $3, 'integration test')`, uniqueID(t, "revoke"), grantID, principalLegacyID); err != nil {
+INSERT INTO bond_exchange.principal_role_revocations (grant_uuid, revoked_by_uuid, reason)
+VALUES ($1, $2, 'integration test')`, grantID, principal); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Authorize(ctx, access(principal, exchange.OperationBuy), exchange.PermissionBuy); !errors.Is(err, exchange.ErrPermissionDenied) {
 		t.Fatalf("Authorize() after revocation error = %v", err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE bond_exchange.principal_role_grants SET reason = reason WHERE id = $1`, grantID); err == nil {
+	if _, err := pool.Exec(ctx, `UPDATE bond_exchange.principal_role_grants SET reason = reason WHERE uuid_id = $1`, grantID); err == nil {
 		t.Fatal("append-only role grant accepted UPDATE")
 	}
 	if _, err := store.Buy(ctx, mutation(principal, exchange.OperationBuy, "revoked-buy-key-001", "offer"), "offer"); !errors.Is(err, exchange.ErrPermissionDenied) {
@@ -704,13 +701,9 @@ func TestSuspendedPrincipalCannotResolveOrAuthorize(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
 	id := insertUser(t, pool, "suspended")
-	var legacyID string
-	if err := pool.QueryRow(context.Background(), `SELECT id FROM bond_exchange.principals WHERE uuid_id = $1`, id).Scan(&legacyID); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := pool.Exec(context.Background(), `
-INSERT INTO bond_exchange.principal_suspensions (id, principal_id, suspended_by, reason)
-VALUES ($1, $2, $2, 'Integration test suspension.')`, uniqueID(t, "suspension"), legacyID); err != nil {
+INSERT INTO bond_exchange.principal_suspensions (principal_uuid, suspended_by_uuid, reason)
+VALUES ($1, $1, 'Integration test suspension.')`, id); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.ResolvePrincipal(context.Background(), "https://issuer.test", string(id)); err == nil {
@@ -840,9 +833,9 @@ func TestSaleOffersRejectInvalidDecimalPrices(t *testing.T) {
 		_, err := pool.Exec(
 			context.Background(),
 			`INSERT INTO bond_exchange.sale_offers
-			   (id, seller_id, bond_series, price, currency_code)
-			 VALUES ($1, $2, $3, $4::numeric, 'USD')`,
-			exchange.OfferID(uniqueID(t, "invalid-price")),
+			   (seller_uuid, bond_uuid, price, currency_code)
+			 SELECT $1, uuid_id, $3::numeric, 'USD'
+			 FROM bond_exchange.bonds WHERE series = $2`,
 			seller,
 			bond,
 			price,
@@ -1015,23 +1008,23 @@ func openTestPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func insertUser(t *testing.T, pool *pgxpool.Pool, prefix string) exchange.UserID {
+func insertUser(t *testing.T, pool *pgxpool.Pool, _ string) exchange.UserID {
 	t.Helper()
-	legacyID := uniqueID(t, prefix)
 	var id exchange.UserID
 	if err := pool.QueryRow(context.Background(), `
-INSERT INTO bond_exchange.users (id) VALUES ($1)
-RETURNING uuid_id`, legacyID).Scan(&id); err != nil {
+INSERT INTO bond_exchange.users DEFAULT VALUES
+RETURNING uuid_id`).Scan(&id); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
 	if _, err := pool.Exec(context.Background(), `
-INSERT INTO bond_exchange.principals (id, issuer, subject, client_class)
-VALUES ($1, 'https://issuer.test', $2, 'automated')`, legacyID, id); err != nil {
+INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
+VALUES ($1, 'https://issuer.test', $2, 'automated')`, id, id); err != nil {
 		t.Fatalf("insert principal: %v", err)
 	}
 	if _, err := pool.Exec(context.Background(), `
-INSERT INTO bond_exchange.principal_role_grants (id, principal_id, role_id, granted_by, reason)
-VALUES ($1, $2, 'trader', $2, 'Integration test access.')`, uniqueID(t, "grant"), legacyID); err != nil {
+INSERT INTO bond_exchange.principal_role_grants (principal_uuid, role_uuid, granted_by_uuid, reason)
+SELECT $1, uuid_id, $1, 'Integration test access.'
+FROM bond_exchange.roles WHERE id = 'trader'`, id); err != nil {
 		t.Fatalf("insert principal role grant: %v", err)
 	}
 	return id
@@ -1082,8 +1075,9 @@ func insertOffer(
 	if err := pool.QueryRow(
 		context.Background(),
 		`INSERT INTO bond_exchange.sale_offers
-		   (seller_uuid, bond_series, price, currency_code)
-		 VALUES ($1, $2, 100.25, 'USD')
+		   (seller_uuid, bond_uuid, price, currency_code)
+		 SELECT $1, uuid_id, 100.25, 'USD'
+		 FROM bond_exchange.bonds WHERE series = $2
 		 RETURNING uuid_id`,
 		seller,
 		bond,
