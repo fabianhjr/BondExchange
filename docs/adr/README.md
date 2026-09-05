@@ -41,3 +41,5 @@ Alternatives considered sections.
 - [ADR-0023: Align storage constraints with domain validation](0023-align-storage-constraints-with-domain-validation.md)
 - [ADR-0024: Define health-probe and verification-key rotation contracts](0024-define-probe-and-key-rotation-contracts.md)
 - [ADR-0025: Own application OpenTelemetry instrumentation](0025-own-application-opentelemetry-instrumentation.md)
+- [ADR-0026: Verify fact provenance and append-only history in TLA+](0026-verify-fact-provenance-and-append-only-history-in-tla.md)
+- [ADR-0027: Model contended buying and revocable authorization](0027-model-contended-buying-and-revocable-authorization.md)

@@ -293,6 +293,12 @@ devenv tasks run go:mutation
 devenv tasks run security:check
 ```
 
+`spec:check` model-checks three TLC instances of the TLA+ specification —
+marketplace contention, revocable authorization, and liveness — and fails when
+any action was never enabled, because an unreachable action makes every
+property that depends on it vacuously true. See the
+[formal model](spec/tla/README.md) for the properties each instance checks.
+
 `integration:test` starts the complete disposable server and runs the readable
 [`create`](tests/integration/http/sale-offer-create.hurl) and
 [`post-create lifecycle`](tests/integration/http/sale-offer-lifecycle.hurl)

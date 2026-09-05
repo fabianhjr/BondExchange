@@ -50,9 +50,16 @@ TLA+ saleOffers = rows visible through active_offers
 TLA+ purchases  = purchase facts joined to their immutable sale offers
 ```
 
-The abstract `Buy(buyer, offerId)` transition corresponds to atomically
-inserting one purchase fact. It does not require the formal specification to
-describe tables, SQL, transactions, views, indexes, or deployment topology.
+[ADR-0026](0026-verify-fact-provenance-and-append-only-history-in-tla.md)
+restates this mapping. The model no longer holds the active book as a variable:
+`publishedOffers` corresponds to `sale_offers`, `purchases` references its
+offer by ID, and `ActiveOffers` is the view corresponding to `active_offers`.
+
+The abstract buy transition corresponds to atomically inserting one purchase
+fact. It does not require the formal specification to describe tables, SQL,
+transactions, views, indexes, or deployment topology. ADR-0027 splits that
+transition into a claim and a resolution so contention between buyers is
+reachable in the model; the mechanism that resolves it stays here.
 
 Use indexes that support enforced uniqueness and demonstrated access paths.
 Primary keys cover identity lookup, the unique purchase-offer key supports

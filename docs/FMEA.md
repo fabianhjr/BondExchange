@@ -121,13 +121,20 @@ production-readiness decision.
   while `purchases.sale_offer_uuid` is unique; each authorization decision and insert occurs in one PostgreSQL
   transaction; the losing request reports the offer unavailable. Integration
   tests exercise store-level concurrency, and a generated full-server workload
-  requires exactly one success when independent buys contend for one offer.
-  TLC checks that an offer cannot be both active and purchased or purchased
-  twice.
+  requires exactly one success when independent buys contend for one offer. The
+  TLA+ model claims a binding order before resolving it, so two authorized
+  buyers can hold simultaneous claims against one offer; `AtMostOnePurchasePerOffer`
+  is therefore a property of the resolution rule rather than of an atomic
+  action, and it was confirmed to fail against a specification whose exclusivity
+  guard was weakened.
 - **Action:** Preserve the database constraint as the cross-instance authority.
-  Re-score and update PostgreSQL tests and TLA+ invariants whenever purchase,
-  cancellation, partial-fill, or settlement behavior changes.
+  Re-score and update PostgreSQL tests and TLA+ properties whenever purchase,
+  cancellation, partial-fill, or settlement behavior changes. Scores are
+  unchanged: the detection score of 2 already assumed the model could
+  distinguish double acquisition, and the claim-and-resolve split makes that
+  assumption true rather than improving on it.
 - **Traceability:** [ADR-0003](adr/0003-use-append-only-postgresql-facts.md),
+  [ADR-0027](adr/0027-model-contended-buying-and-revocable-authorization.md),
   [database behavior](../db/README.md), and
   [TLA+ verification](../spec/tla/README.md#verification).
 
@@ -152,11 +159,19 @@ production-readiness decision.
   signed assertion and verifies identity minimization; structured security logs
   record safe decision metadata and correlate it with application-owned REST,
   gRPC, authentication, and database spans. Bounded operation metrics exclude
-  audit and request identifiers.
+  audit and request identifiers. In the TLA+ model, authorization is a view over
+  append-only grant, revocation, suspension, and reinstatement facts rather than
+  a constant set, so `NewClaimsAreAuthorizedWhenClaimed` requires a revocation
+  to take effect on the next claim, `EffectivePermissionsMatchAuthorizationFacts`
+  cross-checks the view against the raw facts, and
+  `EveryFactHasASucceededOperation` requires that no domain fact exists without
+  an authorized, idempotent operation.
 - **Action:** Preserve these controls and add a negative test for every new
   operation or authentication input. Reassess deployment identity assurance,
-  telemetry, and key lifecycle under FM-008 and FM-009.
-- **Traceability:** [ADR-0009](adr/0009-bind-federated-authorization-to-idempotent-operations.md)
+  telemetry, and key lifecycle under FM-008 and FM-009. Scores are unchanged;
+  the model now supports the detection score of 3 that already credited it.
+- **Traceability:** [ADR-0009](adr/0009-bind-federated-authorization-to-idempotent-operations.md),
+  [ADR-0027](adr/0027-model-contended-buying-and-revocable-authorization.md),
   and [ASVS security architecture](security/ASVS.md#security-architecture).
 
 ### FM-005 — Invalid immutable facts from an alternate writer
@@ -180,8 +195,13 @@ production-readiness decision.
   against a direct SQL insert and fails on a disagreement in either direction,
   so constraint drift is detected rather than discovered. The constraint was
   added `NOT VALID` and validated separately, and the validation migration
-  refuses to proceed while nonconforming history exists. There is still no
-  supported provisioning path and no pre-insert detection for privileged SQL.
+  refuses to proceed while nonconforming history exists. The TLA+ model requires
+  that the published offers and purchased offer IDs are exactly the resources
+  named by succeeded operation results, which is the domain-level statement of
+  the rule that a successful operation must reference an existing source fact.
+  There is still no supported provisioning path and no pre-insert detection for
+  privileged SQL, and the model constrains the application's own writers rather
+  than an alternate one.
 - **Action:** Define and test a supported administration workflow, and decide
   whether the monetary representation should reject rather than round an
   over-precise price. Occurrence drops from 6 to 4 and detection from 8 to 6 on

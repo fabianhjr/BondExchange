@@ -5,6 +5,18 @@ let
   # development shell exposes so local runs and CI share one Java runtime.
   tlaPlus = pkgs.tlaplus.override { jre8 = pkgs.jdk21_headless; };
 
+  specCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-spec-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.gnugrep
+      pkgs.gnused
+      tlaPlus
+    ];
+    text = builtins.readFile ./nix/spec-check.sh;
+  };
+
   gremlins = pkgs.buildGoModule rec {
     pname = "gremlins";
     version = "0.6.0";
@@ -554,15 +566,7 @@ in
   };
 
   tasks."spec:check" = {
-    description = "Model-check the Bond Exchange TLA+ specification with TLC";
-    cwd = "./spec/tla";
-    exec = ''
-      tlc \
-        -workers 1 \
-        -cleanup \
-        -metadir "$DEVENV_ROOT/.devenv/tlc" \
-        -config BondExchange.cfg \
-        BondExchange.tla
-    '';
+    description = "Model-check every TLA+ instance and require each action to be reachable";
+    exec = "${specCheck}/bin/bond-exchange-spec-check";
   };
 }
