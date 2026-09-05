@@ -13,6 +13,7 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/authn"
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 	"github.com/shopspring/decimal"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -35,6 +36,9 @@ type applicationStub struct {
 	createBond     string
 	createPrice    string
 	createCurrency string
+	createQuoteID  string
+	quote          offerintake.Quote
+	quoteErr       error
 	bond           string
 	publishSummary eventing.Summary
 	publishErr     error
@@ -58,11 +62,24 @@ func (application *applicationStub) CreateSaleOffer(
 	bond string,
 	price string,
 	currency string,
+	quoteID string,
 ) (exchange.SaleOffer, error) {
 	application.createBond = bond
 	application.createPrice = price
 	application.createCurrency = currency
+	application.createQuoteID = quoteID
 	return application.created, application.createErr
+}
+
+func (application *applicationStub) QuoteSaleOffer(
+	_ context.Context,
+	_ exchange.AccessContext,
+	_ string,
+	_ string,
+	_ string,
+	_ string,
+) (offerintake.Quote, error) {
+	return application.quote, application.quoteErr
 }
 
 func (application *applicationStub) StreamActiveOffers(
@@ -152,7 +169,7 @@ func TestGRPCServer(t *testing.T) {
 				SellerID:   "seller-1",
 				BondSeries: "BND1",
 				Price:      decimal.RequireFromString("100.25"),
-				Currency:   "USD",
+				Currency:   "MXN",
 			},
 			BuyerID:  "buyer-1",
 			BoughtAt: boughtAt,
@@ -162,7 +179,16 @@ func TestGRPCServer(t *testing.T) {
 			SellerID:   "seller-1",
 			BondSeries: "BND1",
 			Price:      decimal.RequireFromString("99.75"),
-			Currency:   "USD",
+			Currency:   "MXN",
+		},
+		quote: offerintake.Quote{
+			ID:             "01991a20-0000-7000-8000-000000000099",
+			BondSeries:     "BND1",
+			SubmittedPrice: decimal.RequireFromString("99.75"),
+			MXNPrice:       decimal.RequireFromString("1700.7375"),
+			Rate:           decimal.RequireFromString("17.05"),
+			RateObservedOn: boughtAt,
+			ExpiresAt:      boughtAt.Add(5 * time.Minute),
 		},
 		offers: []exchange.SaleOffer{{ID: "offer-2"}},
 		series: []exchange.BondSeries{"BND1", "GOV1"},
@@ -185,10 +211,19 @@ func TestGRPCServer(t *testing.T) {
 		t.Fatalf("bought_at = %s", purchase.GetBoughtAt().AsTime())
 	}
 
+	quote, err := client.QuoteSaleOffer(context.Background(), &bondexchangev1.QuoteSaleOfferRequest{
+		BondSeries: "bnd1", Price: "99.75", CurrencyCode: "USD",
+	})
+	if err != nil || quote.GetQuoteId() == "" || quote.GetMxnPrice() != "1700.7375" ||
+		quote.GetCurrencyCode() != "MXN" || quote.GetRateSeries() != offerintake.FIXSeriesID {
+		t.Fatalf("conversion quote = %v, %v", quote, err)
+	}
+
 	created, err := client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{
-		BondSeries:   "bnd1",
-		Price:        "99.75",
-		CurrencyCode: "USD",
+		BondSeries:        "bnd1",
+		Price:             "99.75",
+		CurrencyCode:      "USD",
+		ConversionQuoteId: quote.GetQuoteId(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +232,7 @@ func TestGRPCServer(t *testing.T) {
 		t.Fatalf("created offer = %v", created)
 	}
 	if application.createBond != "bnd1" || application.createPrice != "99.75" ||
-		application.createCurrency != "USD" {
+		application.createCurrency != "USD" || application.createQuoteID != quote.GetQuoteId() {
 		t.Fatalf("create input = %#v", application)
 	}
 
@@ -292,6 +327,8 @@ func TestGRPCErrors(t *testing.T) {
 		code codes.Code
 	}{
 		{name: "invalid", err: exchange.ErrInvalidPrice, code: codes.InvalidArgument},
+		{name: "quote required", err: offerintake.ErrConversionQuoteRequired, code: codes.FailedPrecondition},
+		{name: "rate unavailable", err: offerintake.ErrExchangeRateUnavailable, code: codes.Unavailable},
 		{name: "missing seller", err: exchange.ErrSellerNotFound, code: codes.Internal},
 		{name: "missing bond", err: exchange.ErrBondNotFound, code: codes.NotFound},
 		{name: "duplicate", err: exchange.ErrOfferAlreadyExists, code: codes.AlreadyExists},
@@ -378,6 +415,8 @@ func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
 	assertUnauthenticated(err)
 	_, err = client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{})
 	assertUnauthenticated(err)
+	_, err = client.QuoteSaleOffer(context.Background(), &bondexchangev1.QuoteSaleOfferRequest{})
+	assertUnauthenticated(err)
 	stream, err := client.ListActiveOffers(context.Background(), &bondexchangev1.ListActiveOffersRequest{Bond: "BND"})
 	if err == nil {
 		_, err = stream.Recv()
@@ -389,6 +428,20 @@ func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
 	assertUnauthenticated(err)
 	_, err = client.PublishPendingEvents(context.Background(), &bondexchangev1.PublishPendingEventsRequest{})
 	assertUnauthenticated(err)
+}
+
+func TestAuthenticateRejectsUnmarshalableCanonicalRequest(t *testing.T) {
+	t.Parallel()
+	server := testServer(&applicationStub{}, healthStub{})
+	_, err := server.authenticate(
+		context.Background(),
+		exchange.OperationQuoteSaleOffer,
+		&bondexchangev1.QuoteSaleOfferRequest{BondSeries: string([]byte{0xff})},
+		true,
+	)
+	if !errors.Is(err, exchange.ErrInvalidOperation) {
+		t.Fatalf("invalid UTF-8 canonical request error = %v", err)
+	}
 }
 
 func TestGRPCHealthAuthorizationFailure(t *testing.T) {

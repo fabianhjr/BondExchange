@@ -22,7 +22,7 @@ WHERE table_name = $1 AND source_uuid = $2`, ref.TableName, ref.ID).Scan(&envelo
 	if err != nil {
 		return eventing.Envelope{}, err
 	}
-	if version != 1 {
+	if version != 1 && version != 2 {
 		return eventing.Envelope{}, eventing.ErrUnsupportedEvent
 	}
 
@@ -36,11 +36,21 @@ WHERE table_name = $1 AND source_uuid = $2`, ref.TableName, ref.ID).Scan(&envelo
 	case eventing.TableSaleOffers:
 		var payload eventing.SaleOfferCreated
 		var priceText string
-		err = store.pool.QueryRow(ctx, `
+		query := `
 SELECT offer.uuid_id, bond.series, offer.price::text, offer.currency_code
 FROM bond_exchange.sale_offers AS offer
 JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
-WHERE offer.uuid_id = $1`, ref.ID).Scan(
+WHERE offer.uuid_id = $1`
+		if version == 2 {
+			query = `
+SELECT offer.uuid_id, bond.series, canonical.price::text, canonical.currency_code
+FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = offer.uuid_id
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
+WHERE offer.uuid_id = $1`
+		}
+		err = store.pool.QueryRow(ctx, query, ref.ID).Scan(
 			&payload.ID,
 			&payload.BondSeries,
 			&priceText,
@@ -58,7 +68,7 @@ WHERE offer.uuid_id = $1`, ref.ID).Scan(
 	case eventing.TablePurchases:
 		var payload eventing.PurchaseRecorded
 		var priceText string
-		err = store.pool.QueryRow(ctx, `
+		query := `
 SELECT
   purchase.sale_offer_uuid,
   bond.series,
@@ -70,7 +80,25 @@ JOIN bond_exchange.sale_offers AS sale_offer
   ON sale_offer.uuid_id = purchase.sale_offer_uuid
 JOIN bond_exchange.bonds AS bond
   ON bond.uuid_id = sale_offer.bond_uuid
-WHERE purchase.uuid_id = $1`, ref.ID).Scan(
+WHERE purchase.uuid_id = $1`
+		if version == 2 {
+			query = `
+SELECT
+  purchase.sale_offer_uuid,
+  bond.series,
+  canonical.price::text,
+  canonical.currency_code,
+  purchase.bought_at
+FROM bond_exchange.purchases AS purchase
+JOIN bond_exchange.sale_offers AS sale_offer
+  ON sale_offer.uuid_id = purchase.sale_offer_uuid
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = sale_offer.uuid_id
+JOIN bond_exchange.bonds AS bond
+  ON bond.uuid_id = sale_offer.bond_uuid
+WHERE purchase.uuid_id = $1`
+		}
+		err = store.pool.QueryRow(ctx, query, ref.ID).Scan(
 			&payload.SaleOfferID,
 			&payload.BondSeries,
 			&priceText,

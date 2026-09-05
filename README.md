@@ -63,9 +63,12 @@ facts must be provisioned separately before publishing or buying sale offers.
 The repository also contains an internal Banxico SIE exchange-rate module. It
 fetches explicitly mapped currency series through the SIE latest-data and
 historical-range endpoints, parses values as exact decimals, and persists both
-the bounded source response and normalized observations in PostgreSQL. This
-module is not exposed by the REST or gRPC service and does not reprice offers or
-change purchase behavior.
+the bounded source response and normalized observations in PostgreSQL. A
+separate offer-intake service uses only series `SF43718`, explicitly mapped as
+MXN per USD, to produce short-lived seller quotes. The exchange core receives,
+stores, lists, sells, and publishes only the accepted MXN terms; it has no SIE
+or submission-currency dependency. USD survives only as append-only submission
+and conversion provenance.
 
 ## Run locally
 
@@ -93,6 +96,7 @@ DATABASE_URL=postgresql://user:password@localhost/bond_exchange \
 BOND_EXCHANGE_ASSERTION_ISSUER=https://issuer.example \
 BOND_EXCHANGE_ASSERTION_AUDIENCE=bond-exchange \
 BOND_EXCHANGE_ASSERTION_JWKS_FILE=/run/secrets/issuer.jwks \
+BANXICO_SIE_TOKEN=replace-with-64-character-token \
   devenv shell go -C application run ./cmd/server
 ```
 
@@ -109,8 +113,10 @@ Available endpoints are:
 
 - `POST /buys` with a UUIDv7, for example
   `{"sale_offer_id":"01991a20-0000-7000-8000-000000000101"}`;
-- `POST /sale-offers` with
+- `POST /sale-offer-quotes` with a USD submission, for example
   `{"bond_series":"BND2026","price":"99.75","currency_code":"USD"}`;
+- `POST /sale-offers` with an MXN submission, or with the exact USD submission
+  plus the returned `conversion_quote_id`;
 - `GET /active-offers?bond=BND2026`, which streams every active offer and a
   terminal count as `application/json-seq`;
 - `GET /active-bond-series`, which returns every bond series having an active
@@ -124,6 +130,7 @@ Available endpoints are:
 The matching native gRPC methods are:
 
 - `bondexchange.v1.BondExchangeService/Buy`;
+- `bondexchange.v1.BondExchangeService/QuoteSaleOffer`;
 - `bondexchange.v1.BondExchangeService/CreateSaleOffer`;
 - `bondexchange.v1.BondExchangeService/ListActiveOffers`;
 - `bondexchange.v1.BondExchangeService/ListActiveBondSeries`; and
@@ -164,8 +171,9 @@ canonical stored form is 3–40 uppercase ASCII letters or digits.
 Monetary prices are exact decimal values and are returned as JSON strings, for
 example `"price":"100.25"`. Consumers must parse them as decimals rather than
 binary floating-point numbers. A price must be greater than zero and fit ten
-integer and four fractional digits (maximum `9999999999.9999`); its currency
-remains explicit in `currency_code`.
+integer and four fractional digits (maximum `9999999999.9999`). Every served
+offer has `currency_code: "MXN"`. A USD submission is multiplied by its pinned
+FIX observation and rounded once to four places using half-to-even.
 
 ## Banxico SIE exchange rates
 
@@ -177,6 +185,14 @@ durable observations, coverage, leases, and provider-wide cooldown state. A
 caller supplies an explicit mapping from each SIE series ID to its base and
 quote currencies; titles returned by Banxico are not used to infer quote
 direction.
+
+Offer intake is the only transaction consumer. A USD quote fixes the latest
+non-stale `SF43718` revision for five minutes and rejects observations dated in
+the future or more than seven days old. Accepting it creates immutable MXN
+terms and retains the USD amount, rate revision, observation date, rounding
+policy, and quote as provenance. A quote is bound to one seller, bond, and USD
+amount and may be used once. SIE or cache failure fails USD quotation closed;
+MXN-native offers and existing marketplace operations remain available.
 
 `Latest` treats data as fresh for 15 minutes by default. One server instance
 claims an expired series/currency mapping in PostgreSQL before leaving the
@@ -223,6 +239,7 @@ devenv tasks run api:check
 devenv tasks run spec:check
 devenv tasks run db:migrate
 devenv tasks run db:uuid-contract-history
+devenv tasks run db:canonical-mxn-readiness
 devenv tasks run postgres:lifecycle-check
 devenv tasks run demo:smoke
 devenv tasks run integration:test
@@ -238,7 +255,8 @@ devenv tasks run security:check
 [`create`](tests/integration/http/sale-offer-create.hurl) and
 [`post-create lifecycle`](tests/integration/http/sale-offer-lifecycle.hurl)
 scenarios.
-It covers active-series and active-offer listings, sale-offer creation, buying,
+It covers a USD-to-MXN quote and acceptance, active-series and active-offer
+listings, sale-offer creation, buying,
 idempotent retry, and removal from the active book. `integration:load-smoke`
 uses generated request-bound assertions to exercise distinct creates and buys,
 both listings, and a contended buy with exactly one winner.
@@ -294,7 +312,8 @@ having exercised persistence.
 
 Reports and the golangci-lint cache are written to `.artifacts/`. `devenv test`
 runs Nix and shell checks, Go formatting and static analysis, API artifact
-verification, migration archival, PostgreSQL lifecycle and demo smoke checks,
+verification, migration archival and canonical-MXN readiness, PostgreSQL
+lifecycle and demo smoke checks,
 readable HTTP integration tests, a small generated load check, race-enabled
 tests, coverage, mutation testing, and the TLC model check.
 

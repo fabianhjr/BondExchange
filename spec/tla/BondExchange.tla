@@ -23,10 +23,9 @@ Next ==
          \E key \in IdempotencyKeys :
            \E requestDigest \in RequestDigests :
              \E bond \in Bonds :
-               \E offerId \in SaleOfferIds :
-                 \E price \in Prices :
-                   \E currency \in CurrencyCodes :
-                     CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price, currency)
+                 \E offerId \in SaleOfferIds :
+                   \E price \in Prices :
+                     CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price)
   \/ \E result \in operationResults :
        RetryCompletedOperation(
          result.principal,

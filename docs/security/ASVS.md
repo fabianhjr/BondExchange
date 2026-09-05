@@ -73,7 +73,8 @@ rate-limit control or production capacity claim.
 Input controls include typed protobuf decoding, unknown-field rejection,
 duplicate-key rejection at every JSON object depth, a single top-level JSON
 object, exact query cardinality, canonical identifiers, exact decimals,
-three-letter uppercase currency codes, 64 KiB message/body limits, HTTP
+MXN/USD submission policy, UUIDv7 conversion-quote references, 64 KiB
+message/body limits, HTTP
 read/header/idle timeouts, a refreshed 30-second streaming write deadline,
 bounded PostgreSQL connections, and no runtime gRPC reflection. A checked-in
 descriptor set supports offline tooling without exposing service discovery.
@@ -89,6 +90,14 @@ Successful SIE imports and normalized observations are append-only. Recordings
 are offline fixtures with the token replaced by `<REDACTED>`; live capture is
 an explicit developer task, rejects credential reflection in the response,
 and is not invoked by CI.
+
+USD sale-offer intake fixes `SF43718` as MXN per USD and rejects stale, future,
+unpersisted, or over-seven-day observations. A five-minute append-only quote
+pins its exact revision and half-to-even four-place result. Create verifies the
+quote's principal, bond, amount, expiry, and single use transactionally, then
+stores and serves only MXN core terms while retaining USD provenance. This is a
+denomination and integrity control, not a guarantee that the business-date
+rate policy is suitable for production; that ownership remains pending.
 
 Successful offer creation and buying atomically record an integration event
 UUIDv7 plus only its immutable source-table name, source UUID, schema version, and completion
@@ -133,6 +142,7 @@ panics are logged without request or credential contents.
 | AD-14 | Integration events persist only immutable source references and use immediate best-effort delivery with explicit manual recovery. | Source loaders must remain compatible for the retention period, delivery is at least once, and pending events can remain indefinitely without operator action. |
 | AD-15 | Banxico SIE responses and exact exchange-rate revisions are durable; PostgreSQL leases and cooldowns coordinate on-demand fetches. | Durable provenance grows over time, stale latest values are possible during refresh failures, and a crash before import commit can cause a repeated upstream request. |
 | AD-16 | PostgreSQL 18 generates and enforces UUIDv7 table identities; UUIDv4 is reserved for idempotency, assertion, and lease nonces. Non-derivable pre-UUID values are isolated in a restricted append-only archive. | UUIDv7 reveals approximate creation time; archive access, capacity, retention, and erasure require deployment policy. |
+| AD-17 | A separate intake layer turns an explicitly accepted `SF43718` USD quote into immutable MXN core terms and retains USD only as provenance. | USD intake depends on rate policy and availability; legacy non-MXN offers require seller disposition and old binaries must be drained before activation. |
 
 ## Pending non-code and deployment decisions
 

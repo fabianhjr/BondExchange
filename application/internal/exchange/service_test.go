@@ -105,7 +105,7 @@ func TestServiceBuy(t *testing.T) {
 func TestServiceCreateSaleOffer(t *testing.T) {
 	t.Parallel()
 
-	expected := SaleOffer{ID: testOfferID, SellerID: testUserID, BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "USD"}
+	expected := SaleOffer{ID: testOfferID, SellerID: testUserID, BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "MXN"}
 	store := &storeStub{createdValue: expected}
 	created, err := NewService(store).CreateSaleOffer(
 		context.Background(),
@@ -113,7 +113,7 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 		testNonce,
 		"bnd",
 		"100.25",
-		"USD",
+		"MXN",
 	)
 	if err != nil || !reflect.DeepEqual(created, expected) {
 		t.Fatalf("CreateSaleOffer() = %#v, %v", created, err)
@@ -122,12 +122,12 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 		store.createdInput.SellerID != testUserID ||
 		store.createdInput.BondSeries != "BND" ||
 		!store.createdInput.Price.Equal(decimal.RequireFromString("100.25")) ||
-		store.createdInput.Currency != "USD" {
+		store.createdInput.Currency != "MXN" {
 		t.Fatalf("store received %#v", store.createdInput)
 	}
 
 	store.createError = ErrOfferAlreadyExists
-	if _, err := NewService(store).CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), testNonce, "BND", "1", "USD"); !errors.Is(err, ErrOfferAlreadyExists) {
+	if _, err := NewService(store).CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), testNonce, "BND", "1", "MXN"); !errors.Is(err, ErrOfferAlreadyExists) {
 		t.Fatalf("CreateSaleOffer() store error = %v", err)
 	}
 
@@ -138,8 +138,9 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 		currency string
 		want     error
 	}{
-		{name: "bond", bond: "!", price: "1", currency: "USD", want: ErrInvalidBondSeries},
-		{name: "price", bond: "BND", price: "0", currency: "USD", want: ErrInvalidPrice},
+		{name: "bond", bond: "!", price: "1", currency: "MXN", want: ErrInvalidBondSeries},
+		{name: "price", bond: "BND", price: "0", currency: "MXN", want: ErrInvalidPrice},
+		{name: "usd", bond: "BND", price: "1", currency: "USD", want: ErrInvalidCurrencyCode},
 		{name: "currency", bond: "BND", price: "1", want: ErrInvalidCurrencyCode},
 	} {
 		t.Run(test.name, func(t *testing.T) {

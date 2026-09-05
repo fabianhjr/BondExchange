@@ -10,6 +10,7 @@ import (
 const (
 	OperationBuy                  = "purchases.buy"
 	OperationCreateSaleOffer      = "offers.create"
+	OperationQuoteSaleOffer       = "offers.quote"
 	OperationListActiveOffers     = "offers.list"
 	OperationListBondSeries       = "bond-series.list"
 	OperationCheckHealth          = "health.read"
@@ -19,6 +20,7 @@ const (
 const (
 	PermissionBuy              = "purchases.buy"
 	PermissionCreateSaleOffer  = "offers.create"
+	PermissionQuoteSaleOffer   = "offers.quote"
 	PermissionListActiveOffers = "offers.list"
 	PermissionListBondSeries   = "offers.list"
 	PermissionCheckHealth      = "health.read"

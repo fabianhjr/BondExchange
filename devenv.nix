@@ -236,6 +236,12 @@ let
     ];
     text = builtins.readFile ./nix/uuid-contract-history-test.sh;
   };
+
+  canonicalMxnReadiness = pkgs.writeShellApplication {
+    name = "bond-exchange-canonical-mxn-readiness";
+    runtimeInputs = [ pkgs.postgresql_18 ];
+    text = builtins.readFile ./nix/canonical-mxn-readiness.sh;
+  };
 in
 {
   packages = [
@@ -264,6 +270,7 @@ in
     integrationLoad
     uuidContractReadiness
     uuidContractHistoryTest
+    canonicalMxnReadiness
   ];
 
   env = {
@@ -287,6 +294,12 @@ in
   tasks."db:uuid-contract-history" = {
     description = "Verify lossless archival of representative pre-UUID values";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${uuidContractHistoryTest}/bin/bond-exchange-uuid-contract-history-test";
+    after = [ "db:migrate" ];
+  };
+
+  tasks."db:canonical-mxn-readiness" = {
+    description = "Verify every active offer has consistent accepted MXN terms";
+    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${canonicalMxnReadiness}/bin/bond-exchange-canonical-mxn-readiness";
     after = [ "db:migrate" ];
   };
 
@@ -462,6 +475,7 @@ in
     exec = "true";
     after = [
       "api:check"
+      "db:canonical-mxn-readiness"
       "db:migrate"
       "db:uuid-contract-history"
       "demo:smoke"

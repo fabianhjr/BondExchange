@@ -76,6 +76,7 @@ func IssueToken(privateKeyPath, subject, operation, idempotencyKey, requestJSON 
 	}
 	digest := sha256.Sum256(canonical)
 	requiresNonce := operation == exchange.OperationBuy ||
+		operation == exchange.OperationQuoteSaleOffer ||
 		operation == exchange.OperationCreateSaleOffer ||
 		operation == exchange.OperationPublishPendingEvents
 	if idempotencyKey == "-" && requiresNonce {
@@ -120,6 +121,8 @@ func requestMessage(operation string) (proto.Message, error) {
 		return &bondexchangev1.BuyRequest{}, nil
 	case exchange.OperationCreateSaleOffer:
 		return &bondexchangev1.CreateSaleOfferRequest{}, nil
+	case exchange.OperationQuoteSaleOffer:
+		return &bondexchangev1.QuoteSaleOfferRequest{}, nil
 	case exchange.OperationListActiveOffers:
 		return &bondexchangev1.ListActiveOffersRequest{}, nil
 	case exchange.OperationListBondSeries:

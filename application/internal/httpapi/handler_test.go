@@ -15,6 +15,7 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/authn"
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 	"github.com/fabianhjr/BondExchange/application/internal/rpcapi"
 	"github.com/shopspring/decimal"
 	"google.golang.org/grpc/metadata"
@@ -25,6 +26,8 @@ type applicationStub struct {
 	buyErr         error
 	created        exchange.SaleOffer
 	createErr      error
+	quote          offerintake.Quote
+	quoteErr       error
 	offers         []exchange.SaleOffer
 	listErr        error
 	listErrAfter   bool
@@ -34,6 +37,7 @@ type applicationStub struct {
 	createBond     string
 	createPrice    string
 	createCurrency string
+	createQuoteID  string
 	bond           string
 	panicBuy       bool
 	publishSummary eventing.Summary
@@ -61,11 +65,24 @@ func (application *applicationStub) CreateSaleOffer(
 	bond string,
 	price string,
 	currency string,
+	quoteID string,
 ) (exchange.SaleOffer, error) {
 	application.createBond = bond
 	application.createPrice = price
 	application.createCurrency = currency
+	application.createQuoteID = quoteID
 	return application.created, application.createErr
+}
+
+func (application *applicationStub) QuoteSaleOffer(
+	context.Context,
+	exchange.AccessContext,
+	string,
+	string,
+	string,
+	string,
+) (offerintake.Quote, error) {
+	return application.quote, application.quoteErr
 }
 
 func (application *applicationStub) StreamActiveOffers(
@@ -288,7 +305,7 @@ func TestCreateSaleOfferHandler(t *testing.T) {
 		SellerID:   "seller-1",
 		BondSeries: "BND1",
 		Price:      decimal.RequireFromString("99.75"),
-		Currency:   "USD",
+		Currency:   "MXN",
 	}}
 	handler := newHandler(t, application, healthStub{})
 	response := performRequest(
@@ -328,6 +345,42 @@ func TestCreateSaleOfferHandler(t *testing.T) {
 				t.Fatalf("status = %d, want %d; body = %s", response.Code, test.status, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestQuoteSaleOfferHandler(t *testing.T) {
+	t.Parallel()
+
+	application := &applicationStub{quote: offerintake.Quote{
+		ID:             "01991a20-0000-7000-8000-000000000099",
+		BondSeries:     "BND1",
+		SubmittedPrice: decimal.RequireFromString("99.75"),
+		MXNPrice:       decimal.RequireFromString("1700.7375"),
+		Rate:           decimal.RequireFromString("17.05"),
+		RateObservedOn: time.Date(2026, time.September, 4, 0, 0, 0, 0, time.UTC),
+		ExpiresAt:      time.Date(2026, time.September, 4, 0, 5, 0, 0, time.UTC),
+	}}
+	handler := newHandler(t, application, healthStub{})
+	response := performRequest(
+		handler,
+		http.MethodPost,
+		"/sale-offer-quotes",
+		`{"bond_series":"bnd1","price":"99.75","currency_code":"USD"}`,
+	)
+	if response.Code != http.StatusCreated || !strings.Contains(response.Body.String(), `"currency_code":"MXN"`) ||
+		!strings.Contains(response.Body.String(), `"rate_series":"SF43718"`) {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	application.quoteErr = offerintake.ErrExchangeRateUnavailable
+	response = performRequest(
+		handler,
+		http.MethodPost,
+		"/sale-offer-quotes",
+		`{"bond_series":"BND1","price":"99.75","currency_code":"USD"}`,
+	)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unavailable-rate status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 

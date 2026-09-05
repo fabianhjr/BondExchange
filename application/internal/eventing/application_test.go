@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 )
 
 type exchangeFake struct {
@@ -18,8 +19,12 @@ func (fake *exchangeFake) Buy(context.Context, exchange.AccessContext, string, s
 	return fake.purchase, fake.err
 }
 
-func (fake *exchangeFake) CreateSaleOffer(context.Context, exchange.AccessContext, string, string, string, string) (exchange.SaleOffer, error) {
+func (fake *exchangeFake) CreateSaleOffer(context.Context, exchange.AccessContext, string, string, string, string, string) (exchange.SaleOffer, error) {
 	return fake.offer, fake.err
+}
+
+func (fake *exchangeFake) QuoteSaleOffer(context.Context, exchange.AccessContext, string, string, string, string) (offerintake.Quote, error) {
+	return offerintake.Quote{}, fake.err
 }
 
 func (*exchangeFake) StreamActiveOffers(_ context.Context, _ exchange.AccessContext, _ string, yield func(exchange.SaleOffer) error) error {
@@ -48,11 +53,14 @@ func TestApplicationPublishesSuccessfulMutations(t *testing.T) {
 		purchase: exchange.Purchase{ID: "offer-1", Offer: exchange.SaleOffer{ID: "offer-1"}},
 		offer:    exchange.SaleOffer{ID: "offer-2"},
 	}, authorizerFake{}, dispatcher)
+	if _, err := application.QuoteSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "USD"); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, "key", "offer-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "USD"); err != nil {
+	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "MXN", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(publisher.events) != 2 {
@@ -80,7 +88,7 @@ func TestApplicationDoesNotPublishFailedMutation(t *testing.T) {
 	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, "key", "offer"); !errors.Is(err, want) {
 		t.Fatalf("Buy() error = %v", err)
 	}
-	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "USD"); !errors.Is(err, want) {
+	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "MXN", ""); !errors.Is(err, want) {
 		t.Fatalf("CreateSaleOffer() error = %v", err)
 	}
 	if len(publisher.events) != 0 {

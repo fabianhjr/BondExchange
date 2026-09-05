@@ -16,7 +16,9 @@ import (
 
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -141,7 +143,7 @@ func TestCreateSaleOffer(t *testing.T) {
 		SellerID:   seller,
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("99.125"),
-		Currency:   "USD",
+		Currency:   "MXN",
 	}
 
 	operation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "create"), string(bond)+offer.Price.String())
@@ -153,7 +155,7 @@ func TestCreateSaleOffer(t *testing.T) {
 		t.Fatalf("created offer ID is not UUIDv7: %q", created.ID)
 	}
 	if created.SellerID != seller || created.BondSeries != bond ||
-		!created.Price.Equal(offer.Price) || created.Currency != "USD" {
+		!created.Price.Equal(offer.Price) || created.Currency != "MXN" {
 		t.Fatalf("created offer = %#v, want %#v", created, offer)
 	}
 	activeOffers, err := collectOffers(store, access(seller, exchange.OperationListActiveOffers), bond)
@@ -176,6 +178,244 @@ func TestCreateSaleOffer(t *testing.T) {
 	}
 }
 
+func TestUSDSubmissionPersistsCanonicalMXNAndImmutableProvenance(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	ctx := context.Background()
+	seller := insertUser(t, pool, "usd-seller")
+	bond := insertBond(t, pool)
+	observedOn := time.Now().UTC().Truncate(24 * time.Hour)
+
+	var importID, observationID string
+	if err := pool.QueryRow(ctx, `
+INSERT INTO bond_exchange.sie_exchange_rate_imports
+  (request_kind, series_ids, response_body, response_sha256)
+VALUES ('latest', ARRAY['SF43718'], '{"bmx":{"series":[]}}'::jsonb, $1)
+RETURNING uuid_id`, make([]byte, sha256.Size)).Scan(&importID); err != nil {
+		t.Fatalf("insert rate import: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+INSERT INTO bond_exchange.sie_exchange_rate_observations
+  (import_uuid, series_id, base_currency, quote_currency, observed_on, value)
+VALUES ($1, 'SF43718', 'USD', 'MXN', $2, 17.1234)
+RETURNING uuid_id`, importID, observedOn).Scan(&observationID); err != nil {
+		t.Fatalf("insert rate observation: %v", err)
+	}
+	unusedQuoteOperation := mutation(seller, exchange.OperationQuoteSaleOffer, uniqueID(t, "unused-quote"), "unused")
+	if replayed, found, err := store.ReplayConversionQuote(ctx, unusedQuoteOperation); err != nil || found || replayed.ID != "" {
+		t.Fatalf("unused ReplayConversionQuote() = %#v, %t, %v", replayed, found, err)
+	}
+
+	quoteOperation := mutation(seller, exchange.OperationQuoteSaleOffer, uniqueID(t, "quote"), "DEMO USD 97.125")
+	quote, err := store.CreateConversionQuote(ctx, quoteOperation, offerintake.QuoteDraft{
+		BondSeries:     bond,
+		SubmittedPrice: decimal.RequireFromString("97.125"),
+		MXNPrice:       decimal.RequireFromString("1663.1102"),
+		RateRevisionID: observationID,
+		RateObservedOn: observedOn,
+		ExpiresAt:      time.Now().Add(5 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateConversionQuote() error = %v", err)
+	}
+	if _, err := offerintake.ParseQuoteID(string(quote.ID)); err != nil {
+		t.Fatalf("quote ID = %q: %v", quote.ID, err)
+	}
+	if !quote.Rate.Equal(decimal.RequireFromString("17.1234")) {
+		t.Fatalf("quote rate = %s", quote.Rate)
+	}
+	quoteRetry, err := store.CreateConversionQuote(ctx, quoteOperation, offerintake.QuoteDraft{})
+	if err != nil || quoteRetry.ID != quote.ID {
+		t.Fatalf("idempotent CreateConversionQuote() = %#v, %v", quoteRetry, err)
+	}
+	replayed, found, err := store.ReplayConversionQuote(ctx, quoteOperation)
+	if err != nil || !found || replayed.ID != quote.ID {
+		t.Fatalf("ReplayConversionQuote() = %#v, %t, %v", replayed, found, err)
+	}
+	quoteConflict := quoteOperation
+	quoteConflict.RequestDigest = sha256.Sum256([]byte("changed quote request"))
+	if _, _, err := store.ReplayConversionQuote(ctx, quoteConflict); !errors.Is(err, exchange.ErrIdempotencyConflict) {
+		t.Fatalf("quote replay conflict error = %v", err)
+	}
+	if _, err := store.CreateConversionQuote(ctx, quoteConflict, offerintake.QuoteDraft{}); !errors.Is(err, exchange.ErrIdempotencyConflict) {
+		t.Fatalf("quote creation conflict error = %v", err)
+	}
+
+	noResourceOperation := mutation(seller, exchange.OperationQuoteSaleOffer, uniqueID(t, "quote-no-resource"), "no resource")
+	noResourceClaim := insertSyntheticOperationResult(t, pool, noResourceOperation, nil)
+	if noResourceClaim == "" {
+		t.Fatal("synthetic no-resource claim was not created")
+	}
+	if _, _, err := store.ReplayConversionQuote(ctx, noResourceOperation); err == nil || !strings.Contains(err.Error(), "no resource") {
+		t.Fatalf("no-resource quote replay error = %v", err)
+	}
+
+	missingQuoteResource := uniqueUUIDv7(t)
+	missingQuoteOperation := mutation(seller, exchange.OperationQuoteSaleOffer, uniqueID(t, "quote-missing-resource"), "missing resource")
+	insertSyntheticOperationResult(t, pool, missingQuoteOperation, &missingQuoteResource)
+	if _, _, err := store.ReplayConversionQuote(ctx, missingQuoteOperation); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("missing-resource quote replay error = %v", err)
+	}
+	if _, err := store.CreateConversionQuote(ctx, missingQuoteOperation, offerintake.QuoteDraft{}); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("missing-resource quote creation replay error = %v", err)
+	}
+
+	submission := offerintake.Submission{
+		BondSeries: bond,
+		Price:      decimal.RequireFromString("97.125"), Currency: offerintake.USD, QuoteID: quote.ID,
+	}
+	createOperation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "usd-create"), "accepted quote "+string(quote.ID))
+	created, err := store.CreateSaleOfferFromSubmission(ctx, createOperation, submission)
+	if err != nil {
+		t.Fatalf("CreateSaleOfferFromSubmission() error = %v", err)
+	}
+	if created.Currency != exchange.MXN || !created.Price.Equal(decimal.RequireFromString("1663.1102")) {
+		t.Fatalf("canonical offer = %#v", created)
+	}
+	createRetry, err := store.CreateSaleOfferFromSubmission(ctx, createOperation, offerintake.Submission{})
+	if err != nil || createRetry.ID != created.ID {
+		t.Fatalf("idempotent CreateSaleOfferFromSubmission() = %#v, %v", createRetry, err)
+	}
+	createConflict := createOperation
+	createConflict.RequestDigest = sha256.Sum256([]byte("changed accepted quote request"))
+	if _, err := store.CreateSaleOfferFromSubmission(ctx, createConflict, offerintake.Submission{}); !errors.Is(err, exchange.ErrIdempotencyConflict) {
+		t.Fatalf("submission conflict error = %v", err)
+	}
+
+	var rawPrice, rawCurrency, canonicalPrice, canonicalCurrency, submittedPrice, submittedCurrency, storedQuoteID string
+	var eventVersion int
+	if err := pool.QueryRow(ctx, `
+SELECT
+  offer.price::text,
+  offer.currency_code,
+  canonical.price::text,
+  canonical.currency_code,
+  submission.submitted_price::text,
+  submission.submitted_currency_code,
+  submission.conversion_quote_uuid,
+  event.schema_version
+FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = offer.uuid_id
+JOIN bond_exchange.sale_offer_submissions AS submission
+  ON submission.sale_offer_uuid = offer.uuid_id
+JOIN bond_exchange.integration_events AS event
+  ON event.table_name = 'sale_offers' AND event.source_uuid = offer.uuid_id
+WHERE offer.uuid_id = $1`, created.ID).Scan(
+		&rawPrice, &rawCurrency, &canonicalPrice, &canonicalCurrency,
+		&submittedPrice, &submittedCurrency, &storedQuoteID, &eventVersion,
+	); err != nil {
+		t.Fatalf("read canonical terms and provenance: %v", err)
+	}
+	if rawPrice != "1663.1102" || rawCurrency != "MXN" || canonicalPrice != rawPrice || canonicalCurrency != "MXN" ||
+		submittedPrice != "97.1250" || submittedCurrency != "USD" || storedQuoteID != string(quote.ID) || eventVersion != 2 {
+		t.Fatalf("stored terms = raw %s %s, canonical %s %s, submission %s %s quote %s, event v%d",
+			rawPrice, rawCurrency, canonicalPrice, canonicalCurrency, submittedPrice, submittedCurrency, storedQuoteID, eventVersion)
+	}
+
+	reuseOperation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "quote-reuse"), "reuse "+string(quote.ID))
+	_, err = store.CreateSaleOfferFromSubmission(ctx, reuseOperation, submission)
+	if !errors.Is(err, offerintake.ErrConversionQuoteUnavailable) {
+		t.Fatalf("reused quote error = %v", err)
+	}
+	if _, err := store.CreateSaleOfferFromSubmission(ctx, reuseOperation, offerintake.Submission{}); !errors.Is(err, offerintake.ErrConversionQuoteUnavailable) {
+		t.Fatalf("replayed quote reuse error = %v", err)
+	}
+
+	direct, err := store.CreateSaleOfferFromSubmission(
+		ctx,
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "mxn-create"), "MXN 101.25"),
+		offerintake.Submission{BondSeries: bond, Price: decimal.RequireFromString("101.25"), Currency: exchange.MXN},
+	)
+	if err != nil || direct.Currency != exchange.MXN || !direct.Price.Equal(decimal.RequireFromString("101.25")) {
+		t.Fatalf("direct MXN submission = %#v, %v", direct, err)
+	}
+
+	missingBond := exchange.BondSeries("B" + strings.ToUpper(uniqueHex(t, 8)))
+	_, err = store.CreateSaleOfferFromSubmission(
+		ctx,
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "missing-submission-bond"), string(missingBond)),
+		offerintake.Submission{BondSeries: missingBond, Price: decimal.NewFromInt(1), Currency: exchange.MXN},
+	)
+	if !errors.Is(err, exchange.ErrBondNotFound) {
+		t.Fatalf("missing submission bond error = %v", err)
+	}
+	_, err = store.CreateSaleOfferFromSubmission(
+		ctx,
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "unsupported-submission"), "EUR"),
+		offerintake.Submission{BondSeries: bond, Price: decimal.NewFromInt(1), Currency: "EUR"},
+	)
+	if !errors.Is(err, offerintake.ErrUnsupportedSubmissionCurrency) {
+		t.Fatalf("unsupported repository submission error = %v", err)
+	}
+	_, err = store.CreateConversionQuote(
+		ctx,
+		mutation(seller, exchange.OperationQuoteSaleOffer, uniqueID(t, "missing-quote-bond"), string(missingBond)),
+		offerintake.QuoteDraft{
+			BondSeries: missingBond, SubmittedPrice: decimal.NewFromInt(1), MXNPrice: decimal.NewFromInt(17),
+			RateRevisionID: observationID, RateObservedOn: observedOn, ExpiresAt: time.Now().Add(time.Minute),
+		},
+	)
+	if !errors.Is(err, exchange.ErrBondNotFound) {
+		t.Fatalf("missing quote bond error = %v", err)
+	}
+	_, err = store.CreateConversionQuote(
+		ctx,
+		mutation(seller, exchange.OperationQuoteSaleOffer, uniqueID(t, "missing-rate"), "missing rate"),
+		offerintake.QuoteDraft{
+			BondSeries: bond, SubmittedPrice: decimal.NewFromInt(1), MXNPrice: decimal.NewFromInt(17),
+			RateRevisionID: uniqueUUIDv7(t), RateObservedOn: observedOn, ExpiresAt: time.Now().Add(time.Minute),
+		},
+	)
+	if !errors.Is(err, offerintake.ErrExchangeRateUnavailable) {
+		t.Fatalf("missing quote rate error = %v", err)
+	}
+
+	_, err = store.CreateConversionQuote(
+		ctx,
+		mutation(seller, exchange.OperationQuoteSaleOffer, uniqueID(t, "expired-draft"), "expired draft"),
+		offerintake.QuoteDraft{
+			BondSeries: bond, SubmittedPrice: decimal.NewFromInt(1), MXNPrice: decimal.NewFromInt(17),
+			RateRevisionID: observationID, RateObservedOn: observedOn, ExpiresAt: time.Now().Add(-time.Minute),
+		},
+	)
+	if err == nil {
+		t.Fatal("CreateConversionQuote() accepted an already expired draft")
+	}
+	_, err = store.CreateSaleOfferFromSubmission(
+		ctx,
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "invalid-quote-id"), "invalid quote ID"),
+		offerintake.Submission{BondSeries: bond, Price: decimal.NewFromInt(1), Currency: offerintake.USD, QuoteID: "invalid"},
+	)
+	if err == nil {
+		t.Fatal("CreateSaleOfferFromSubmission() accepted an invalid quote ID")
+	}
+	_, err = store.CreateSaleOfferFromSubmission(
+		ctx,
+		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "zero-mxn"), "zero MXN"),
+		offerintake.Submission{BondSeries: bond, Price: decimal.Zero, Currency: exchange.MXN},
+	)
+	if err == nil {
+		t.Fatal("CreateSaleOfferFromSubmission() accepted a zero MXN amount")
+	}
+
+	unauthorized := insertUnprivilegedUser(t, pool)
+	unauthorizedQuote := mutation(unauthorized, exchange.OperationQuoteSaleOffer, uniqueID(t, "unauthorized-quote"), "unauthorized")
+	if _, _, err := store.ReplayConversionQuote(ctx, unauthorizedQuote); !errors.Is(err, exchange.ErrPermissionDenied) {
+		t.Fatalf("unauthorized quote replay error = %v", err)
+	}
+	if _, err := store.CreateConversionQuote(ctx, unauthorizedQuote, offerintake.QuoteDraft{}); !errors.Is(err, exchange.ErrPermissionDenied) {
+		t.Fatalf("unauthorized quote creation error = %v", err)
+	}
+	if _, err := store.CreateSaleOfferFromSubmission(
+		ctx,
+		mutation(unauthorized, exchange.OperationCreateSaleOffer, uniqueID(t, "unauthorized-create"), "unauthorized"),
+		offerintake.Submission{},
+	); !errors.Is(err, exchange.ErrPermissionDenied) {
+		t.Fatalf("unauthorized submission error = %v", err)
+	}
+}
+
 func TestConcurrentCreateSaleOfferGeneratesDistinctIDs(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
@@ -183,7 +423,7 @@ func TestConcurrentCreateSaleOfferGeneratesDistinctIDs(t *testing.T) {
 		SellerID:   insertUser(t, pool, "seller"),
 		BondSeries: insertBond(t, pool),
 		Price:      decimal.RequireFromString("100.25"),
-		Currency:   "USD",
+		Currency:   "MXN",
 	}
 
 	const competitors = 8
@@ -321,7 +561,7 @@ func TestMutationIdempotencyReplaysResultAndRejectsKeyReuse(t *testing.T) {
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID: seller, BondSeries: bond,
-		Price: decimal.RequireFromString("101.25"), Currency: "USD",
+		Price: decimal.RequireFromString("101.25"), Currency: "MXN",
 	}
 	operation := mutation(seller, exchange.OperationCreateSaleOffer, "stable-idempotency-key", "request-a")
 
@@ -364,7 +604,7 @@ func TestSuccessfulMutationsRecordMinimalIntegrationEventReferences(t *testing.T
 		SellerID:   seller,
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("101.25"),
-		Currency:   "USD",
+		Currency:   "MXN",
 	}
 	createOperation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "event-create"), "event offer")
 	created, err := store.CreateSaleOffer(context.Background(), createOperation, offer)
@@ -444,7 +684,7 @@ func TestIntegrationEventDeliveryIsLeasedAndDeduplicated(t *testing.T) {
 		SellerID:   seller,
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("99.5"),
-		Currency:   "USD",
+		Currency:   "MXN",
 	}
 	created, err := store.CreateSaleOffer(
 		context.Background(),
@@ -490,7 +730,7 @@ func TestIntegrationEventLeaseCoordinatesOverlappingAttempts(t *testing.T) {
 		SellerID:   seller,
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("97.25"),
-		Currency:   "USD",
+		Currency:   "MXN",
 	}
 	created, err := store.CreateSaleOffer(
 		context.Background(),
@@ -541,7 +781,7 @@ func TestManualIntegrationEventRecoveryRetriesFailedDelivery(t *testing.T) {
 		SellerID:   seller,
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("98.75"),
-		Currency:   "USD",
+		Currency:   "MXN",
 	}
 	created, err := store.CreateSaleOffer(
 		context.Background(),
@@ -593,7 +833,7 @@ func TestLoadEventRejectsUnsupportedVersionAndMissingReference(t *testing.T) {
 	offer := insertOffer(t, pool, seller, bond)
 	if _, err := pool.Exec(context.Background(), `
 		INSERT INTO bond_exchange.integration_events (table_name, source_uuid, schema_version, completed_at)
-		VALUES ('sale_offers', $1, 2, transaction_timestamp())`, offer); err != nil {
+		VALUES ('sale_offers', $1, 3, transaction_timestamp())`, offer); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.LoadEvent(context.Background(), eventing.SourceRef{
@@ -742,6 +982,7 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 		{exchange.ErrOfferAlreadyExists, "offer_already_exists"},
 		{exchange.ErrSellerNotFound, "seller_not_found"},
 		{exchange.ErrBondNotFound, "bond_not_found"},
+		{offerintake.ErrConversionQuoteUnavailable, "conversion_quote_unavailable"},
 	} {
 		code, ok := safeOperationErrorCode(test.err)
 		if !ok || code != test.code || !errors.Is(operationErrorFromCode(code), test.err) {
@@ -791,6 +1032,31 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 		return nil
 	})); !errors.Is(err, exchange.ErrInvalidPrice) {
 		t.Fatalf("scanPurchase() price error = %v", err)
+	}
+	if _, err := scanConversionQuote(rowScannerFunc(func(...any) error { return wantScanError })); !errors.Is(err, wantScanError) {
+		t.Fatalf("scanConversionQuote() scan error = %v", err)
+	}
+	for _, test := range []struct {
+		name      string
+		submitted string
+		mxn       string
+		rate      string
+	}{
+		{name: "submitted", submitted: "invalid", mxn: "1", rate: "1"},
+		{name: "mxn", submitted: "1", mxn: "invalid", rate: "1"},
+		{name: "rate", submitted: "1", mxn: "1", rate: "invalid"},
+	} {
+		t.Run("quote "+test.name, func(t *testing.T) {
+			_, err := scanConversionQuote(rowScannerFunc(func(destinations ...any) error {
+				*destinations[3].(*string) = test.submitted //nolint:forcetypeassert // scanConversionQuote controls destinations.
+				*destinations[4].(*string) = test.mxn       //nolint:forcetypeassert // scanConversionQuote controls destinations.
+				*destinations[5].(*string) = test.rate      //nolint:forcetypeassert // scanConversionQuote controls destinations.
+				return nil
+			}))
+			if !errors.Is(err, exchange.ErrInvalidPrice) {
+				t.Fatalf("scanConversionQuote() error = %v", err)
+			}
+		})
 	}
 	canceledContext, cancelRetry := context.WithCancel(context.Background())
 	cancelRetry()
@@ -900,6 +1166,8 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 		"principal_role_revocations": false, "principal_suspensions": false,
 		"principals": false, "purchases": false, "role_permission_grants": false,
 		"role_permission_revocations": false, "roles": false, "sale_offers": false,
+		"sale_offer_canonical_terms": false, "sale_offer_conversion_quotes": false,
+		"sale_offer_submissions":               false,
 		"sie_exchange_rate_fetch_coordination": false, "sie_exchange_rate_imports": false,
 		"sie_exchange_rate_observations": false, "sie_provider_state": false, "users": false,
 	}
@@ -1038,6 +1306,16 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	if _, err := store.CreateSaleOffer(ctx, mutation("seller", exchange.OperationCreateSaleOffer, "idempotency-key-1", "offer"), exchange.SaleOffer{}); err == nil {
 		t.Fatal("CreateSaleOffer() succeeded with closed pool")
 	}
+	quoteOperation := mutation("seller", exchange.OperationQuoteSaleOffer, "idempotency-key-2", "quote")
+	if _, _, err := store.ReplayConversionQuote(ctx, quoteOperation); err == nil {
+		t.Fatal("ReplayConversionQuote() succeeded with closed pool")
+	}
+	if _, err := store.CreateConversionQuote(ctx, quoteOperation, offerintake.QuoteDraft{}); err == nil {
+		t.Fatal("CreateConversionQuote() succeeded with closed pool")
+	}
+	if _, err := store.CreateSaleOfferFromSubmission(ctx, mutation("seller", exchange.OperationCreateSaleOffer, "idempotency-key-3", "submission"), offerintake.Submission{}); err == nil {
+		t.Fatal("CreateSaleOfferFromSubmission() succeeded with closed pool")
+	}
 	if err := store.StreamActiveOffers(ctx, access("reader", exchange.OperationListActiveOffers), "BND", func(exchange.SaleOffer) error { return nil }); err == nil {
 		t.Fatal("StreamActiveOffers() succeeded with closed pool")
 	}
@@ -1125,6 +1403,20 @@ FROM bond_exchange.roles WHERE code = 'trader'`, id); err != nil {
 	return id
 }
 
+func insertUnprivilegedUser(t *testing.T, pool *pgxpool.Pool) exchange.UserID {
+	t.Helper()
+	var id exchange.UserID
+	if err := pool.QueryRow(context.Background(), `INSERT INTO bond_exchange.users DEFAULT VALUES RETURNING uuid_id`).Scan(&id); err != nil {
+		t.Fatalf("insert unprivileged user: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
+VALUES ($1, 'https://issuer.test', $2, 'automated')`, id, id); err != nil {
+		t.Fatalf("insert unprivileged principal: %v", err)
+	}
+	return id
+}
+
 func access(user exchange.UserID, operation string) exchange.AccessContext {
 	return exchange.AccessContext{
 		Principal: exchange.Principal{ID: user, ClientID: "integration-client", ClientClass: exchange.ClientClassAutomated},
@@ -1139,6 +1431,36 @@ func mutation(user exchange.UserID, operation, idempotencyKey, request string) e
 	value.AssertionDigest = sha256.Sum256([]byte("fresh assertion: " + idempotencyKey))
 	value.AssertionID = idempotencyKey
 	return exchange.MutationContext{AccessContext: value, IdempotencyKey: idempotencyKey}
+}
+
+func insertSyntheticOperationResult(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	operation exchange.MutationContext,
+	resourceID *string,
+) string {
+	t.Helper()
+	var claimID string
+	if err := pool.QueryRow(context.Background(), `
+INSERT INTO bond_exchange.operation_claims
+  (principal_uuid, client_id, operation, idempotency_nonce, request_digest, assertion_digest)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING uuid_id`,
+		operation.Principal.ID,
+		operation.Principal.ClientID,
+		operation.Operation,
+		operation.IdempotencyKey,
+		operation.RequestDigest[:],
+		operation.AssertionDigest[:],
+	).Scan(&claimID); err != nil {
+		t.Fatalf("insert synthetic operation claim: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO bond_exchange.operation_results (claim_uuid, outcome, resource_uuid)
+VALUES ($1, 'succeeded', $2)`, claimID, resourceID); err != nil {
+		t.Fatalf("insert synthetic operation result: %v", err)
+	}
+	return claimID
 }
 
 func collectOffers(store *Store, access exchange.AccessContext, bond exchange.BondSeries) ([]exchange.SaleOffer, error) {
@@ -1169,11 +1491,22 @@ func insertOffer(
 	var id exchange.OfferID
 	if err := pool.QueryRow(
 		context.Background(),
-		`INSERT INTO bond_exchange.sale_offers
-		   (seller_uuid, bond_uuid, price, currency_code)
-		 SELECT $1, uuid_id, 100.25, 'USD'
-		 FROM bond_exchange.bonds WHERE series = $2
-		 RETURNING uuid_id`,
+		`WITH inserted_offer AS (
+		   INSERT INTO bond_exchange.sale_offers
+		     (seller_uuid, bond_uuid, price, currency_code)
+		   SELECT $1, uuid_id, 100.25, 'MXN'
+		   FROM bond_exchange.bonds WHERE series = $2
+		   RETURNING uuid_id
+		 ), inserted_terms AS (
+		   INSERT INTO bond_exchange.sale_offer_canonical_terms
+		     (sale_offer_uuid, price, currency_code)
+		   SELECT uuid_id, 100.25, 'MXN' FROM inserted_offer
+		 ), inserted_submission AS (
+		   INSERT INTO bond_exchange.sale_offer_submissions
+		     (sale_offer_uuid, submitted_price, submitted_currency_code)
+		   SELECT uuid_id, 100.25, 'MXN' FROM inserted_offer
+		 )
+		 SELECT uuid_id FROM inserted_offer`,
 		seller,
 		bond,
 	).Scan(&id); err != nil {

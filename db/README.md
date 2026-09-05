@@ -25,6 +25,9 @@ and the operational legacy graph is removed by
 [`migrations/20260904160000_contract_legacy_identifier_graph.sql`](migrations/20260904160000_contract_legacy_identifier_graph.sql).
 Canonical view names and business-code column names are finalized by
 [`migrations/20260904170000_finalize_uuid_contract.sql`](migrations/20260904170000_finalize_uuid_contract.sql).
+Canonical MXN offer terms, conversion quotes, and submission provenance are
+added by
+[`migrations/20260904180000_add_canonical_mxn_offer_terms.sql`](migrations/20260904180000_add_canonical_mxn_offer_terms.sql).
 
 PostgreSQL 18 is required. Every application table has a `uuid_id uuid`
 primary key generated with `uuidv7()` and constrained with
@@ -58,9 +61,10 @@ The unique `sale_offer_uuid` constraint gives concurrent inserts for the same of
 come from different server instances. The losing requests are reported as an
 unavailable offer, while the original offer row remains as history.
 
-The current adapter reads the non-materialized
-`bond_exchange.active_offers` view, which excludes every offer
-that has a matching purchase. The API requires a bond series and returns all
+The current adapter joins `sale_offer_canonical_terms` directly and excludes
+every offer that has a matching purchase. The compatibility
+`bond_exchange.active_offers` view retains its prior shape for an expand-first
+rolling deployment. The API requires a bond series and returns all canonical
 active offers for it in ID order; the
 `sale_offers_bond_uuid_uuid_id_idx` index supports the relationship join. A separate
 distinct query derives the sorted list of bond series represented in the view.
@@ -69,11 +73,42 @@ concurrency. Purchase history by buyer is supported by
 `purchases_buyer_uuid_sale_offer_uuid_idx`. Add further indexes only for observed
 query plans.
 
-The API creates sale offers with `INSERT ... RETURNING`; PostgreSQL generates
+The API creates sale offers, canonical terms, and submission provenance in one
+statement with `INSERT ... RETURNING`; PostgreSQL generates
 the UUIDv7 resource identity. Clients do not supply an ID. UUID foreign keys
 require the authenticated seller and bond series to have been provisioned
 already. Idempotency, rather than a caller-selected resource key, serializes
 exact retries.
+
+`sale_offer_canonical_terms` is the one-to-one MXN authority read by the new
+application. `sale_offer_submissions` preserves the original MXN or USD amount;
+a USD row references exactly one `sale_offer_conversion_quotes` fact. That
+quote pins a `SF43718` observation, accepted MXN amount, half-to-even rounding
+policy, principal, bond, and expiry. All three tables are append-only. A quote
+is single-use by a unique provenance reference, and create verifies its
+principal, bond, exact USD amount, expiry, and non-use in the serializable
+transaction.
+
+The expand migration backfills canonical identity terms only for existing MXN
+offers. It preserves non-MXN facts without inventing seller consent or a
+historical rate. The new adapter therefore hides and refuses to buy those rows;
+the compatibility view remains available only so the previously deployed
+binary continues to function during rollout. Retiring that binary is required
+before claiming the MXN-only control is active. A future authorized workflow
+must disposition legacy non-MXN rows without mutation.
+
+Before activating the MXN-only release against an existing database, run:
+
+```console
+DATABASE_URL=... devenv tasks run db:canonical-mxn-readiness
+```
+
+The gate rejects inconsistent terms/provenance/rate mappings, purchases without
+canonical terms, and any still-active legacy offer without seller-accepted MXN
+terms. It is part of `dev:ci`, so its behavior is exercised locally and in
+continuous integration against a disposable migrated database. It cannot
+observe application processes: release evidence must also show that old
+binaries and sanctioned compatibility-view readers are drained.
 
 Federated identities are linked to internal users by the unique
 `(issuer, subject)` pair in `principals`; the API never accepts that user ID as

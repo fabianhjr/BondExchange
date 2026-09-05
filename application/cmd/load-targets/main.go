@@ -84,7 +84,7 @@ func makeTarget(privateKey, baseURL, scenario string, offerIDs []string, index i
 		subject = "demo-seller"
 		operation = exchange.OperationCreateSaleOffer
 		idempotencyKey = uuid.NewString()
-		requestJSON = `{"bond_series":"DEMO2026","price":"101.25","currency_code":"USD"}`
+		requestJSON = `{"bond_series":"DEMO2026","price":"101.25","currency_code":"MXN"}`
 	case "buy":
 		method = "POST"
 		path = "/buys"

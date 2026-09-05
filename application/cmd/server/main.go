@@ -18,9 +18,12 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/authn"
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/exchangerates"
 	"github.com/fabianhjr/BondExchange/application/internal/httpapi"
+	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 	postgresstore "github.com/fabianhjr/BondExchange/application/internal/postgres"
 	"github.com/fabianhjr/BondExchange/application/internal/rpcapi"
+	"github.com/fabianhjr/BondExchange/application/internal/sie"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
@@ -72,11 +75,23 @@ func run() error {
 		return err
 	}
 	exchangeService := exchange.NewService(store)
+	sieClient, err := sie.NewClient(sie.Config{Token: os.Getenv("BANXICO_SIE_TOKEN")})
+	if err != nil {
+		return fmt.Errorf("configure Banxico SIE client: %w", err)
+	}
+	rateService, err := exchangerates.NewService(sieClient, store, exchangerates.Config{})
+	if err != nil {
+		return err
+	}
+	intakeService, err := offerintake.NewService(exchangeService, rateService, store, offerintake.Config{})
+	if err != nil {
+		return err
+	}
 	dispatcher, err := eventing.NewDispatcher(store, nil, 5*time.Second)
 	if err != nil {
 		return err
 	}
-	service := eventing.NewApplication(exchangeService, store, dispatcher)
+	service := eventing.NewApplication(intakeService, store, dispatcher)
 	jwtAuthenticator, err := loadAuthenticator(store)
 	if err != nil {
 		return err

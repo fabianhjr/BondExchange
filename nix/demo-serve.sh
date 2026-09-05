@@ -22,6 +22,7 @@ go run ./cmd/demo-auth init "$auth_root"
 export BOND_EXCHANGE_ASSERTION_ISSUER="https://demo-issuer.invalid"
 export BOND_EXCHANGE_ASSERTION_AUDIENCE="bond-exchange-demo"
 export BOND_EXCHANGE_ASSERTION_JWKS_FILE="$auth_root/public.jwks"
+export BANXICO_SIE_TOKEN="${BANXICO_SIE_TOKEN:-0000000000000000000000000000000000000000000000000000000000000000}"
 
 echo "Bond Exchange demo is ready when GET http://$rest_display/healthz returns healthy."
 echo "REST: http://$rest_display  gRPC: $grpc_display"

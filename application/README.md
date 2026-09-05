@@ -8,8 +8,11 @@ This directory is the Go module for the Bond Exchange service. It contains:
   generator;
 - `cmd/internal/demoauth`, shared assertion support for those development
   commands;
-- `internal/`, the domain, application services, and transport and persistence
-  adapters; and
+- `internal/exchange`, the MXN-only marketplace core;
+- `internal/offerintake`, the outer MXN/USD submission and accepted FIX-quote
+  workflow;
+- the remaining `internal/` packages, including provider-neutral rates, SIE,
+  transport, eventing, and PostgreSQL adapters; and
 - `gen/go/`, the checked-in Go bindings generated from the Proto3 contract in
   `../api/`.
 
@@ -31,3 +34,7 @@ Prefer the repository-root devenv tasks for complete checks because they also
 provision PostgreSQL, validate generated artifacts, and run the other project
 quality gates. Generated bindings must be changed through the root
 `api:generate` task, not edited directly.
+
+`cmd/server` requires `BANXICO_SIE_TOKEN` because USD quotation is part of the
+composed API. The token remains owned by the SIE adapter. The marketplace core
+does not import the intake or exchange-rate packages and accepts only MXN.

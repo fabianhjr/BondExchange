@@ -135,6 +135,12 @@ func TestJWTAuthenticatorRejectsInvalidEnvelopeAndClaims(t *testing.T) {
 			}
 		})
 	}
+	oversizedOperation := validOperation
+	oversizedOperation.ClientID = string(make([]byte, 17*1024))
+	oversizedToken := signAssertion(t, privateKey, standardClaims(now), oversizedOperation)
+	if _, err := authenticator.Authenticate(incomingContext(oversizedToken, key), exchange.OperationBuy, request, true); !errors.Is(err, exchange.ErrUnauthenticated) {
+		t.Fatalf("oversized assertion error = %v", err)
+	}
 }
 
 func TestReadOperationRejectsIdempotencyMetadata(t *testing.T) {

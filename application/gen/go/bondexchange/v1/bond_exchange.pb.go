@@ -73,11 +73,14 @@ type CreateSaleOfferRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Bond series to sell. The service canonicalizes this value to uppercase.
 	BondSeries string `protobuf:"bytes,3,opt,name=bond_series,json=bondSeries,proto3" json:"bond_series,omitempty"`
-	// Exact positive decimal monetary amount encoded as a string.
-	Price         string `protobuf:"bytes,4,opt,name=price,proto3" json:"price,omitempty"`
-	CurrencyCode  string `protobuf:"bytes,5,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Exact positive submitted amount encoded as a string.
+	Price string `protobuf:"bytes,4,opt,name=price,proto3" json:"price,omitempty"`
+	// MXN creates directly. USD requires an accepted conversion_quote_id.
+	CurrencyCode string `protobuf:"bytes,5,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
+	// Required for USD submissions and forbidden for MXN submissions.
+	ConversionQuoteId string `protobuf:"bytes,6,opt,name=conversion_quote_id,json=conversionQuoteId,proto3" json:"conversion_quote_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CreateSaleOfferRequest) Reset() {
@@ -131,6 +134,191 @@ func (x *CreateSaleOfferRequest) GetCurrencyCode() string {
 	return ""
 }
 
+func (x *CreateSaleOfferRequest) GetConversionQuoteId() string {
+	if x != nil {
+		return x.ConversionQuoteId
+	}
+	return ""
+}
+
+type QuoteSaleOfferRequest struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	BondSeries string                 `protobuf:"bytes,1,opt,name=bond_series,json=bondSeries,proto3" json:"bond_series,omitempty"`
+	// Exact positive USD amount encoded as a string.
+	Price string `protobuf:"bytes,2,opt,name=price,proto3" json:"price,omitempty"`
+	// Must be USD. MXN offers do not require a conversion quote.
+	CurrencyCode  string `protobuf:"bytes,3,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QuoteSaleOfferRequest) Reset() {
+	*x = QuoteSaleOfferRequest{}
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuoteSaleOfferRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuoteSaleOfferRequest) ProtoMessage() {}
+
+func (x *QuoteSaleOfferRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuoteSaleOfferRequest.ProtoReflect.Descriptor instead.
+func (*QuoteSaleOfferRequest) Descriptor() ([]byte, []int) {
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *QuoteSaleOfferRequest) GetBondSeries() string {
+	if x != nil {
+		return x.BondSeries
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferRequest) GetPrice() string {
+	if x != nil {
+		return x.Price
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferRequest) GetCurrencyCode() string {
+	if x != nil {
+		return x.CurrencyCode
+	}
+	return ""
+}
+
+type QuoteSaleOfferResponse struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	QuoteId               string                 `protobuf:"bytes,1,opt,name=quote_id,json=quoteId,proto3" json:"quote_id,omitempty"`
+	BondSeries            string                 `protobuf:"bytes,2,opt,name=bond_series,json=bondSeries,proto3" json:"bond_series,omitempty"`
+	SubmittedPrice        string                 `protobuf:"bytes,3,opt,name=submitted_price,json=submittedPrice,proto3" json:"submitted_price,omitempty"`
+	SubmittedCurrencyCode string                 `protobuf:"bytes,4,opt,name=submitted_currency_code,json=submittedCurrencyCode,proto3" json:"submitted_currency_code,omitempty"`
+	MxnPrice              string                 `protobuf:"bytes,5,opt,name=mxn_price,json=mxnPrice,proto3" json:"mxn_price,omitempty"`
+	CurrencyCode          string                 `protobuf:"bytes,6,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
+	Rate                  string                 `protobuf:"bytes,7,opt,name=rate,proto3" json:"rate,omitempty"`
+	RateSeries            string                 `protobuf:"bytes,8,opt,name=rate_series,json=rateSeries,proto3" json:"rate_series,omitempty"`
+	RateObservedOn        *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=rate_observed_on,json=rateObservedOn,proto3" json:"rate_observed_on,omitempty"`
+	ExpiresAt             *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *QuoteSaleOfferResponse) Reset() {
+	*x = QuoteSaleOfferResponse{}
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuoteSaleOfferResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuoteSaleOfferResponse) ProtoMessage() {}
+
+func (x *QuoteSaleOfferResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuoteSaleOfferResponse.ProtoReflect.Descriptor instead.
+func (*QuoteSaleOfferResponse) Descriptor() ([]byte, []int) {
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *QuoteSaleOfferResponse) GetQuoteId() string {
+	if x != nil {
+		return x.QuoteId
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetBondSeries() string {
+	if x != nil {
+		return x.BondSeries
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetSubmittedPrice() string {
+	if x != nil {
+		return x.SubmittedPrice
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetSubmittedCurrencyCode() string {
+	if x != nil {
+		return x.SubmittedCurrencyCode
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetMxnPrice() string {
+	if x != nil {
+		return x.MxnPrice
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetCurrencyCode() string {
+	if x != nil {
+		return x.CurrencyCode
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetRate() string {
+	if x != nil {
+		return x.Rate
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetRateSeries() string {
+	if x != nil {
+		return x.RateSeries
+	}
+	return ""
+}
+
+func (x *QuoteSaleOfferResponse) GetRateObservedOn() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RateObservedOn
+	}
+	return nil
+}
+
+func (x *QuoteSaleOfferResponse) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 type CreateSaleOfferResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Offer         *SaleOffer             `protobuf:"bytes,1,opt,name=offer,proto3" json:"offer,omitempty"`
@@ -140,7 +328,7 @@ type CreateSaleOfferResponse struct {
 
 func (x *CreateSaleOfferResponse) Reset() {
 	*x = CreateSaleOfferResponse{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[2]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -152,7 +340,7 @@ func (x *CreateSaleOfferResponse) String() string {
 func (*CreateSaleOfferResponse) ProtoMessage() {}
 
 func (x *CreateSaleOfferResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[2]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -165,7 +353,7 @@ func (x *CreateSaleOfferResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSaleOfferResponse.ProtoReflect.Descriptor instead.
 func (*CreateSaleOfferResponse) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{2}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CreateSaleOfferResponse) GetOffer() *SaleOffer {
@@ -185,7 +373,7 @@ type ListActiveOffersRequest struct {
 
 func (x *ListActiveOffersRequest) Reset() {
 	*x = ListActiveOffersRequest{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[3]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -197,7 +385,7 @@ func (x *ListActiveOffersRequest) String() string {
 func (*ListActiveOffersRequest) ProtoMessage() {}
 
 func (x *ListActiveOffersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[3]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -210,7 +398,7 @@ func (x *ListActiveOffersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActiveOffersRequest.ProtoReflect.Descriptor instead.
 func (*ListActiveOffersRequest) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{3}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListActiveOffersRequest) GetBond() string {
@@ -233,7 +421,7 @@ type ListActiveOffersResponse struct {
 
 func (x *ListActiveOffersResponse) Reset() {
 	*x = ListActiveOffersResponse{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[4]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -245,7 +433,7 @@ func (x *ListActiveOffersResponse) String() string {
 func (*ListActiveOffersResponse) ProtoMessage() {}
 
 func (x *ListActiveOffersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[4]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -258,7 +446,7 @@ func (x *ListActiveOffersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActiveOffersResponse.ProtoReflect.Descriptor instead.
 func (*ListActiveOffersResponse) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{4}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListActiveOffersResponse) GetEvent() isListActiveOffersResponse_Event {
@@ -311,7 +499,7 @@ type ListActiveOffersComplete struct {
 
 func (x *ListActiveOffersComplete) Reset() {
 	*x = ListActiveOffersComplete{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[5]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -323,7 +511,7 @@ func (x *ListActiveOffersComplete) String() string {
 func (*ListActiveOffersComplete) ProtoMessage() {}
 
 func (x *ListActiveOffersComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[5]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -336,7 +524,7 @@ func (x *ListActiveOffersComplete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActiveOffersComplete.ProtoReflect.Descriptor instead.
 func (*ListActiveOffersComplete) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{5}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListActiveOffersComplete) GetOfferCount() uint64 {
@@ -354,7 +542,7 @@ type ListActiveBondSeriesRequest struct {
 
 func (x *ListActiveBondSeriesRequest) Reset() {
 	*x = ListActiveBondSeriesRequest{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[6]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -366,7 +554,7 @@ func (x *ListActiveBondSeriesRequest) String() string {
 func (*ListActiveBondSeriesRequest) ProtoMessage() {}
 
 func (x *ListActiveBondSeriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[6]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -379,7 +567,7 @@ func (x *ListActiveBondSeriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActiveBondSeriesRequest.ProtoReflect.Descriptor instead.
 func (*ListActiveBondSeriesRequest) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{6}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{8}
 }
 
 type ListActiveBondSeriesResponse struct {
@@ -391,7 +579,7 @@ type ListActiveBondSeriesResponse struct {
 
 func (x *ListActiveBondSeriesResponse) Reset() {
 	*x = ListActiveBondSeriesResponse{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[7]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -403,7 +591,7 @@ func (x *ListActiveBondSeriesResponse) String() string {
 func (*ListActiveBondSeriesResponse) ProtoMessage() {}
 
 func (x *ListActiveBondSeriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[7]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -416,7 +604,7 @@ func (x *ListActiveBondSeriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListActiveBondSeriesResponse.ProtoReflect.Descriptor instead.
 func (*ListActiveBondSeriesResponse) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{7}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListActiveBondSeriesResponse) GetBondSeries() []string {
@@ -434,7 +622,7 @@ type CheckHealthRequest struct {
 
 func (x *CheckHealthRequest) Reset() {
 	*x = CheckHealthRequest{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[8]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -446,7 +634,7 @@ func (x *CheckHealthRequest) String() string {
 func (*CheckHealthRequest) ProtoMessage() {}
 
 func (x *CheckHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[8]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -459,7 +647,7 @@ func (x *CheckHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckHealthRequest.ProtoReflect.Descriptor instead.
 func (*CheckHealthRequest) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{8}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{10}
 }
 
 type CheckHealthResponse struct {
@@ -471,7 +659,7 @@ type CheckHealthResponse struct {
 
 func (x *CheckHealthResponse) Reset() {
 	*x = CheckHealthResponse{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[9]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -483,7 +671,7 @@ func (x *CheckHealthResponse) String() string {
 func (*CheckHealthResponse) ProtoMessage() {}
 
 func (x *CheckHealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[9]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -496,7 +684,7 @@ func (x *CheckHealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckHealthResponse.ProtoReflect.Descriptor instead.
 func (*CheckHealthResponse) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{9}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CheckHealthResponse) GetStatus() string {
@@ -516,7 +704,7 @@ type PublishPendingEventsRequest struct {
 
 func (x *PublishPendingEventsRequest) Reset() {
 	*x = PublishPendingEventsRequest{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -528,7 +716,7 @@ func (x *PublishPendingEventsRequest) String() string {
 func (*PublishPendingEventsRequest) ProtoMessage() {}
 
 func (x *PublishPendingEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[10]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -541,7 +729,7 @@ func (x *PublishPendingEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishPendingEventsRequest.ProtoReflect.Descriptor instead.
 func (*PublishPendingEventsRequest) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{10}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PublishPendingEventsRequest) GetDestinationId() string {
@@ -563,7 +751,7 @@ type PublishPendingEventsResponse struct {
 
 func (x *PublishPendingEventsResponse) Reset() {
 	*x = PublishPendingEventsResponse{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -575,7 +763,7 @@ func (x *PublishPendingEventsResponse) String() string {
 func (*PublishPendingEventsResponse) ProtoMessage() {}
 
 func (x *PublishPendingEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[11]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -588,7 +776,7 @@ func (x *PublishPendingEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishPendingEventsResponse.ProtoReflect.Descriptor instead.
 func (*PublishPendingEventsResponse) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{11}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *PublishPendingEventsResponse) GetAttempted() uint64 {
@@ -633,7 +821,7 @@ type SaleOffer struct {
 
 func (x *SaleOffer) Reset() {
 	*x = SaleOffer{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -645,7 +833,7 @@ func (x *SaleOffer) String() string {
 func (*SaleOffer) ProtoMessage() {}
 
 func (x *SaleOffer) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[12]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -658,7 +846,7 @@ func (x *SaleOffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaleOffer.ProtoReflect.Descriptor instead.
 func (*SaleOffer) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{12}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SaleOffer) GetId() string {
@@ -699,7 +887,7 @@ type BuyResponse struct {
 
 func (x *BuyResponse) Reset() {
 	*x = BuyResponse{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[13]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -711,7 +899,7 @@ func (x *BuyResponse) String() string {
 func (*BuyResponse) ProtoMessage() {}
 
 func (x *BuyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[13]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -724,7 +912,7 @@ func (x *BuyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuyResponse.ProtoReflect.Descriptor instead.
 func (*BuyResponse) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{13}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *BuyResponse) GetOffer() *SaleOffer {
@@ -751,7 +939,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[14]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -763,7 +951,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[14]
+	mi := &file_bondexchange_v1_bond_exchange_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -776,7 +964,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{14}
+	return file_bondexchange_v1_bond_exchange_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Error) GetError() string {
@@ -794,13 +982,37 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\n" +
 	"BuyRequest\x12\"\n" +
 	"\rsale_offer_id\x18\x02 \x01(\tR\vsaleOfferId:\x15\x92A\x12\n" +
-	"\x10\xd2\x01\rsale_offer_idJ\x04\b\x01\x10\x02R\bbuyer_id\"\xbc\x01\n" +
+	"\x10\xd2\x01\rsale_offer_idJ\x04\b\x01\x10\x02R\bbuyer_id\"\xec\x01\n" +
 	"\x16CreateSaleOfferRequest\x12\x1f\n" +
 	"\vbond_series\x18\x03 \x01(\tR\n" +
 	"bondSeries\x12\x14\n" +
 	"\x05price\x18\x04 \x01(\tR\x05price\x12#\n" +
-	"\rcurrency_code\x18\x05 \x01(\tR\fcurrencyCode:+\x92A(\n" +
-	"&\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03R\x02idR\tseller_id\"Z\n" +
+	"\rcurrency_code\x18\x05 \x01(\tR\fcurrencyCode\x12.\n" +
+	"\x13conversion_quote_id\x18\x06 \x01(\tR\x11conversionQuoteId:+\x92A(\n" +
+	"&\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03R\x02idR\tseller_id\"\xa0\x01\n" +
+	"\x15QuoteSaleOfferRequest\x12\x1f\n" +
+	"\vbond_series\x18\x01 \x01(\tR\n" +
+	"bondSeries\x12\x14\n" +
+	"\x05price\x18\x02 \x01(\tR\x05price\x12#\n" +
+	"\rcurrency_code\x18\x03 \x01(\tR\fcurrencyCode:+\x92A(\n" +
+	"&\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_code\"\xcd\x04\n" +
+	"\x16QuoteSaleOfferResponse\x12\x19\n" +
+	"\bquote_id\x18\x01 \x01(\tR\aquoteId\x12\x1f\n" +
+	"\vbond_series\x18\x02 \x01(\tR\n" +
+	"bondSeries\x12'\n" +
+	"\x0fsubmitted_price\x18\x03 \x01(\tR\x0esubmittedPrice\x126\n" +
+	"\x17submitted_currency_code\x18\x04 \x01(\tR\x15submittedCurrencyCode\x12\x1b\n" +
+	"\tmxn_price\x18\x05 \x01(\tR\bmxnPrice\x12#\n" +
+	"\rcurrency_code\x18\x06 \x01(\tR\fcurrencyCode\x12\x12\n" +
+	"\x04rate\x18\a \x01(\tR\x04rate\x12\x1f\n" +
+	"\vrate_series\x18\b \x01(\tR\n" +
+	"rateSeries\x12D\n" +
+	"\x10rate_observed_on\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x0erateObservedOn\x129\n" +
+	"\n" +
+	"expires_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt:\x9d\x01\x92A\x99\x01\n" +
+	"\x96\x01\xd2\x01\bquote_id\xd2\x01\vbond_series\xd2\x01\x0fsubmitted_price\xd2\x01\x17submitted_currency_code\xd2\x01\tmxn_price\xd2\x01\rcurrency_code\xd2\x01\x04rate\xd2\x01\vrate_series\xd2\x01\x10rate_observed_on\xd2\x01\n" +
+	"expires_at\"Z\n" +
 	"\x17CreateSaleOfferResponse\x120\n" +
 	"\x05offer\x18\x01 \x01(\v2\x1a.bondexchange.v1.SaleOfferR\x05offer:\r\x92A\n" +
 	"\n" +
@@ -846,7 +1058,7 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error:\r\x92A\n" +
 	"\n" +
-	"\b\xd2\x01\x05error2\xf3\x14\n" +
+	"\b\xd2\x01\x05error2\xae\x1a\n" +
 	"\x13BondExchangeService\x12\xc9\x03\n" +
 	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x86\x03\x92A\xf2\x02JC\n" +
 	"\x03201\x12<\n" +
@@ -863,13 +1075,31 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorrU\n" +
 	"S\n" +
 	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\n" +
-	":\x01*\"\x05/buys\x12\xeb\x04\n" +
-	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\x84\x04\x92A\xe9\x03JR\n" +
+	":\x01*\"\x05/buys\x12\x84\x05\n" +
+	"\x0eQuoteSaleOffer\x12&.bondexchange.v1.QuoteSaleOfferRequest\x1a'.bondexchange.v1.QuoteSaleOfferResponse\"\xa0\x04\x92A\xff\x03J`\n" +
+	"\x03201\x12Y\n" +
+	"*The expiring conversion quote was created.\x12+\n" +
+	")\x1a'.bondexchange.v1.QuoteSaleOfferResponseJB\n" +
+	"\x03400\x12;\n" +
+	"\x1dThe quote request is invalid.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
+	"\x03404\x12=\n" +
+	"\x1fThe bond series does not exist.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ^\n" +
+	"\x03409\x12W\n" +
+	"9The idempotency nonce was reused for a different request.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJZ\n" +
+	"\x03503\x12S\n" +
+	"5An acceptable Banxico FIX observation is unavailable.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorrU\n" +
+	"S\n" +
+	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/sale-offer-quotes\x12\x9f\x05\n" +
+	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\xb8\x04\x92A\x9d\x04JR\n" +
 	"\x03201\x12K\n" +
 	"\x1bThe sale offer was created.\x12,\n" +
-	"*\x1a(.bondexchange.v1.CreateSaleOfferResponseJ?\n" +
-	"\x03400\x128\n" +
-	"\x1aThe sale offer is invalid.\x12\x1a\n" +
+	"*\x1a(.bondexchange.v1.CreateSaleOfferResponseJs\n" +
+	"\x03400\x12l\n" +
+	"NThe sale offer is invalid or its required conversion quote cannot be accepted.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJD\n" +
 	"\x03404\x12=\n" +
 	"\x1fThe bond series does not exist.\x12\x1a\n" +
@@ -919,7 +1149,7 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.Errorr\x86\x01\n" +
 	"\x83\x01\n" +
 	"\x0fIdempotency-Key\x12lA canonical UUIDv4 nonce bound into the operation assertion; per-event leases coordinate overlapping drains.\x18\x01(\x01\x82\xd3\xe4\x93\x02(:\x01*\"#/event-publications:publish-pendingB\xea\x02\x92A\x91\x02\x12T\n" +
-	"\x11Bond Exchange API\x128REST and gRPC API for publishing and buying sale offers.2\x052.0.02\x10application/json:\x10application/jsonZ{\n" +
+	"\x11Bond Exchange API\x128REST and gRPC API for publishing and buying sale offers.2\x053.0.02\x10application/json:\x10application/jsonZ{\n" +
 	"y\n" +
 	"\x12OperationAssertion\x12c\b\x02\x12NA Bearer JWT bound to the operation and deterministic protobuf request digest.\x1a\rAuthorization \x02b\x18\n" +
 	"\x16\n" +
@@ -937,48 +1167,54 @@ func file_bondexchange_v1_bond_exchange_proto_rawDescGZIP() []byte {
 	return file_bondexchange_v1_bond_exchange_proto_rawDescData
 }
 
-var file_bondexchange_v1_bond_exchange_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_bondexchange_v1_bond_exchange_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_bondexchange_v1_bond_exchange_proto_goTypes = []any{
 	(*BuyRequest)(nil),                   // 0: bondexchange.v1.BuyRequest
 	(*CreateSaleOfferRequest)(nil),       // 1: bondexchange.v1.CreateSaleOfferRequest
-	(*CreateSaleOfferResponse)(nil),      // 2: bondexchange.v1.CreateSaleOfferResponse
-	(*ListActiveOffersRequest)(nil),      // 3: bondexchange.v1.ListActiveOffersRequest
-	(*ListActiveOffersResponse)(nil),     // 4: bondexchange.v1.ListActiveOffersResponse
-	(*ListActiveOffersComplete)(nil),     // 5: bondexchange.v1.ListActiveOffersComplete
-	(*ListActiveBondSeriesRequest)(nil),  // 6: bondexchange.v1.ListActiveBondSeriesRequest
-	(*ListActiveBondSeriesResponse)(nil), // 7: bondexchange.v1.ListActiveBondSeriesResponse
-	(*CheckHealthRequest)(nil),           // 8: bondexchange.v1.CheckHealthRequest
-	(*CheckHealthResponse)(nil),          // 9: bondexchange.v1.CheckHealthResponse
-	(*PublishPendingEventsRequest)(nil),  // 10: bondexchange.v1.PublishPendingEventsRequest
-	(*PublishPendingEventsResponse)(nil), // 11: bondexchange.v1.PublishPendingEventsResponse
-	(*SaleOffer)(nil),                    // 12: bondexchange.v1.SaleOffer
-	(*BuyResponse)(nil),                  // 13: bondexchange.v1.BuyResponse
-	(*Error)(nil),                        // 14: bondexchange.v1.Error
-	(*timestamppb.Timestamp)(nil),        // 15: google.protobuf.Timestamp
+	(*QuoteSaleOfferRequest)(nil),        // 2: bondexchange.v1.QuoteSaleOfferRequest
+	(*QuoteSaleOfferResponse)(nil),       // 3: bondexchange.v1.QuoteSaleOfferResponse
+	(*CreateSaleOfferResponse)(nil),      // 4: bondexchange.v1.CreateSaleOfferResponse
+	(*ListActiveOffersRequest)(nil),      // 5: bondexchange.v1.ListActiveOffersRequest
+	(*ListActiveOffersResponse)(nil),     // 6: bondexchange.v1.ListActiveOffersResponse
+	(*ListActiveOffersComplete)(nil),     // 7: bondexchange.v1.ListActiveOffersComplete
+	(*ListActiveBondSeriesRequest)(nil),  // 8: bondexchange.v1.ListActiveBondSeriesRequest
+	(*ListActiveBondSeriesResponse)(nil), // 9: bondexchange.v1.ListActiveBondSeriesResponse
+	(*CheckHealthRequest)(nil),           // 10: bondexchange.v1.CheckHealthRequest
+	(*CheckHealthResponse)(nil),          // 11: bondexchange.v1.CheckHealthResponse
+	(*PublishPendingEventsRequest)(nil),  // 12: bondexchange.v1.PublishPendingEventsRequest
+	(*PublishPendingEventsResponse)(nil), // 13: bondexchange.v1.PublishPendingEventsResponse
+	(*SaleOffer)(nil),                    // 14: bondexchange.v1.SaleOffer
+	(*BuyResponse)(nil),                  // 15: bondexchange.v1.BuyResponse
+	(*Error)(nil),                        // 16: bondexchange.v1.Error
+	(*timestamppb.Timestamp)(nil),        // 17: google.protobuf.Timestamp
 }
 var file_bondexchange_v1_bond_exchange_proto_depIdxs = []int32{
-	12, // 0: bondexchange.v1.CreateSaleOfferResponse.offer:type_name -> bondexchange.v1.SaleOffer
-	12, // 1: bondexchange.v1.ListActiveOffersResponse.offer:type_name -> bondexchange.v1.SaleOffer
-	5,  // 2: bondexchange.v1.ListActiveOffersResponse.complete:type_name -> bondexchange.v1.ListActiveOffersComplete
-	12, // 3: bondexchange.v1.BuyResponse.offer:type_name -> bondexchange.v1.SaleOffer
-	15, // 4: bondexchange.v1.BuyResponse.bought_at:type_name -> google.protobuf.Timestamp
-	0,  // 5: bondexchange.v1.BondExchangeService.Buy:input_type -> bondexchange.v1.BuyRequest
-	1,  // 6: bondexchange.v1.BondExchangeService.CreateSaleOffer:input_type -> bondexchange.v1.CreateSaleOfferRequest
-	3,  // 7: bondexchange.v1.BondExchangeService.ListActiveOffers:input_type -> bondexchange.v1.ListActiveOffersRequest
-	6,  // 8: bondexchange.v1.BondExchangeService.ListActiveBondSeries:input_type -> bondexchange.v1.ListActiveBondSeriesRequest
-	8,  // 9: bondexchange.v1.BondExchangeService.CheckHealth:input_type -> bondexchange.v1.CheckHealthRequest
-	10, // 10: bondexchange.v1.BondExchangeService.PublishPendingEvents:input_type -> bondexchange.v1.PublishPendingEventsRequest
-	13, // 11: bondexchange.v1.BondExchangeService.Buy:output_type -> bondexchange.v1.BuyResponse
-	2,  // 12: bondexchange.v1.BondExchangeService.CreateSaleOffer:output_type -> bondexchange.v1.CreateSaleOfferResponse
-	4,  // 13: bondexchange.v1.BondExchangeService.ListActiveOffers:output_type -> bondexchange.v1.ListActiveOffersResponse
-	7,  // 14: bondexchange.v1.BondExchangeService.ListActiveBondSeries:output_type -> bondexchange.v1.ListActiveBondSeriesResponse
-	9,  // 15: bondexchange.v1.BondExchangeService.CheckHealth:output_type -> bondexchange.v1.CheckHealthResponse
-	11, // 16: bondexchange.v1.BondExchangeService.PublishPendingEvents:output_type -> bondexchange.v1.PublishPendingEventsResponse
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	17, // 0: bondexchange.v1.QuoteSaleOfferResponse.rate_observed_on:type_name -> google.protobuf.Timestamp
+	17, // 1: bondexchange.v1.QuoteSaleOfferResponse.expires_at:type_name -> google.protobuf.Timestamp
+	14, // 2: bondexchange.v1.CreateSaleOfferResponse.offer:type_name -> bondexchange.v1.SaleOffer
+	14, // 3: bondexchange.v1.ListActiveOffersResponse.offer:type_name -> bondexchange.v1.SaleOffer
+	7,  // 4: bondexchange.v1.ListActiveOffersResponse.complete:type_name -> bondexchange.v1.ListActiveOffersComplete
+	14, // 5: bondexchange.v1.BuyResponse.offer:type_name -> bondexchange.v1.SaleOffer
+	17, // 6: bondexchange.v1.BuyResponse.bought_at:type_name -> google.protobuf.Timestamp
+	0,  // 7: bondexchange.v1.BondExchangeService.Buy:input_type -> bondexchange.v1.BuyRequest
+	2,  // 8: bondexchange.v1.BondExchangeService.QuoteSaleOffer:input_type -> bondexchange.v1.QuoteSaleOfferRequest
+	1,  // 9: bondexchange.v1.BondExchangeService.CreateSaleOffer:input_type -> bondexchange.v1.CreateSaleOfferRequest
+	5,  // 10: bondexchange.v1.BondExchangeService.ListActiveOffers:input_type -> bondexchange.v1.ListActiveOffersRequest
+	8,  // 11: bondexchange.v1.BondExchangeService.ListActiveBondSeries:input_type -> bondexchange.v1.ListActiveBondSeriesRequest
+	10, // 12: bondexchange.v1.BondExchangeService.CheckHealth:input_type -> bondexchange.v1.CheckHealthRequest
+	12, // 13: bondexchange.v1.BondExchangeService.PublishPendingEvents:input_type -> bondexchange.v1.PublishPendingEventsRequest
+	15, // 14: bondexchange.v1.BondExchangeService.Buy:output_type -> bondexchange.v1.BuyResponse
+	3,  // 15: bondexchange.v1.BondExchangeService.QuoteSaleOffer:output_type -> bondexchange.v1.QuoteSaleOfferResponse
+	4,  // 16: bondexchange.v1.BondExchangeService.CreateSaleOffer:output_type -> bondexchange.v1.CreateSaleOfferResponse
+	6,  // 17: bondexchange.v1.BondExchangeService.ListActiveOffers:output_type -> bondexchange.v1.ListActiveOffersResponse
+	9,  // 18: bondexchange.v1.BondExchangeService.ListActiveBondSeries:output_type -> bondexchange.v1.ListActiveBondSeriesResponse
+	11, // 19: bondexchange.v1.BondExchangeService.CheckHealth:output_type -> bondexchange.v1.CheckHealthResponse
+	13, // 20: bondexchange.v1.BondExchangeService.PublishPendingEvents:output_type -> bondexchange.v1.PublishPendingEventsResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_bondexchange_v1_bond_exchange_proto_init() }
@@ -986,7 +1222,7 @@ func file_bondexchange_v1_bond_exchange_proto_init() {
 	if File_bondexchange_v1_bond_exchange_proto != nil {
 		return
 	}
-	file_bondexchange_v1_bond_exchange_proto_msgTypes[4].OneofWrappers = []any{
+	file_bondexchange_v1_bond_exchange_proto_msgTypes[6].OneofWrappers = []any{
 		(*ListActiveOffersResponse_Offer)(nil),
 		(*ListActiveOffersResponse_Complete)(nil),
 	}
@@ -996,7 +1232,7 @@ func file_bondexchange_v1_bond_exchange_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bondexchange_v1_bond_exchange_proto_rawDesc), len(file_bondexchange_v1_bond_exchange_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

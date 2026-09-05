@@ -5,7 +5,7 @@ EXTENDS FiniteSets, Naturals, Sequences, TLC
 (* Domain, state, and transition actions for the bond marketplace.         *)
 (***************************************************************************)
 
-CONSTANTS Users, Clients, Bonds, SaleOfferIds, Prices, CurrencyCodes,
+CONSTANTS Users, Clients, Bonds, SaleOfferIds, Prices, MXN,
           IdempotencyKeys, RequestDigests, AuthorizedBuyers,
           AuthorizedOfferSellers
 
@@ -41,9 +41,7 @@ ASSUME /\ Users # {}
        /\ Prices # {}
        /\ IsFiniteSet(Prices)
        /\ Prices \subseteq (Nat \ {0})
-       /\ CurrencyCodes # {}
-       /\ IsFiniteSet(CurrencyCodes)
-       /\ CurrencyCodes \subseteq STRING
+       /\ MXN \in STRING
        /\ IdempotencyKeys # {}
        /\ IsFiniteSet(IdempotencyKeys)
        /\ RequestDigests # {}
@@ -56,7 +54,7 @@ SaleOffer == [
   seller   : Users,
   bond     : Bonds,
   price    : Prices,
-  currency : CurrencyCodes
+  currency : {MXN}
 ]
 
 Purchase == [
@@ -98,6 +96,9 @@ UniquePurchasedOfferIds ==
 ActiveAndPurchasedOffersAreDisjoint ==
   (SaleOfferIdsOf(saleOffers) \cap PurchasedOfferIdsOf(purchases)) = {}
 
+AllSaleOffersAreMXN ==
+  \A offer \in saleOffers : offer.currency = MXN
+
 OperationScope(result) ==
   <<result.principal, result.client, result.operation, result.key>>
 
@@ -137,21 +138,20 @@ Buy(buyer, client, key, requestDigest, offerId) ==
              resource      |-> offerId]
           }
 
-CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price, currency) ==
+CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price) ==
   /\ seller \in Users
   /\ IsAuthorized(seller, client, CreateOfferOperation)
   /\ ScopeIsUnused(seller, client, CreateOfferOperation, key)
   /\ bond \in Bonds
   /\ offerId \in SaleOfferIds
   /\ price \in Prices
-  /\ currency \in CurrencyCodes
   /\ offerId \notin KnownSaleOfferIds
   /\ saleOffers' = saleOffers \cup {
        [id       |-> offerId,
         seller   |-> seller,
         bond     |-> bond,
         price    |-> price,
-        currency |-> currency]
+        currency |-> MXN]
      }
   /\ UNCHANGED purchases
   /\ operationResults' = operationResults \cup {
