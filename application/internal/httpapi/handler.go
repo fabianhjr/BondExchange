@@ -308,7 +308,9 @@ func validateJSONValue(decoder *json.Decoder, value json.Token) error {
 
 func setSuccessStatus(_ context.Context, response http.ResponseWriter, message proto.Message) error {
 	switch message.(type) {
-	case *bondexchangev1.BuyResponse, *bondexchangev1.CreateSaleOfferResponse:
+	case *bondexchangev1.BuyResponse,
+		*bondexchangev1.QuoteSaleOfferResponse,
+		*bondexchangev1.CreateSaleOfferResponse:
 		response.WriteHeader(http.StatusCreated)
 	}
 	return nil

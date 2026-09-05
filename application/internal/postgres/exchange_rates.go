@@ -287,7 +287,7 @@ func (store *Store) LatestObservations(
 	result := make([]exchangerates.Observation, 0, len(series))
 	for _, item := range series {
 		observation, err := scanRate(store.pool.QueryRow(ctx, `
-SELECT series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
+SELECT revision_id, series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
 FROM bond_exchange.current_sie_exchange_rates
 WHERE series_id = $1 AND base_currency = $2 AND quote_currency = $3
 ORDER BY observed_on DESC
@@ -324,7 +324,7 @@ WITH requested AS (
   FROM unnest($1::text[], $2::text[], $3::text[])
     AS item(series_id, base_currency, quote_currency)
 )
-SELECT series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
+SELECT revision_id, series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
 FROM bond_exchange.current_sie_exchange_rates AS rate
 JOIN requested AS item USING (series_id, base_currency, quote_currency)
 WHERE observed_on BETWEEN $4 AND $5
@@ -351,6 +351,7 @@ func scanRate(row rateScanner) (exchangerates.Observation, error) {
 	var observation exchangerates.Observation
 	var value string
 	if err := row.Scan(
+		&observation.RevisionID,
 		&observation.SeriesID,
 		&observation.Base,
 		&observation.Quote,

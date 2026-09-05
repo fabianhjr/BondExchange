@@ -60,15 +60,34 @@ accept or do not cover.
 
 - **Evidence:** Current primary keys are UUIDv7 and current mutation nonces are
   UUIDv4 at both Go and PostgreSQL boundaries. The legacy identifier graph has
-  been contracted, but currency codes still need only be nonempty in PostgreSQL while
-  Go requires exactly three uppercase ASCII letters. This matters especially
-  while F-003 requires direct SQL provisioning and the affected facts are
-  append-only.
+  been contracted. Canonical offer terms are constrained to MXN and submission
+  provenance to MXN/USD, but the compatibility `sale_offers.currency_code`
+  still needs only be nonempty while Go requires exactly three uppercase ASCII
+  letters. This matters especially while F-003 requires direct SQL
+  provisioning and the affected facts are append-only.
 - **Impact:** A privileged or future alternate writer can create immutable
   facts that the Go domain rejects or cannot reliably process.
 - **Complete when:** A backward-compatible forward migration makes storage
   constraints and every sanctioned writer agree with the documented domain,
   including a safe plan for pre-existing nonconforming facts.
+
+### F-018 — Legacy non-MXN offers have no seller disposition workflow (P1)
+
+- **Evidence:** The canonical-MXN expand migration preserves pre-existing
+  non-MXN offer facts and backfills only unambiguous MXN rows. New list and buy
+  queries require canonical terms and therefore hide those rows, while the
+  compatibility view remains readable by the previously deployed binary. No
+  authenticated operation lets a seller accept a conversion, relist, or retire
+  a legacy row.
+- **Impact:** A mixed-version rollout can still serve non-MXN offers, and
+  completing rollout can strand earlier offers without a seller-visible
+  resolution. Directly updating or guessing their price would violate the
+  append-only model and seller consent.
+- **Complete when:** An inventory and seller-notification procedure exists, an
+  authorized append-only accept/relist or retirement workflow dispositions
+  every active non-MXN row, and release evidence shows old binaries and
+  compatibility-view readers are drained before the MXN-only control is
+  declared active.
 
 ### F-005 — Append-only and event-delivery data has no lifecycle policy (P1)
 

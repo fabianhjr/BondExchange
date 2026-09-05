@@ -11,6 +11,7 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/authn"
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -37,7 +38,16 @@ type Application interface {
 		bond string,
 		price string,
 		currency string,
+		quoteID string,
 	) (exchange.SaleOffer, error)
+	QuoteSaleOffer(
+		ctx context.Context,
+		access exchange.AccessContext,
+		idempotencyKey string,
+		bond string,
+		price string,
+		currency string,
+	) (offerintake.Quote, error)
 	StreamActiveOffers(
 		ctx context.Context,
 		access exchange.AccessContext,
@@ -46,6 +56,42 @@ type Application interface {
 	) error
 	ActiveBondSeries(ctx context.Context, access exchange.AccessContext) ([]exchange.BondSeries, error)
 	PublishPendingEvents(ctx context.Context, access exchange.AccessContext, destinationID string) (eventing.Summary, error)
+}
+
+func (server *Server) QuoteSaleOffer(
+	ctx context.Context,
+	request *bondexchangev1.QuoteSaleOfferRequest,
+) (*bondexchangev1.QuoteSaleOfferResponse, error) {
+	authenticated, err := server.authenticate(ctx, exchange.OperationQuoteSaleOffer, request, true)
+	if err != nil {
+		logSecurityOperation(ctx, exchange.OperationQuoteSaleOffer, nil, err)
+		return nil, transportError(err)
+	}
+	quote, err := server.application.QuoteSaleOffer(
+		ctx,
+		authenticated.AccessContext,
+		authenticated.IdempotencyKey,
+		request.GetBondSeries(),
+		request.GetPrice(),
+		request.GetCurrencyCode(),
+	)
+	if err != nil {
+		logSecurityOperation(ctx, exchange.OperationQuoteSaleOffer, &authenticated.AccessContext, err)
+		return nil, transportError(err)
+	}
+	logSecurityOperation(ctx, exchange.OperationQuoteSaleOffer, &authenticated.AccessContext, nil)
+	return &bondexchangev1.QuoteSaleOfferResponse{
+		QuoteId:               string(quote.ID),
+		BondSeries:            string(quote.BondSeries),
+		SubmittedPrice:        quote.SubmittedPrice.String(),
+		SubmittedCurrencyCode: string(offerintake.USD),
+		MxnPrice:              quote.MXNPrice.String(),
+		CurrencyCode:          string(exchange.MXN),
+		Rate:                  quote.Rate.String(),
+		RateSeries:            offerintake.FIXSeriesID,
+		RateObservedOn:        timestamppb.New(quote.RateObservedOn),
+		ExpiresAt:             timestamppb.New(quote.ExpiresAt),
+	}, nil
 }
 
 func (server *Server) CreateSaleOffer(
@@ -64,6 +110,7 @@ func (server *Server) CreateSaleOffer(
 		request.GetBondSeries(),
 		request.GetPrice(),
 		request.GetCurrencyCode(),
+		request.GetConversionQuoteId(),
 	)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationCreateSaleOffer, &authenticated.AccessContext, err)
@@ -305,8 +352,15 @@ func transportError(err error) error {
 		errors.Is(err, exchange.ErrInvalidPrice),
 		errors.Is(err, exchange.ErrInvalidCurrencyCode),
 		errors.Is(err, exchange.ErrInvalidIdempotencyKey),
-		errors.Is(err, exchange.ErrInvalidOperation):
+		errors.Is(err, exchange.ErrInvalidOperation),
+		errors.Is(err, offerintake.ErrUnsupportedSubmissionCurrency),
+		errors.Is(err, offerintake.ErrInvalidConversionQuote):
 		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, offerintake.ErrConversionQuoteRequired),
+		errors.Is(err, offerintake.ErrConversionQuoteUnavailable):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, offerintake.ErrExchangeRateUnavailable):
+		return status.Error(codes.Unavailable, err.Error())
 	case errors.Is(err, exchange.ErrOfferUnavailable),
 		errors.Is(err, exchange.ErrBondNotFound):
 		return status.Error(codes.NotFound, err.Error())

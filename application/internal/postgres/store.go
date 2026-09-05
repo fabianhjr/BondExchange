@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
+	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,6 +19,8 @@ WITH inserted_purchase AS (
   INSERT INTO bond_exchange.purchases (sale_offer_uuid, buyer_uuid)
   SELECT sale_offer.uuid_id, buyer.uuid_id
   FROM bond_exchange.sale_offers AS sale_offer
+  JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+    ON canonical.sale_offer_uuid = sale_offer.uuid_id
   CROSS JOIN bond_exchange.users AS buyer
   WHERE sale_offer.uuid_id = $1 AND buyer.uuid_id = $2
   ON CONFLICT (sale_offer_uuid) DO NOTHING
@@ -28,13 +31,15 @@ SELECT
   sale_offer.uuid_id,
   sale_offer.seller_uuid,
   bond.series,
-  sale_offer.price,
-  sale_offer.currency_code,
+  canonical.price,
+  canonical.currency_code,
   inserted_purchase.buyer_uuid,
   inserted_purchase.bought_at
 FROM inserted_purchase
 JOIN bond_exchange.sale_offers AS sale_offer
   ON sale_offer.uuid_id = inserted_purchase.sale_offer_uuid
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = sale_offer.uuid_id
 JOIN bond_exchange.bonds AS bond
   ON bond.uuid_id = sale_offer.bond_uuid`
 
@@ -49,13 +54,15 @@ SELECT
   sale_offer.uuid_id,
   sale_offer.seller_uuid,
   bond.series,
-  sale_offer.price,
-  sale_offer.currency_code,
+  canonical.price,
+  canonical.currency_code,
   purchase.buyer_uuid,
   purchase.bought_at
 FROM bond_exchange.purchases AS purchase
 JOIN bond_exchange.sale_offers AS sale_offer
   ON sale_offer.uuid_id = purchase.sale_offer_uuid
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = sale_offer.uuid_id
 JOIN bond_exchange.bonds AS bond
   ON bond.uuid_id = sale_offer.bond_uuid
 WHERE purchase.sale_offer_uuid = $1`
@@ -68,22 +75,55 @@ WITH inserted_offer AS (
   FROM bond_exchange.bonds AS bond
   WHERE bond.series = $2
   RETURNING uuid_id, seller_uuid, bond_uuid, price, currency_code
+), inserted_terms AS (
+  INSERT INTO bond_exchange.sale_offer_canonical_terms
+    (sale_offer_uuid, price, currency_code)
+  SELECT uuid_id, price, currency_code
+  FROM inserted_offer
+  RETURNING sale_offer_uuid
+), inserted_submission AS (
+  INSERT INTO bond_exchange.sale_offer_submissions
+    (sale_offer_uuid, submitted_price, submitted_currency_code)
+  SELECT uuid_id, price, currency_code
+  FROM inserted_offer
+  RETURNING sale_offer_uuid
 )
 SELECT inserted_offer.uuid_id, inserted_offer.seller_uuid, bond.series,
        inserted_offer.price, inserted_offer.currency_code
 FROM inserted_offer
+JOIN inserted_terms ON inserted_terms.sale_offer_uuid = inserted_offer.uuid_id
+JOIN inserted_submission ON inserted_submission.sale_offer_uuid = inserted_offer.uuid_id
 JOIN bond_exchange.bonds AS bond ON bond.uuid_id = inserted_offer.bond_uuid`
 
 const activeOffersQuery = `
-SELECT id, seller_id, bond_series, price, currency_code
-FROM bond_exchange.active_offers
-WHERE bond_series = $1
-ORDER BY id`
+SELECT
+  offer.uuid_id,
+  offer.seller_uuid,
+  bond.series,
+  canonical.price,
+  canonical.currency_code
+FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = offer.uuid_id
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
+WHERE bond.series = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM bond_exchange.purchases AS purchase
+    WHERE purchase.sale_offer_uuid = offer.uuid_id
+  )
+ORDER BY offer.uuid_id`
 
 const activeBondSeriesQuery = `
-SELECT DISTINCT bond_series
-FROM bond_exchange.active_offers
-ORDER BY bond_series`
+SELECT DISTINCT bond.series
+FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = offer.uuid_id
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
+WHERE NOT EXISTS (
+  SELECT 1 FROM bond_exchange.purchases AS purchase
+  WHERE purchase.sale_offer_uuid = offer.uuid_id
+)
+ORDER BY bond.series`
 
 type Store struct {
 	pool *pgxpool.Pool
@@ -517,8 +557,10 @@ func (store *Store) replayCreatedOffer(
 	var offer exchange.SaleOffer
 	var priceText string
 	err = store.pool.QueryRow(ctx, `
-SELECT offer.uuid_id, offer.seller_uuid, bond.series, offer.price, offer.currency_code
+SELECT offer.uuid_id, offer.seller_uuid, bond.series, canonical.price, canonical.currency_code
 FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = offer.uuid_id
 JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
 WHERE offer.uuid_id = $1`, resourceID).Scan(
 		&offer.ID,
@@ -582,6 +624,8 @@ func safeOperationErrorCode(err error) (string, bool) {
 		return "seller_not_found", true
 	case errors.Is(err, exchange.ErrBondNotFound):
 		return "bond_not_found", true
+	case errors.Is(err, offerintake.ErrConversionQuoteUnavailable):
+		return "conversion_quote_unavailable", true
 	default:
 		return "", false
 	}
@@ -599,6 +643,8 @@ func operationErrorFromCode(code string) error {
 		return exchange.ErrSellerNotFound
 	case "bond_not_found":
 		return exchange.ErrBondNotFound
+	case "conversion_quote_unavailable":
+		return offerintake.ErrConversionQuoteUnavailable
 	default:
 		return errors.New("invalid stored operation error code")
 	}

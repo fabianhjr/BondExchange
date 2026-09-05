@@ -87,6 +87,8 @@ func ParsePrice(value string) (decimal.Decimal, error) {
 
 type CurrencyCode string
 
+const MXN CurrencyCode = "MXN"
+
 func ParseCurrencyCode(value string) (CurrencyCode, error) {
 	if len(value) != 3 {
 		return "", ErrInvalidCurrencyCode

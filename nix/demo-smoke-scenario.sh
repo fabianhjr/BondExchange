@@ -41,8 +41,25 @@ curl --fail --silent \
   | tr '\036' '\n' >"$test_root/offers.json"
 jq -se '([.[] | select(.offer)] | length == 2) and (.[-1].complete.offer_count == "2")' "$test_root/offers.json" >/dev/null
 
+quote_key="00000000-0000-4000-8000-000000000010"
+quote_request='{"bond_series":"DEMO2026","price":"97.125","currency_code":"USD"}'
+quote_token="$(issue_token demo-seller offers.quote "$quote_key" "$quote_request")"
+quote_status="$(curl --silent --output "$test_root/quote.json" --write-out '%{http_code}' \
+  --header 'Content-Type: application/json' \
+  --header "Authorization: Bearer $quote_token" \
+  --header "Idempotency-Key: $quote_key" \
+  --data "$quote_request" \
+  "$base_url/sale-offer-quotes")"
+if [[ "$quote_status" != 201 ]]; then
+  echo "quote sale offer returned HTTP $quote_status" >&2
+  exit 1
+fi
+quote_id="$(jq --raw-output '.quote_id' "$test_root/quote.json")"
+jq --exit-status '.mxn_price == "1651.125" and .currency_code == "MXN" and .rate_series == "SF43718"' \
+  "$test_root/quote.json" >/dev/null
+
 create_key="00000000-0000-4000-8000-000000000011"
-create_request='{"bond_series":"DEMO2026","price":"97.125","currency_code":"USD"}'
+create_request="{\"bond_series\":\"DEMO2026\",\"price\":\"97.125\",\"currency_code\":\"USD\",\"conversion_quote_id\":\"$quote_id\"}"
 create_token="$(issue_token demo-seller offers.create "$create_key" "$create_request")"
 create_status="$(curl --silent --output "$test_root/create.json" --write-out '%{http_code}' \
   --header 'Content-Type: application/json' \
@@ -54,6 +71,7 @@ if [[ "$create_status" != 201 ]]; then
   echo "create sale offer returned HTTP $create_status" >&2
   exit 1
 fi
+jq --exit-status '.offer.price == "1651.125" and .offer.currency_code == "MXN"' "$test_root/create.json" >/dev/null
 offer_id="$(jq --raw-output '.offer.id' "$test_root/create.json")"
 if [[ ! "$offer_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
   echo "create did not return a canonical UUIDv7 offer ID" >&2

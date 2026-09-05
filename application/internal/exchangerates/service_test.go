@@ -307,6 +307,7 @@ func TestFailuresAndValidation(t *testing.T) {
 	for _, invalid := range []Series{
 		{},
 		{ID: "bad", Base: "USD", Quote: "MXN"},
+		{ID: series.ID, Base: "US", Quote: "MXN"},
 		{ID: series.ID, Base: "usd", Quote: "MXN"},
 		{ID: series.ID, Base: "USD", Quote: "USD"},
 	} {
@@ -338,6 +339,9 @@ func TestFailuresAndValidation(t *testing.T) {
 	if _, err := service.Range(context.Background(), []Series{series}, time.Now(), time.Now().Add(-24*time.Hour)); !errors.Is(err, ErrInvalidDateRange) {
 		t.Fatalf("invalid range error = %v", err)
 	}
+	if _, err := service.Range(context.Background(), []Series{{}}, time.Now(), time.Now()); !errors.Is(err, ErrInvalidSeries) {
+		t.Fatalf("invalid range series error = %v", err)
+	}
 
 	providerErr := errors.New("failed")
 	provider := &providerFake{err: providerErr}
@@ -353,6 +357,20 @@ func TestFailuresAndValidation(t *testing.T) {
 	service = testService(t, provider, store, time.Now())
 	if _, err := service.Latest(context.Background(), []Series{series}); err == nil || !store.blockedUntil.Equal(retryAt) {
 		t.Fatalf("rate limit = %v, blocked until = %v", err, store.blockedUntil)
+	}
+}
+
+func TestMakeBatchesOrdersByKindAndFetchBoundary(t *testing.T) {
+	t.Parallel()
+	day := mustDate(t, "2026-09-04")
+	units := []WorkUnit{
+		{Key: "range-late", Kind: FetchRange, Series: testSeries(2), From: day, FetchTo: day.AddDate(0, 0, 2)},
+		{Key: "latest", Kind: FetchLatest, Series: testSeries(0), From: day, FetchTo: day},
+		{Key: "range-early", Kind: FetchRange, Series: testSeries(1), From: day, FetchTo: day.AddDate(0, 0, 1)},
+	}
+	batches := makeBatches(units)
+	if len(batches) != 3 || batches[0][0].Key != "latest" || batches[1][0].Key != "range-early" || batches[2][0].Key != "range-late" {
+		t.Fatalf("ordered batches = %#v", batches)
 	}
 }
 
@@ -613,6 +631,13 @@ func TestServicePropagatesStoreFailures(t *testing.T) {
 				t.Fatalf("error = %v", err)
 			}
 		})
+	}
+
+	blocked := newMemoryStore()
+	blocked.blockedUntil = now.Add(time.Minute)
+	blockedFailure := &failingStore{Store: blocked, failErr: marker}
+	if _, err := testService(t, provider, blockedFailure, now).Latest(context.Background(), []Series{series}); !errors.Is(err, marker) {
+		t.Fatalf("blocked-provider lease release error = %v", err)
 	}
 
 	readyLatest := newMemoryStore()

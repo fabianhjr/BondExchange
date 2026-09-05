@@ -33,7 +33,7 @@ HTTP 201
 bought_at: jsonpath "$.bought_at"
 [Asserts]
 jsonpath "$.offer.id" == "{{offer_id}}"
-jsonpath "$.offer.price" == "97.125"
+jsonpath "$.offer.price" == "1651.125"
 jsonpath "$.buyer_id" not exists
 jsonpath "$.bought_at" matches /^\d{4}-\d{2}-\d{2}T/
 

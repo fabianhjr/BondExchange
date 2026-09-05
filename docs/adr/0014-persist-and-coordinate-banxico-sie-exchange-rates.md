@@ -8,6 +8,10 @@ retains the observation's original bigint as `revision_sequence` and removes
 the redundant bigint import identity. The revision-ordering decision below
 remains accepted.
 
+ADR-0019 adds the first transactional consumer: a separate offer-intake
+service pins `SF43718` revisions for seller-accepted USD-to-MXN quotes. The
+provider-neutral persistence and coordination decisions below remain accepted.
+
 ## Context
 
 Exchange-rate consumers need current and historical observations from Banco de
@@ -66,9 +70,9 @@ one latest and one fixed historical request when a contributor supplies
 not contain the credential. A documentation-derived example fixture remains
 separately labeled and must not be presented as a live capture.
 
-Do not expose rates through the current protobuf API or use them to reprice an
-offer in this decision. Therefore the transport contract and TLA+ domain model
-do not change.
+This decision originally did not expose or consume rates. ADR-0019 later added
+a quote API without adding a general rate API and uses a pinned observation to
+create immutable MXN terms; it never dynamically reprices an offer.
 
 ## Consequences
 

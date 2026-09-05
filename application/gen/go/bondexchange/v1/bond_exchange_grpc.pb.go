@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	BondExchangeService_Buy_FullMethodName                  = "/bondexchange.v1.BondExchangeService/Buy"
+	BondExchangeService_QuoteSaleOffer_FullMethodName       = "/bondexchange.v1.BondExchangeService/QuoteSaleOffer"
 	BondExchangeService_CreateSaleOffer_FullMethodName      = "/bondexchange.v1.BondExchangeService/CreateSaleOffer"
 	BondExchangeService_ListActiveOffers_FullMethodName     = "/bondexchange.v1.BondExchangeService/ListActiveOffers"
 	BondExchangeService_ListActiveBondSeries_FullMethodName = "/bondexchange.v1.BondExchangeService/ListActiveBondSeries"
@@ -36,7 +37,9 @@ type BondExchangeServiceClient interface {
 	// Buy places a binding order or reservation for one currently active sale offer.
 	// Settlement, payment, custody, and ownership transfer are outside this API.
 	Buy(ctx context.Context, in *BuyRequest, opts ...grpc.CallOption) (*BuyResponse, error)
-	// CreateSaleOffer publishes a new sale offer for the authenticated principal.
+	// QuoteSaleOffer creates an expiring USD-to-MXN FIX quote for explicit seller acceptance.
+	QuoteSaleOffer(ctx context.Context, in *QuoteSaleOfferRequest, opts ...grpc.CallOption) (*QuoteSaleOfferResponse, error)
+	// CreateSaleOffer publishes immutable canonical MXN terms for the authenticated principal.
 	CreateSaleOffer(ctx context.Context, in *CreateSaleOfferRequest, opts ...grpc.CallOption) (*CreateSaleOfferResponse, error)
 	// ListActiveOffers streams every active sale offer from one database snapshot.
 	ListActiveOffers(ctx context.Context, in *ListActiveOffersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListActiveOffersResponse], error)
@@ -61,6 +64,16 @@ func (c *bondExchangeServiceClient) Buy(ctx context.Context, in *BuyRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BuyResponse)
 	err := c.cc.Invoke(ctx, BondExchangeService_Buy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bondExchangeServiceClient) QuoteSaleOffer(ctx context.Context, in *QuoteSaleOfferRequest, opts ...grpc.CallOption) (*QuoteSaleOfferResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QuoteSaleOfferResponse)
+	err := c.cc.Invoke(ctx, BondExchangeService_QuoteSaleOffer_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +148,9 @@ type BondExchangeServiceServer interface {
 	// Buy places a binding order or reservation for one currently active sale offer.
 	// Settlement, payment, custody, and ownership transfer are outside this API.
 	Buy(context.Context, *BuyRequest) (*BuyResponse, error)
-	// CreateSaleOffer publishes a new sale offer for the authenticated principal.
+	// QuoteSaleOffer creates an expiring USD-to-MXN FIX quote for explicit seller acceptance.
+	QuoteSaleOffer(context.Context, *QuoteSaleOfferRequest) (*QuoteSaleOfferResponse, error)
+	// CreateSaleOffer publishes immutable canonical MXN terms for the authenticated principal.
 	CreateSaleOffer(context.Context, *CreateSaleOfferRequest) (*CreateSaleOfferResponse, error)
 	// ListActiveOffers streams every active sale offer from one database snapshot.
 	ListActiveOffers(*ListActiveOffersRequest, grpc.ServerStreamingServer[ListActiveOffersResponse]) error
@@ -158,6 +173,9 @@ type UnimplementedBondExchangeServiceServer struct{}
 
 func (UnimplementedBondExchangeServiceServer) Buy(context.Context, *BuyRequest) (*BuyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Buy not implemented")
+}
+func (UnimplementedBondExchangeServiceServer) QuoteSaleOffer(context.Context, *QuoteSaleOfferRequest) (*QuoteSaleOfferResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method QuoteSaleOffer not implemented")
 }
 func (UnimplementedBondExchangeServiceServer) CreateSaleOffer(context.Context, *CreateSaleOfferRequest) (*CreateSaleOfferResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSaleOffer not implemented")
@@ -209,6 +227,24 @@ func _BondExchangeService_Buy_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(BondExchangeServiceServer).Buy(ctx, req.(*BuyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BondExchangeService_QuoteSaleOffer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QuoteSaleOfferRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BondExchangeServiceServer).QuoteSaleOffer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BondExchangeService_QuoteSaleOffer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BondExchangeServiceServer).QuoteSaleOffer(ctx, req.(*QuoteSaleOfferRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -306,6 +342,10 @@ var BondExchangeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Buy",
 			Handler:    _BondExchangeService_Buy_Handler,
+		},
+		{
+			MethodName: "QuoteSaleOffer",
+			Handler:    _BondExchangeService_QuoteSaleOffer_Handler,
 		},
 		{
 			MethodName: "CreateSaleOffer",

@@ -340,7 +340,7 @@ func TestSIEStoreRejectsInvalidCompletionAndPropagatesClosedPoolErrors(t *testin
 		t.Fatal("scan error was lost")
 	}
 	if _, err := scanRate(rowScannerFunc(func(destinations ...any) error {
-		*destinations[4].(*string) = "invalid" //nolint:forcetypeassert // scanRate controls this destination's concrete type.
+		*destinations[5].(*string) = "invalid" //nolint:forcetypeassert // scanRate controls this destination's concrete type.
 		return nil
 	})); !errors.Is(err, exchangerates.ErrInvalidObservation) {
 		t.Fatalf("invalid persisted decimal error = %v", err)

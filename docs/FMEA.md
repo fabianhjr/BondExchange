@@ -57,11 +57,15 @@ production-readiness decision.
 | FM-009 | Verification-key or issuer rotation causes an outage or stale trust. | 8 | 5 | 5 | 200 | High | Identity/operations | Open |
 | FM-010 | A committed integration event is never delivered. | 7 | 10 | 9 | 630 | High | Integration/operations | Present by design |
 | FM-011 | An integration event is delivered more than once and applied twice. | 7 | 4 | 8 | 224 | High | Integration/consumer | Open external control |
-| FM-012 | A stale, unavailable, or incorrectly mapped SIE rate is consumed as current. | 6 | 4 | 4 | 96 | Monitored | Rates/caller | Controlled within current scope |
+| FM-012 | A stale, future, over-age, corrected, or incorrectly directed FIX rate becomes accepted offer terms. | 9 | 2 | 3 | 54 | Monitored; severity review | Rates/intake | Controlled |
 | FM-013 | The reusable Banxico SIE token is disclosed. | 8 | 3 | 6 | 144 | Medium | Platform/security | Deployment action open |
 | FM-014 | A high-impact defect or vulnerability remains undetected. | 9 | 5 | 8 | 360 | High | Engineering/security | Open |
 | FM-015 | Dependency failure is misclassified as process failure, causing restart churn. | 7 | 5 | 4 | 140 | Medium | Platform/operations | Open |
 | FM-016 | A migration loses facts or breaks the previously deployed application. | 10 | 2 | 4 | 80 | Monitored; severity review | Data/release | Controlled by workflow |
+| FM-017 | SIE or its cache is unavailable when a seller requests a USD quote. | 5 | 5 | 3 | 75 | Monitored | Rates/operations | Controlled degradation |
+| FM-018 | Decimal conversion or rounding creates the wrong MXN terms. | 8 | 2 | 2 | 32 | Monitored | Intake/data | Controlled |
+| FM-019 | A quote is accepted by the wrong seller, for changed terms, after expiry, or more than once. | 8 | 2 | 2 | 32 | Monitored | Intake/data | Controlled |
+| FM-020 | Legacy non-MXN offers are hidden by the new binary or still served by an old binary during rollout. | 8 | 5 | 4 | 160 | Medium | Release/product | Open disposition |
 
 ## Detailed analysis
 
@@ -302,25 +306,32 @@ production-readiness decision.
 
 ### FM-012 — Stale, unavailable, or misdirected exchange rate
 
-- **Function and failure:** A caller treats a stale observation as fresh, maps
-  a SIE series to the wrong base/quote direction, or cannot obtain a rate during
-  a cold-cache provider/database failure.
-- **Effects:** A future consumer can calculate an incorrect value or fail its
-  own operation. No offer or reservation is currently repriced because the
-  module is not exposed by the API or used by exchange behavior.
+- **Function and failure:** Offer intake accepts a stale, future, over-age,
+  corrected, or incorrectly directed observation as the rate for USD-to-MXN
+  terms.
+- **Effects:** The seller accepts and a buyer can reserve an economically
+  incorrect MXN offer. The core terms do not change afterward, so the error is
+  durable rather than corrected by a later read.
 - **Causes:** SIE and PostgreSQL can be unavailable; latest values intentionally
-  permit stale fallback during refresh; quote direction is caller-supplied
-  because provider titles are not authoritative.
-- **Current controls and detection:** Callers supply explicit canonical
-  mappings, results expose stale status, exact decimals preserve values,
-  bounded imports and append-only revisions preserve provenance, closed ranges
-  remain cached, and PostgreSQL leases/cooldowns coordinate requests. Strict
-  parsing rejects unexpected or invalid responses.
-- **Action:** Require every future consumer to define maximum age, missing-data
-  and direction-validation policy before using a rate. Add consumer-level
-  alerts and failure tests; reassess severity before rates affect transactions.
+  permit explicit stale fallback; a provider correction can append after a
+  quote; and business-calendar policy is not represented by the generic rate
+  cache.
+- **Current controls and detection:** Intake requests only `SF43718` with a
+  fixed USD/MXN mapping, refuses the rate service's stale flag, pins an exact
+  append-only revision, rejects zero/future dates and observations older than
+  seven days, and persists the rate and resulting quote before acceptance.
+  Strict SIE parsing, exact decimal persistence, focused rejection tests, the
+  full-server USD journey, and immutable provenance make the selected inputs
+  detectable after the fact. A later correction does not mutate an accepted
+  quote.
+- **Action:** Before production, assign rate-policy ownership, confirm the
+  seven-day ceiling against bank holidays and applicable trading rules, alert
+  on stale/over-age rejection and corrections affecting unexpired quotes, and
+  define whether an administered business-date rate must replace on-demand
+  latest FIX.
 - **Traceability:** [ADR-0014](adr/0014-persist-and-coordinate-banxico-sie-exchange-rates.md)
-  and [rate behavior](../README.md#banxico-sie-exchange-rates).
+  [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md), and
+  [rate behavior](../README.md#banxico-sie-exchange-rates).
 
 ### FM-013 — Banxico SIE token disclosure
 
@@ -411,7 +422,7 @@ production-readiness decision.
   dbmate migrations, lossless backward-compatible expand/backfill/contract
   changes, corrective roll-forward, and separately owned migrations. Fresh
   isolated PostgreSQL 18 database and lifecycle checks exercise the full
-  history; schema tests verify the server major version and all 22 UUID primary
+  history; schema tests verify the server major version and all 25 UUID primary
   keys. A dedicated historical-data fixture verifies archival before the
   contract migration and now runs in continuous integration through the `dev:ci`
   aggregate rather than only in the local test gate; schema tests reject
@@ -429,6 +440,99 @@ production-readiness decision.
   [ADR-0018](adr/0018-contract-the-legacy-identifier-graph.md),
   [database migration policy](../db/README.md), and
   [repository guardrails](../AGENTS.md#architectural-guardrails).
+
+### FM-017 — USD quotation is unavailable
+
+- **Function and failure:** A seller cannot obtain a USD-to-MXN quote while
+  SIE, PostgreSQL rate state, the token, or outbound network is unavailable, or
+  while the only stored observation is stale or over age.
+- **Effects:** New USD submissions stop. Sellers must retry later or submit
+  governed MXN terms; existing MXN offers, listings, and reservations continue.
+- **Causes:** Provider outage or rate limit, invalid/rotated credential, network
+  denial, cold cache, lease contention, persistence failure, or deliberate
+  rejection by the observation-age policy.
+- **Current controls and detection:** The quote endpoint returns a specific
+  unavailable status and never creates an offer without an accepted rate.
+  Provider leases, stale fallback metadata, cooldowns, timeouts, durable cache,
+  and exact quote replay bound upstream work. The dependency is composed only
+  into intake, so the core has no rate call on create-MXN, list, or buy paths.
+- **Action:** Define an availability objective and alerts for quote rejection,
+  cache age, token authentication, rate limits, and lease recovery. If USD
+  intake needs higher availability, consider a scheduled administered-rate
+  feed or asynchronous pending submissions as evaluated in ADR-0019.
+- **Traceability:** [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md)
+  and [F-011](../FRICTIONS.md#f-011--the-production-deployment-boundary-is-unspecified-p1).
+
+### FM-018 — Incorrect conversion arithmetic or rounding
+
+- **Function and failure:** USD is divided instead of multiplied, binary
+  floating point changes the value, rounding occurs more than once, or a
+  different scale/tie policy is applied between quote, storage, and response.
+- **Effects:** The immutable MXN offer differs from the terms the seller should
+  have accepted, producing financial and reconciliation errors.
+- **Causes:** Direction confusion, numeric type conversion, policy drift, or an
+  alternate writer that bypasses intake.
+- **Current controls and detection:** The mapping is fixed as MXN per USD;
+  `shopspring/decimal` and PostgreSQL numeric avoid binary floating point;
+  intake multiplies once and applies half-to-even at scale four; the quote
+  stores both amounts, revision, and named rounding policy. Unit tests verify a
+  nontrivial exact conversion, while PostgreSQL and full-server tests compare
+  the accepted and served MXN amount.
+- **Action:** Preserve golden boundary/tie cases and reconcile a sample of
+  production quotes against an independently governed calculation. Alternate
+  writers remain governed by FM-005.
+- **Traceability:** [ADR-0005](adr/0005-use-shopspring-decimal-for-monetary-amounts.md)
+  and [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md).
+
+### FM-019 — Invalid quote acceptance
+
+- **Function and failure:** A quote is accepted by another principal, for a
+  different bond or USD amount, after expiry, more than once, or with a changed
+  request under the same idempotency scope.
+- **Effects:** A seller receives terms they did not accept, or one accepted
+  conversion produces multiple active offers.
+- **Causes:** Trusting client-carried quote contents, checking outside the
+  create transaction, missing uniqueness, clock/expiry mistakes, or weak
+  idempotency binding.
+- **Current controls and detection:** Clients carry only the UUID. A
+  serializable PostgreSQL transaction verifies the persisted quote's principal,
+  bond, exact submitted amount, USD currency, database-time expiry, and absence
+  of a provenance use. The provenance quote reference is unique. Operation
+  claims bind the deterministic request digest and exact retries recover one
+  result. Unit and integration tests cover requirements, UUID shape, replay,
+  provenance, and quote reuse.
+- **Action:** Add clock-boundary and cross-principal integration cases if quote
+  TTL becomes configurable at runtime; monitor rejected acceptance without
+  logging financial request contents.
+- **Traceability:** [ADR-0009](adr/0009-bind-federated-authorization-to-idempotent-operations.md)
+  and [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md).
+
+### FM-020 — Legacy non-MXN offer rollout ambiguity
+
+- **Function and failure:** The expanded database contains historical non-MXN
+  offers. The new application cannot infer seller consent or a historical
+  conversion and hides them, while a previously deployed application can still
+  serve them through the compatibility view during a rolling release.
+- **Effects:** Sellers can lose visibility or liquidity for existing offers;
+  mixed-version traffic can violate the MXN-only serving claim; operators may
+  be tempted to destructively reprice immutable facts.
+- **Causes:** Earlier behavior allowed arbitrary currencies, and a safe
+  conversion needs a seller decision that no migration can invent.
+- **Current controls and detection:** The migration preserves every source fact,
+  backfills only unambiguous MXN rows, and does not break the old view. New list
+  and buy queries require one canonical MXN fact and therefore fail closed.
+  Canonical and provenance tables are append-only. A read-only readiness gate
+  rejects active or purchased rows without canonical terms and validates
+  provenance mappings. It runs through the `dev:ci` aggregate locally and in
+  continuous integration; process-drain evidence and seller disposition are
+  still external.
+- **Action:** Inventory active rows without canonical terms, notify their
+  sellers, implement an authorized accept/relist or retirement fact, and drain
+  old binaries before declaring the control active. Release evidence must show
+  that no instance or sanctioned reader serves the compatibility view.
+- **Traceability:** [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md),
+  [F-018](../FRICTIONS.md#f-018--legacy-non-mxn-offers-have-no-seller-disposition-workflow-p1),
+  and [database behavior](../db/README.md).
 
 ## Maintenance and review procedure
 

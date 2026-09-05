@@ -58,6 +58,7 @@ func isCurrency(value string) bool {
 }
 
 type Observation struct {
+	RevisionID string
 	SeriesID   SeriesID
 	Base       string
 	Quote      string

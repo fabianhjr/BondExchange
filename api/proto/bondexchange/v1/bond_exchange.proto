@@ -10,7 +10,7 @@ option go_package = "github.com/fabianhjr/BondExchange/application/gen/go/bondex
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "Bond Exchange API"
-    version: "2.0.0"
+    version: "3.0.0"
     description: "REST and gRPC API for publishing and buying sale offers."
   }
   consumes: "application/json"
@@ -91,7 +91,60 @@ service BondExchangeService {
     };
   }
 
-  // CreateSaleOffer publishes a new sale offer for the authenticated principal.
+  // QuoteSaleOffer creates an expiring USD-to-MXN FIX quote for explicit seller acceptance.
+  rpc QuoteSaleOffer(QuoteSaleOfferRequest) returns (QuoteSaleOfferResponse) {
+    option (google.api.http) = {
+      post: "/sale-offer-quotes"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Idempotency-Key"
+          description: "A canonical UUIDv4 nonce bound into the operation assertion."
+          type: STRING
+          required: true
+        }
+      }
+      responses: {
+        key: "201"
+        value: {
+          description: "The expiring conversion quote was created."
+          schema: {json_schema: {ref: ".bondexchange.v1.QuoteSaleOfferResponse"}}
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "The quote request is invalid."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+        }
+      }
+      responses: {
+        key: "503"
+        value: {
+          description: "An acceptable Banxico FIX observation is unavailable."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "The bond series does not exist."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+        }
+      }
+      responses: {
+        key: "409"
+        value: {
+          description: "The idempotency nonce was reused for a different request."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+        }
+      }
+    };
+  }
+
+  // CreateSaleOffer publishes immutable canonical MXN terms for the authenticated principal.
   rpc CreateSaleOffer(CreateSaleOfferRequest) returns (CreateSaleOfferResponse) {
     option (google.api.http) = {
       post: "/sale-offers"
@@ -118,7 +171,7 @@ service BondExchangeService {
       responses: {
         key: "400"
         value: {
-          description: "The sale offer is invalid."
+          description: "The sale offer is invalid or its required conversion quote cannot be accepted."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }
@@ -305,9 +358,41 @@ message CreateSaleOfferRequest {
   reserved "id", "seller_id";
   // Bond series to sell. The service canonicalizes this value to uppercase.
   string bond_series = 3;
-  // Exact positive decimal monetary amount encoded as a string.
+  // Exact positive submitted amount encoded as a string.
   string price = 4;
+  // MXN creates directly. USD requires an accepted conversion_quote_id.
   string currency_code = 5;
+  // Required for USD submissions and forbidden for MXN submissions.
+  string conversion_quote_id = 6;
+}
+
+message QuoteSaleOfferRequest {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["bond_series", "price", "currency_code"]}
+  };
+
+  string bond_series = 1;
+  // Exact positive USD amount encoded as a string.
+  string price = 2;
+  // Must be USD. MXN offers do not require a conversion quote.
+  string currency_code = 3;
+}
+
+message QuoteSaleOfferResponse {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {required: ["quote_id", "bond_series", "submitted_price", "submitted_currency_code", "mxn_price", "currency_code", "rate", "rate_series", "rate_observed_on", "expires_at"]}
+  };
+
+  string quote_id = 1;
+  string bond_series = 2;
+  string submitted_price = 3;
+  string submitted_currency_code = 4;
+  string mxn_price = 5;
+  string currency_code = 6;
+  string rate = 7;
+  string rate_series = 8;
+  google.protobuf.Timestamp rate_observed_on = 9;
+  google.protobuf.Timestamp expires_at = 10;
 }
 
 message CreateSaleOfferResponse {

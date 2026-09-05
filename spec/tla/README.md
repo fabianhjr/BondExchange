@@ -14,8 +14,8 @@ This directory contains a deliberately small marketplace model:
 - A user is an element of the finite `Users` set.
 - A bond is identified by an uppercase alphanumeric series string whose length
   is between 3 and 40 characters, inclusive.
-- A sale offer has a unique ID, a seller, a bond, a positive price, and one
-  currency code.
+- A core sale offer has a unique ID, a seller, a bond, a positive price, and
+  MXN-denominated terms.
 - A purchase fact relates the reserved offer to the user who placed the
   binding order. It does not assert settlement or ownership transfer.
 - An operation result records its principal, client, operation, idempotency
@@ -47,8 +47,8 @@ identifiers and verifies that their stored representation is uppercase.
 
 ## Behavior
 
-`CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price,
-currency)` publishes a new active sale offer. It requires authorization, a new
+`CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price)`
+publishes a new active MXN sale offer. It requires authorization, a new
 idempotency scope, valid domain values, and an ID that has never appeared in
 either the active book or purchase history. Creation appends the offer and its
 operation result and does not change purchase facts. `offerId` represents the
@@ -72,6 +72,13 @@ operation idempotency, so publisher interfaces, delivery leases, retries, and
 the manual recovery endpoint are intentionally outside the TLA+ state. A
 successful mutation's source fact remains the modeled behavior.
 
+USD submission provenance, Banxico FIX observations, quote expiry, decimal
+conversion, and seller acceptance are application-boundary controls. They are
+not marketplace state: the boundary must produce accepted MXN terms before it
+can invoke the modeled core action. `AllSaleOffersAreMXN` verifies the resulting
+domain invariant without pulling HTTP, provider, or persistence mechanics into
+the model.
+
 The model does not prohibit a seller from buying their own offer.
 
 There are intentionally no buy offers, matching engine, balances, holdings,
@@ -81,7 +88,7 @@ settlement process in this model. Settlement semantics remain pending.
 ## Verification
 
 TLC checks through interleaved creation, buying, and retry that every reachable
-state is well formed, offer IDs and operation scopes remain unique, an offer
+state is well formed, every active offer is MXN-denominated, offer IDs and operation scopes remain unique, an offer
 cannot be both active and purchased, and every completed operation was
 authorized:
 

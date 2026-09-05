@@ -46,33 +46,50 @@ func (service *Service) CreateSaleOffer(
 	price string,
 	currency string,
 ) (SaleOffer, error) {
+	operation, offer, err := PrepareSaleOffer(access, idempotencyKey, bond, price, currency)
+	if err != nil {
+		return SaleOffer{}, err
+	}
+	return service.store.CreateSaleOffer(ctx, operation, offer)
+}
+
+// PrepareSaleOffer validates a canonical offer before persistence. Submission
+// currencies and exchange-rate conversion belong to the outer offer-intake
+// application service; the exchange core accepts MXN terms only.
+func PrepareSaleOffer(
+	access AccessContext,
+	idempotencyKey string,
+	bond string,
+	price string,
+	currency string,
+) (MutationContext, SaleOffer, error) {
 	if access.Operation != OperationCreateSaleOffer || access.Principal.ID == "" {
-		return SaleOffer{}, ErrInvalidOperation
+		return MutationContext{}, SaleOffer{}, ErrInvalidOperation
 	}
 	if !IsValidIdempotencyKey(idempotencyKey) {
-		return SaleOffer{}, ErrInvalidIdempotencyKey
+		return MutationContext{}, SaleOffer{}, ErrInvalidIdempotencyKey
 	}
 	bondSeries, err := ParseBondSeries(bond)
 	if err != nil {
-		return SaleOffer{}, err
+		return MutationContext{}, SaleOffer{}, err
 	}
 	offerPrice, err := ParsePrice(price)
 	if err != nil {
-		return SaleOffer{}, err
+		return MutationContext{}, SaleOffer{}, err
 	}
 	currencyCode, err := ParseCurrencyCode(currency)
-	if err != nil {
-		return SaleOffer{}, err
+	if err != nil || currencyCode != MXN {
+		return MutationContext{}, SaleOffer{}, ErrInvalidCurrencyCode
 	}
-	return service.store.CreateSaleOffer(ctx, MutationContext{
-		AccessContext:  access,
-		IdempotencyKey: idempotencyKey,
-	}, SaleOffer{
-		SellerID:   access.Principal.ID,
-		BondSeries: bondSeries,
-		Price:      offerPrice,
-		Currency:   currencyCode,
-	})
+	return MutationContext{
+			AccessContext:  access,
+			IdempotencyKey: idempotencyKey,
+		}, SaleOffer{
+			SellerID:   access.Principal.ID,
+			BondSeries: bondSeries,
+			Price:      offerPrice,
+			Currency:   currencyCode,
+		}, nil
 }
 
 func (service *Service) StreamActiveOffers(

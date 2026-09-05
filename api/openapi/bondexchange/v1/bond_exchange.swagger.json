@@ -3,7 +3,7 @@
   "info": {
     "title": "Bond Exchange API",
     "description": "REST and gRPC API for publishing and buying sale offers.",
-    "version": "2.0.0"
+    "version": "3.0.0"
   },
   "tags": [
     {
@@ -199,9 +199,67 @@
         ]
       }
     },
+    "/sale-offer-quotes": {
+      "post": {
+        "summary": "QuoteSaleOffer creates an expiring USD-to-MXN FIX quote for explicit seller acceptance.",
+        "operationId": "BondExchangeService_QuoteSaleOffer",
+        "responses": {
+          "201": {
+            "description": "The expiring conversion quote was created.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.QuoteSaleOfferResponse"
+            }
+          },
+          "400": {
+            "description": "The quote request is invalid.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "404": {
+            "description": "The bond series does not exist.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "409": {
+            "description": "The idempotency nonce was reused for a different request.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "503": {
+            "description": "An acceptable Banxico FIX observation is unavailable.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.QuoteSaleOfferRequest"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "description": "A canonical UUIDv4 nonce bound into the operation assertion.",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BondExchangeService"
+        ]
+      }
+    },
     "/sale-offers": {
       "post": {
-        "summary": "CreateSaleOffer publishes a new sale offer for the authenticated principal.",
+        "summary": "CreateSaleOffer publishes immutable canonical MXN terms for the authenticated principal.",
         "operationId": "BondExchangeService_CreateSaleOffer",
         "responses": {
           "201": {
@@ -211,7 +269,7 @@
             }
           },
           "400": {
-            "description": "The sale offer is invalid.",
+            "description": "The sale offer is invalid or its required conversion quote cannot be accepted.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
@@ -307,10 +365,15 @@
         },
         "price": {
           "type": "string",
-          "description": "Exact positive decimal monetary amount encoded as a string."
+          "description": "Exact positive submitted amount encoded as a string."
         },
         "currency_code": {
-          "type": "string"
+          "type": "string",
+          "description": "MXN creates directly. USD requires an accepted conversion_quote_id."
+        },
+        "conversion_quote_id": {
+          "type": "string",
+          "description": "Required for USD submissions and forbidden for MXN submissions."
         }
       },
       "required": [
@@ -405,6 +468,76 @@
           "format": "uint64"
         }
       }
+    },
+    "bondexchange.v1.QuoteSaleOfferRequest": {
+      "type": "object",
+      "properties": {
+        "bond_series": {
+          "type": "string"
+        },
+        "price": {
+          "type": "string",
+          "description": "Exact positive USD amount encoded as a string."
+        },
+        "currency_code": {
+          "type": "string",
+          "description": "Must be USD. MXN offers do not require a conversion quote."
+        }
+      },
+      "required": [
+        "bond_series",
+        "price",
+        "currency_code"
+      ]
+    },
+    "bondexchange.v1.QuoteSaleOfferResponse": {
+      "type": "object",
+      "properties": {
+        "quote_id": {
+          "type": "string"
+        },
+        "bond_series": {
+          "type": "string"
+        },
+        "submitted_price": {
+          "type": "string"
+        },
+        "submitted_currency_code": {
+          "type": "string"
+        },
+        "mxn_price": {
+          "type": "string"
+        },
+        "currency_code": {
+          "type": "string"
+        },
+        "rate": {
+          "type": "string"
+        },
+        "rate_series": {
+          "type": "string"
+        },
+        "rate_observed_on": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "quote_id",
+        "bond_series",
+        "submitted_price",
+        "submitted_currency_code",
+        "mxn_price",
+        "currency_code",
+        "rate",
+        "rate_series",
+        "rate_observed_on",
+        "expires_at"
+      ]
     },
     "bondexchange.v1.SaleOffer": {
       "type": "object",
