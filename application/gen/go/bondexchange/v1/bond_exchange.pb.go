@@ -1058,9 +1058,9 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error:\r\x92A\n" +
 	"\n" +
-	"\b\xd2\x01\x05error2\xae\x1a\n" +
-	"\x13BondExchangeService\x12\xc9\x03\n" +
-	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x86\x03\x92A\xf2\x02JC\n" +
+	"\b\xd2\x01\x05error2\x97)\n" +
+	"\x13BondExchangeService\x12\xd8\x05\n" +
+	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x95\x05\x92A\x81\x05JC\n" +
 	"\x03201\x12<\n" +
 	"\x18The offer was purchased.\x12 \n" +
 	"\x1e\x1a\x1c.bondexchange.v1.BuyResponseJ<\n" +
@@ -1069,14 +1069,19 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJE\n" +
 	"\x03404\x12>\n" +
 	" The active offer is unavailable.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ\x8c\x02\n" +
+	"\x03429\x12\x84\x02\n" +
+	"\x8f\x01The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x1aT\n" +
+	"\vRetry-After\x12E\n" +
+	"3Whole seconds until the next database-clock minute.\x12\ainteger\x1a\x05int64JO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorrU\n" +
 	"S\n" +
 	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\n" +
-	":\x01*\"\x05/buys\x12\x84\x05\n" +
-	"\x0eQuoteSaleOffer\x12&.bondexchange.v1.QuoteSaleOfferRequest\x1a'.bondexchange.v1.QuoteSaleOfferResponse\"\xa0\x04\x92A\xff\x03J`\n" +
+	":\x01*\"\x05/buys\x12\x93\a\n" +
+	"\x0eQuoteSaleOffer\x12&.bondexchange.v1.QuoteSaleOfferRequest\x1a'.bondexchange.v1.QuoteSaleOfferResponse\"\xaf\x06\x92A\x8e\x06J`\n" +
 	"\x03201\x12Y\n" +
 	"*The expiring conversion quote was created.\x12+\n" +
 	")\x1a'.bondexchange.v1.QuoteSaleOfferResponseJB\n" +
@@ -1088,13 +1093,18 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJ^\n" +
 	"\x03409\x12W\n" +
 	"9The idempotency nonce was reused for a different request.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorJZ\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ\x8c\x02\n" +
+	"\x03429\x12\x84\x02\n" +
+	"\x8f\x01The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x1aT\n" +
+	"\vRetry-After\x12E\n" +
+	"3Whole seconds until the next database-clock minute.\x12\ainteger\x1a\x05int64JZ\n" +
 	"\x03503\x12S\n" +
 	"5An acceptable Banxico FIX observation is unavailable.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorrU\n" +
 	"S\n" +
-	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/sale-offer-quotes\x12\x9f\x05\n" +
-	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\xb8\x04\x92A\x9d\x04JR\n" +
+	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/sale-offer-quotes\x12\xae\a\n" +
+	"\x0fCreateSaleOffer\x12'.bondexchange.v1.CreateSaleOfferRequest\x1a(.bondexchange.v1.CreateSaleOfferResponse\"\xc7\x06\x92A\xac\x06JR\n" +
 	"\x03201\x12K\n" +
 	"\x1bThe sale offer was created.\x12,\n" +
 	"*\x1a(.bondexchange.v1.CreateSaleOfferResponseJs\n" +
@@ -1106,44 +1116,69 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJd\n" +
 	"\x03409\x12]\n" +
 	"?The generated sale-offer ID collided with an existing resource.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ\x8c\x02\n" +
+	"\x03429\x12\x84\x02\n" +
+	"\x8f\x01The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x1aT\n" +
+	"\vRetry-After\x12E\n" +
+	"3Whole seconds until the next database-clock minute.\x12\ainteger\x1a\x05int64JO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorrU\n" +
 	"S\n" +
-	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/sale-offers\x12\xfe\x02\n" +
-	"\x10ListActiveOffers\x12(.bondexchange.v1.ListActiveOffersRequest\x1a).bondexchange.v1.ListActiveOffersResponse\"\x92\x02\x92A\xf8\x01JO\n" +
+	"\x0fIdempotency-Key\x12<A canonical UUIDv4 nonce bound into the operation assertion.\x18\x01(\x01\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/sale-offers\x12\x8d\x05\n" +
+	"\x10ListActiveOffers\x12(.bondexchange.v1.ListActiveOffersRequest\x1a).bondexchange.v1.ListActiveOffersResponse\"\xa1\x04\x92A\x87\x04JO\n" +
 	"\x03200\x12H\n" +
 	"\x17The active sale offers.\x12-\n" +
 	"+\x1a).bondexchange.v1.ListActiveOffersResponseJT\n" +
 	"\x03400\x12M\n" +
 	"/The required bond series is missing or invalid.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorJO\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ\x8c\x02\n" +
+	"\x03429\x12\x84\x02\n" +
+	"\x8f\x01The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x1aT\n" +
+	"\vRetry-After\x12E\n" +
+	"3Whole seconds until the next database-clock minute.\x12\ainteger\x1a\x05int64JO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x10\x12\x0e/active-offers0\x01\x12\xc9\x02\n" +
-	"\x14ListActiveBondSeries\x12,.bondexchange.v1.ListActiveBondSeriesRequest\x1a-.bondexchange.v1.ListActiveBondSeriesResponse\"\xd3\x01\x92A\xb4\x01Ja\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x10\x12\x0e/active-offers0\x01\x12\xd8\x04\n" +
+	"\x14ListActiveBondSeries\x12,.bondexchange.v1.ListActiveBondSeriesRequest\x1a-.bondexchange.v1.ListActiveBondSeriesResponse\"\xe2\x03\x92A\xc3\x03Ja\n" +
 	"\x03200\x12Z\n" +
 	"%The bond series having active offers.\x121\n" +
-	"/\x1a-.bondexchange.v1.ListActiveBondSeriesResponseJO\n" +
+	"/\x1a-.bondexchange.v1.ListActiveBondSeriesResponseJ\x8c\x02\n" +
+	"\x03429\x12\x84\x02\n" +
+	"\x8f\x01The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x1aT\n" +
+	"\vRetry-After\x12E\n" +
+	"3Whole seconds until the next database-clock minute.\x12\ainteger\x1a\x05int64JO\n" +
 	"\x03500\x12H\n" +
 	"*The server could not complete the request.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x15\x12\x13/active-bond-series\x12\xfe\x01\n" +
-	"\vCheckHealth\x12#.bondexchange.v1.CheckHealthRequest\x1a$.bondexchange.v1.CheckHealthResponse\"\xa3\x01\x92A\x8f\x01JJ\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\x15\x12\x13/active-bond-series\x12\x8d\x04\n" +
+	"\vCheckHealth\x12#.bondexchange.v1.CheckHealthRequest\x1a$.bondexchange.v1.CheckHealthResponse\"\xb2\x03\x92A\x9e\x03JJ\n" +
 	"\x03200\x12C\n" +
 	"\x17The service is healthy.\x12(\n" +
-	"&\x1a$.bondexchange.v1.CheckHealthResponseJA\n" +
+	"&\x1a$.bondexchange.v1.CheckHealthResponseJ\x8c\x02\n" +
+	"\x03429\x12\x84\x02\n" +
+	"\x8f\x01The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x1aT\n" +
+	"\vRetry-After\x12E\n" +
+	"3Whole seconds until the next database-clock minute.\x12\ainteger\x1a\x05int64JA\n" +
 	"\x03503\x12:\n" +
 	"\x1cThe database is unavailable.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.Error\x82\xd3\xe4\x93\x02\n" +
-	"\x12\b/healthz\x12\xd3\x04\n" +
-	"\x14PublishPendingEvents\x12,.bondexchange.v1.PublishPendingEventsRequest\x1a-.bondexchange.v1.PublishPendingEventsResponse\"\xdd\x03\x92A\xab\x03Jf\n" +
+	"\x12\b/healthz\x12\xe2\x06\n" +
+	"\x14PublishPendingEvents\x12,.bondexchange.v1.PublishPendingEventsRequest\x1a-.bondexchange.v1.PublishPendingEventsResponse\"\xec\x05\x92A\xba\x05Jf\n" +
 	"\x03200\x12_\n" +
 	"*The visible pending events were attempted.\x121\n" +
 	"/\x1a-.bondexchange.v1.PublishPendingEventsResponseJ^\n" +
 	"\x03400\x12W\n" +
 	"9The destination is invalid or no publisher is configured.\x12\x1a\n" +
-	"\x18\x1a\x16.bondexchange.v1.ErrorJX\n" +
+	"\x18\x1a\x16.bondexchange.v1.ErrorJ\x8c\x02\n" +
+	"\x03429\x12\x84\x02\n" +
+	"\x8f\x01The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.\x12\x1a\n" +
+	"\x18\x1a\x16.bondexchange.v1.Error\x1aT\n" +
+	"\vRetry-After\x12E\n" +
+	"3Whole seconds until the next database-clock minute.\x12\ainteger\x1a\x05int64JX\n" +
 	"\x03500\x12Q\n" +
 	"3The server could not complete the recovery attempt.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.Errorr\x86\x01\n" +

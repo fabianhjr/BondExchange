@@ -32,6 +32,8 @@ The canonical currency-code constraint is introduced by
 [`migrations/20260905000000_constrain_currency_codes.sql`](migrations/20260905000000_constrain_currency_codes.sql)
 and proved against retained history by
 [`migrations/20260905010000_validate_currency_codes.sql`](migrations/20260905010000_validate_currency_codes.sql).
+Shared authenticated request admission is added by
+[`migrations/20260905020000_add_principal_rate_limits.sql`](migrations/20260905020000_add_principal_rate_limits.sql).
 
 PostgreSQL 18 is required. Every application table has a `uuid_id uuid`
 primary key generated with `uuidv7()` and constrained with
@@ -139,6 +141,15 @@ Roles and permissions have append-only grant and revocation tables, and
 `effective_principal_permissions` derives current access while excluding
 revoked grants and suspended principals. A reinstatement references exactly
 one suspension rather than modifying it.
+
+`principal_rate_limits` is mutable operational coordination rather than a
+domain, authorization, operation, or audit fact. It holds one UUIDv7-keyed row
+per principal and a unique principal reference. An atomic upsert uses the
+database clock to reset a stale UTC-minute window or increment its count only
+through 100, so concurrent server instances share one allowance. Rejections do
+not increment the row. This fixed-window control can admit requests on both
+sides of a minute boundary and does not bound concurrent or unauthenticated
+traffic.
 
 Runtime gRPC reflection was removed after the initial security facts were
 recorded. The original `reflection.use` permission and operator grant remain as

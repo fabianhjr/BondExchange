@@ -48,6 +48,7 @@ type recorder struct {
 	eventPublisherCount metric.Int64Gauge
 	databaseRetries     metric.Int64Counter
 	idempotencyResults  metric.Int64Counter
+	rateLimitDecisions  metric.Int64Counter
 	streamedOfferCount  metric.Int64Histogram
 }
 
@@ -299,12 +300,14 @@ func newRecorder(tracerProvider trace.TracerProvider, meterProvider metric.Meter
 	eventPublisherCount := mustInstrument(meter.Int64Gauge("bondexchange.event.publisher.configured", metric.WithDescription("Configured integration-event publishers"), metric.WithUnit("{publisher}")))
 	databaseRetries := mustInstrument(meter.Int64Counter("bondexchange.database.transaction.retry", metric.WithDescription("Retryable PostgreSQL transaction failures"), metric.WithUnit("{retry}")))
 	idempotencyResults := mustInstrument(meter.Int64Counter("bondexchange.idempotency.result", metric.WithDescription("Durable mutation idempotency outcomes"), metric.WithUnit("{result}")))
+	rateLimitDecisions := mustInstrument(meter.Int64Counter("bondexchange.request.rate_limit.count", metric.WithDescription("Authenticated request rate-limit decisions"), metric.WithUnit("{decision}")))
 	streamedOfferCount := mustInstrument(meter.Int64Histogram("bondexchange.stream.offer.count", metric.WithDescription("Offers written by a completed active-offer stream"), metric.WithUnit("{offer}")))
 	return &recorder{
 		tracer: tracerProvider.Tracer(scopeName), operations: operations, operationDuration: operationDuration,
 		rateFetches: rateFetches, rateFetchDuration: rateFetchDuration, rateCacheResults: rateCacheResults,
 		observationAge: observationAge, eventDeliveries: eventDeliveries, eventDuration: eventDuration, eventPublisherCount: eventPublisherCount,
-		databaseRetries: databaseRetries, idempotencyResults: idempotencyResults, streamedOfferCount: streamedOfferCount,
+		databaseRetries: databaseRetries, idempotencyResults: idempotencyResults,
+		rateLimitDecisions: rateLimitDecisions, streamedOfferCount: streamedOfferCount,
 	}
 }
 
@@ -414,6 +417,15 @@ func RecordDatabaseRetry(ctx context.Context, operation string) {
 func RecordIdempotency(ctx context.Context, operation string, outcome string) {
 	if current := active.Load(); current != nil {
 		current.idempotencyResults.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("bondexchange.operation", operation),
+			attribute.String("outcome", outcome),
+		))
+	}
+}
+
+func RecordRateLimit(ctx context.Context, operation string, outcome string) {
+	if current := active.Load(); current != nil {
+		current.rateLimitDecisions.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("bondexchange.operation", operation),
 			attribute.String("outcome", outcome),
 		))

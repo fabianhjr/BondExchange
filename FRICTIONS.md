@@ -125,6 +125,10 @@ accept or do not cover.
   slow readers.
 - **Impact:** Slow or numerous readers can exhaust the fixed 20-connection
   pool, and large datasets can cause transport divergence or failed discovery.
+- **Current mitigation:** PostgreSQL admits at most 100 requests per
+  authenticated principal in each fixed UTC minute across instances. This
+  limits request starts but not stream duration, concurrent streams, result
+  cardinality, or the cost of one admitted read.
 - **Complete when:** Bounded pagination/snapshots or explicit, measured limits
   exist for both reads; REST and gRPC share equivalent limits and semantics;
   and load, cancellation, and concurrency tests cover the chosen design.
@@ -146,11 +150,13 @@ accept or do not cover.
 
 - **Evidence:** The server provides plaintext loopback listeners and no
   production package. It now owns tested OTLP trace/metric instrumentation and
-  devenv runs a loopback development collector, but the ASVS profile still has
-  `pending-deployment` and `pending-external-identity` dispositions for
-  TLS/workload identity, ingress trust, rate limiting, secret delivery,
-  database protection, a protected telemetry backend and alerts, identity
-  assurance, and related controls.
+  devenv runs a loopback development collector. PostgreSQL now coordinates a
+  tested 100-request fixed UTC-minute limit for authenticated principals, but
+  the ASVS profile still has `pending-deployment` and
+  `pending-external-identity` dispositions for TLS/workload identity, ingress
+  trust, unauthenticated and connection-level limits, broader anti-automation,
+  secret delivery, database protection, a protected telemetry backend and
+  alerts, identity assurance, and related controls.
 - **Impact:** Passing application tests does not establish a secure or operable
   production system, and several controls cannot be verified until the hosting
   architecture exists.

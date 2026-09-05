@@ -45,6 +45,7 @@ metrics:
 | `bondexchange.operation.count` / `.duration` | operation, outcome, safe error type | Completed authenticated API operations. |
 | `bondexchange.stream.offer.count` | operation, outcome, safe error type | Offers emitted by one completed or failed active-offer stream. |
 | `bondexchange.idempotency.result` | operation, outcome | Durable mutation replays. |
+| `bondexchange.request.rate_limit.count` | operation, outcome | Authenticated admission decisions: allowed, rejected, or coordination error. |
 | `bondexchange.database.transaction.retry` | database operation class | Retryable serialization or deadlock failures. |
 | `bondexchange.rate.cache.result` | outcome | Cache hits, misses, and lease contention. |
 | `bondexchange.rate.fetch.count` / `.duration` | fetch kind, outcome | Provider work units and latency, including cooldown rejection. |
@@ -53,7 +54,7 @@ metrics:
 | `bondexchange.event.delivery.count` / `.duration` | outcome, safe error type | Claimed delivery attempts. |
 
 Trace topology is transport server span → application operation →
-authentication, PostgreSQL, rate-provider, intake, and event-delivery children
+authentication, PostgreSQL request admission, rate-provider, intake, and event-delivery children
 as applicable. REST route names use a fixed allowlist; unmatched paths are
 reported as `unmatched`. Native gRPC uses fully qualified method names.
 Banxico client spans do not inject `traceparent` or baggage to the provider.
@@ -81,8 +82,8 @@ sampling.
 
 Candidate dashboards and alerts map directly to the FMEA:
 
-- HTTP/gRPC latency, errors, stream duration, and pgx pool wait/utilization for
-  FM-007;
+- HTTP/gRPC latency, rate-limit decisions, stream duration, and pgx pool
+  wait/utilization for FM-007 and FM-022;
 - append-only growth, long snapshots, and storage capacity from one
   deployment-owned PostgreSQL receiver for FM-006;
 - SIE authentication/rate limiting, cache age, stale results, lease contention,

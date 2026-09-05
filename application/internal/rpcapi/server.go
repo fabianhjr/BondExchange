@@ -6,16 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/application/gen/go/bondexchange/v1"
 	"github.com/fabianhjr/BondExchange/application/internal/authn"
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
+	"github.com/fabianhjr/BondExchange/application/internal/ratelimit"
 	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -65,7 +69,7 @@ func (server *Server) QuoteSaleOffer(
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationQuoteSaleOffer)
 	authenticated, err := server.authenticate(ctx, exchange.OperationQuoteSaleOffer, request, true)
 	if err != nil {
-		logSecurityOperation(ctx, exchange.OperationQuoteSaleOffer, nil, err)
+		logSecurityOperation(ctx, exchange.OperationQuoteSaleOffer, authenticatedAccess(authenticated), err)
 		return nil, transportError(err)
 	}
 	quote, err := server.application.QuoteSaleOffer(
@@ -102,7 +106,7 @@ func (server *Server) CreateSaleOffer(
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationCreateSaleOffer)
 	authenticated, err := server.authenticate(ctx, exchange.OperationCreateSaleOffer, request, true)
 	if err != nil {
-		logSecurityOperation(ctx, exchange.OperationCreateSaleOffer, nil, err)
+		logSecurityOperation(ctx, exchange.OperationCreateSaleOffer, authenticatedAccess(authenticated), err)
 		return nil, transportError(err)
 	}
 	offer, err := server.application.CreateSaleOffer(
@@ -127,17 +131,23 @@ type Server struct {
 	application   Application
 	health        HealthChecker
 	authenticator authn.Authenticator
+	rateLimiter   ratelimit.Limiter
 }
 
-func NewServer(application Application, health HealthChecker, authenticator authn.Authenticator) *Server {
-	return &Server{application: application, health: health, authenticator: authenticator}
+func NewServer(
+	application Application,
+	health HealthChecker,
+	authenticator authn.Authenticator,
+	rateLimiter ratelimit.Limiter,
+) *Server {
+	return &Server{application: application, health: health, authenticator: authenticator, rateLimiter: rateLimiter}
 }
 
 func (server *Server) Buy(ctx context.Context, request *bondexchangev1.BuyRequest) (*bondexchangev1.BuyResponse, error) {
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationBuy)
 	authenticated, err := server.authenticate(ctx, exchange.OperationBuy, request, true)
 	if err != nil {
-		logSecurityOperation(ctx, exchange.OperationBuy, nil, err)
+		logSecurityOperation(ctx, exchange.OperationBuy, authenticatedAccess(authenticated), err)
 		return nil, transportError(err)
 	}
 	purchase, err := server.application.Buy(
@@ -162,7 +172,7 @@ func (server *Server) ListActiveOffers(
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationListActiveOffers)
 	authenticated, err := server.authenticate(ctx, exchange.OperationListActiveOffers, request, false)
 	if err != nil {
-		logSecurityOperation(ctx, exchange.OperationListActiveOffers, nil, err)
+		logSecurityOperation(ctx, exchange.OperationListActiveOffers, authenticatedAccess(authenticated), err)
 		return transportError(err)
 	}
 	var count uint64
@@ -195,7 +205,7 @@ func (server *Server) ListActiveBondSeries(
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationListBondSeries)
 	authenticated, err := server.authenticate(ctx, exchange.OperationListBondSeries, &bondexchangev1.ListActiveBondSeriesRequest{}, false)
 	if err != nil {
-		logSecurityOperation(ctx, exchange.OperationListBondSeries, nil, err)
+		logSecurityOperation(ctx, exchange.OperationListBondSeries, authenticatedAccess(authenticated), err)
 		return nil, transportError(err)
 	}
 	series, err := server.application.ActiveBondSeries(ctx, authenticated.AccessContext)
@@ -220,7 +230,7 @@ func (server *Server) CheckHealth(
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationCheckHealth)
 	authenticated, err := server.authenticate(ctx, exchange.OperationCheckHealth, &bondexchangev1.CheckHealthRequest{}, false)
 	if err != nil {
-		logSecurityOperation(ctx, exchange.OperationCheckHealth, nil, err)
+		logSecurityOperation(ctx, exchange.OperationCheckHealth, authenticatedAccess(authenticated), err)
 		return nil, transportError(err)
 	}
 	if err := server.health.Authorize(ctx, authenticated.AccessContext, exchange.PermissionCheckHealth); err != nil {
@@ -243,7 +253,7 @@ func (server *Server) PublishPendingEvents(
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationPublishPendingEvents)
 	authenticated, err := server.authenticate(ctx, exchange.OperationPublishPendingEvents, request, true)
 	if err != nil {
-		logSecurityOperation(ctx, exchange.OperationPublishPendingEvents, nil, err)
+		logSecurityOperation(ctx, exchange.OperationPublishPendingEvents, authenticatedAccess(authenticated), err)
 		return nil, transportError(err)
 	}
 	summary, err := server.application.PublishPendingEvents(
@@ -302,6 +312,13 @@ func logSecurityOperation(
 			"request_sha256", hex.EncodeToString(access.RequestDigest[:]),
 		)
 	}
+	if retryAfter, ok := ratelimit.RetryAfter(err); ok {
+		seconds := int64(retryAfter / time.Second)
+		if retryAfter%time.Second != 0 {
+			seconds++
+		}
+		attributes = append(attributes, "retry_after_seconds", seconds)
+	}
 	streamedOffers := int64(-1)
 	for index := 0; index+1 < len(extra); index += 2 {
 		if extra[index] == "offer_count" {
@@ -357,7 +374,31 @@ func (server *Server) authenticate(
 	if err != nil {
 		return authn.Result{}, exchange.ErrInvalidOperation
 	}
-	return server.authenticator.Authenticate(ctx, operation, canonical, idempotent)
+	authenticated, err := server.authenticator.Authenticate(ctx, operation, canonical, idempotent)
+	if err != nil {
+		return authn.Result{}, err
+	}
+	if server.rateLimiter == nil {
+		telemetry.RecordRateLimit(ctx, operation, "error")
+		return authenticated, ratelimit.ErrUnavailable
+	}
+	if err := server.rateLimiter.AdmitRequest(ctx, authenticated.AccessContext.Principal.ID); err != nil {
+		outcome := "error"
+		if errors.Is(err, ratelimit.ErrExceeded) {
+			outcome = "rejected"
+		}
+		telemetry.RecordRateLimit(ctx, operation, outcome)
+		return authenticated, err
+	}
+	telemetry.RecordRateLimit(ctx, operation, "allowed")
+	return authenticated, nil
+}
+
+func authenticatedAccess(authenticated authn.Result) *exchange.AccessContext {
+	if authenticated.AccessContext.Principal.ID == "" {
+		return nil
+	}
+	return &authenticated.AccessContext
 }
 
 func transportError(err error) error {
@@ -368,6 +409,19 @@ func transportError(err error) error {
 		return status.Error(codes.Unauthenticated, "authentication required")
 	case errors.Is(err, exchange.ErrPermissionDenied):
 		return status.Error(codes.PermissionDenied, "operation not permitted")
+	case errors.Is(err, ratelimit.ErrExceeded):
+		limited := status.New(codes.ResourceExhausted, ratelimit.ErrExceeded.Error())
+		retryAfter, ok := ratelimit.RetryAfter(err)
+		if !ok {
+			return limited.Err()
+		}
+		withRetry, detailErr := limited.WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(retryAfter)})
+		if detailErr != nil {
+			return limited.Err()
+		}
+		return withRetry.Err()
+	case errors.Is(err, ratelimit.ErrUnavailable):
+		return status.Error(codes.Unavailable, "request admission unavailable")
 	case errors.Is(err, exchange.ErrInvalidUserID),
 		errors.Is(err, exchange.ErrInvalidOfferID),
 		errors.Is(err, exchange.ErrInvalidBondSeries),

@@ -3,12 +3,14 @@
 INSERT INTO bond_exchange.users (uuid_id)
 VALUES
   ('01991a20-0000-7000-8000-000000000001'),
-  ('01991a20-0000-7000-8000-000000000002');
+  ('01991a20-0000-7000-8000-000000000002'),
+  ('01991a20-0000-7000-8000-000000000003');
 
 INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
 VALUES
   ('01991a20-0000-7000-8000-000000000001', 'https://demo-issuer.invalid', 'demo-seller', 'human'),
-  ('01991a20-0000-7000-8000-000000000002', 'https://demo-issuer.invalid', 'demo-buyer', 'human');
+  ('01991a20-0000-7000-8000-000000000002', 'https://demo-issuer.invalid', 'demo-buyer', 'human'),
+  ('01991a20-0000-7000-8000-000000000003', 'https://demo-issuer.invalid', 'demo-rate-limited', 'automated');
 
 INSERT INTO bond_exchange.principal_role_grants
   (principal_uuid, role_uuid, reason)
@@ -16,7 +18,8 @@ SELECT principal.uuid_id, role.uuid_id, seed.reason
 FROM (VALUES
   ('01991a20-0000-7000-8000-000000000001'::uuid, 'trader', 'Disposable demo access.'),
   ('01991a20-0000-7000-8000-000000000002'::uuid, 'trader', 'Disposable demo access.'),
-  ('01991a20-0000-7000-8000-000000000002'::uuid, 'operator', 'Disposable demo health access.')
+  ('01991a20-0000-7000-8000-000000000002'::uuid, 'operator', 'Disposable demo health access.'),
+  ('01991a20-0000-7000-8000-000000000003'::uuid, 'trader', 'Disposable rate-limit test access.')
 ) AS seed(principal_uuid, role_code, reason)
 JOIN bond_exchange.principals AS principal ON principal.uuid_id = seed.principal_uuid
 JOIN bond_exchange.roles AS role ON role.code = seed.role_code;

@@ -28,6 +28,19 @@
               "$ref": "#/definitions/bondexchange.v1.ListActiveBondSeriesResponse"
             }
           },
+          "429": {
+            "description": "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the next database-clock minute.",
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
           "500": {
             "description": "The server could not complete the request.",
             "schema": {
@@ -55,6 +68,19 @@
             "description": "The required bond series is missing or invalid.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "429": {
+            "description": "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the next database-clock minute.",
+                "type": "integer",
+                "format": "int64"
+              }
             }
           },
           "500": {
@@ -99,6 +125,19 @@
             "description": "The active offer is unavailable.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "429": {
+            "description": "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the next database-clock minute.",
+                "type": "integer",
+                "format": "int64"
+              }
             }
           },
           "500": {
@@ -147,6 +186,19 @@
               "$ref": "#/definitions/bondexchange.v1.Error"
             }
           },
+          "429": {
+            "description": "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the next database-clock minute.",
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
           "500": {
             "description": "The server could not complete the recovery attempt.",
             "schema": {
@@ -185,6 +237,19 @@
             "description": "The service is healthy.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.CheckHealthResponse"
+            }
+          },
+          "429": {
+            "description": "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the next database-clock minute.",
+                "type": "integer",
+                "format": "int64"
+              }
             }
           },
           "503": {
@@ -226,6 +291,19 @@
             "description": "The idempotency nonce was reused for a different request.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "429": {
+            "description": "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the next database-clock minute.",
+                "type": "integer",
+                "format": "int64"
+              }
             }
           },
           "503": {
@@ -284,6 +362,19 @@
             "description": "The generated sale-offer ID collided with an existing resource.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
+            }
+          },
+          "429": {
+            "description": "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset.",
+            "schema": {
+              "$ref": "#/definitions/bondexchange.v1.Error"
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the next database-clock minute.",
+                "type": "integer",
+                "format": "int64"
+              }
             }
           },
           "500": {

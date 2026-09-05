@@ -17,6 +17,7 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
+	"github.com/fabianhjr/BondExchange/application/internal/ratelimit"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -119,6 +120,83 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 	}
 	if purchaseCount != 1 || offerCount != 1 || activeCount != 0 {
 		t.Fatalf("purchase, offer, active counts = %d, %d, %d", purchaseCount, offerCount, activeCount)
+	}
+}
+
+func TestPrincipalRateLimitIsAtomicAcrossInstances(t *testing.T) {
+	pool := openTestPool(t)
+	secondPool := openTestPool(t)
+	stores := []*Store{NewStore(pool), NewStore(secondPool)}
+	principal := insertUser(t, pool, "rate-limited")
+
+	const attempts = ratelimit.RequestsPerMinute + 40
+	start := make(chan struct{})
+	errs := make(chan error, attempts)
+	var waitGroup sync.WaitGroup
+	for index := range attempts {
+		waitGroup.Add(1)
+		go func(store *Store) {
+			defer waitGroup.Done()
+			<-start
+			errs <- store.AdmitRequest(context.Background(), principal)
+		}(stores[index%len(stores)])
+	}
+	close(start)
+	waitGroup.Wait()
+	close(errs)
+
+	var admitted, rejected int
+	for err := range errs {
+		switch {
+		case err == nil:
+			admitted++
+		case errors.Is(err, ratelimit.ErrExceeded):
+			rejected++
+			delay, ok := ratelimit.RetryAfter(err)
+			if !ok || delay < time.Second || delay > time.Minute {
+				t.Errorf("retry delay = %v, %t", delay, ok)
+			}
+		default:
+			t.Errorf("unexpected admission error: %v", err)
+		}
+	}
+	if admitted != ratelimit.RequestsPerMinute || rejected != attempts-ratelimit.RequestsPerMinute {
+		t.Fatalf("admitted, rejected = %d, %d; want %d, %d", admitted, rejected, ratelimit.RequestsPerMinute, attempts-ratelimit.RequestsPerMinute)
+	}
+
+	var count int
+	if err := pool.QueryRow(context.Background(), `
+SELECT request_count
+FROM bond_exchange.principal_rate_limits
+WHERE principal_uuid = $1`, principal).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != ratelimit.RequestsPerMinute {
+		t.Fatalf("persisted request count = %d", count)
+	}
+
+	otherPrincipal := insertUser(t, pool, "other-rate-limit")
+	if err := stores[0].AdmitRequest(context.Background(), otherPrincipal); err != nil {
+		t.Fatalf("independent principal admission failed: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+UPDATE bond_exchange.principal_rate_limits
+SET window_started_at = date_trunc('minute', statement_timestamp()) - interval '1 minute',
+    updated_at = statement_timestamp()
+WHERE principal_uuid = $1`, principal); err != nil {
+		t.Fatal(err)
+	}
+	if err := stores[1].AdmitRequest(context.Background(), principal); err != nil {
+		t.Fatalf("new-window admission failed: %v", err)
+	}
+	if err := pool.QueryRow(context.Background(), `
+SELECT request_count
+FROM bond_exchange.principal_rate_limits
+WHERE principal_uuid = $1`, principal).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("reset request count = %d, want 1", count)
 	}
 }
 
@@ -1162,7 +1240,7 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 		"bonds": false, "integration_event_deliveries": false, "integration_events": false,
 		"legacy_identifier_archive": false,
 		"operation_claims":          false, "operation_results": false, "permissions": false,
-		"principal_reinstatements": false, "principal_role_grants": false,
+		"principal_rate_limits": false, "principal_reinstatements": false, "principal_role_grants": false,
 		"principal_role_revocations": false, "principal_suspensions": false,
 		"principals": false, "purchases": false, "role_permission_grants": false,
 		"role_permission_revocations": false, "roles": false, "sale_offers": false,
@@ -1299,6 +1377,9 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	}
 	if err := store.Authorize(ctx, access("reader", exchange.OperationListActiveOffers), exchange.PermissionListActiveOffers); err == nil {
 		t.Fatal("Authorize() succeeded with closed pool")
+	}
+	if err := store.AdmitRequest(ctx, "reader"); !errors.Is(err, ratelimit.ErrUnavailable) {
+		t.Fatalf("AdmitRequest() error = %v", err)
 	}
 	if _, err := store.Buy(ctx, mutation("buyer", exchange.OperationBuy, "idempotency-key-1", "offer"), "offer"); err == nil {
 		t.Fatal("Buy() succeeded with closed pool")

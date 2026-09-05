@@ -26,7 +26,7 @@ export BANXICO_SIE_TOKEN="${BANXICO_SIE_TOKEN:-000000000000000000000000000000000
 
 echo "Bond Exchange demo is ready when GET http://$rest_display/healthz returns healthy."
 echo "REST: http://$rest_display  gRPC: $grpc_display"
-echo "Seeded bonds: DEMO2026 and DEMO2027; buyer: demo-buyer; seller: demo-seller"
+echo "Seeded bonds: DEMO2026 and DEMO2027; buyer: demo-buyer; seller: demo-seller; rate-limit verifier: demo-rate-limited"
 echo "Ephemeral demo assertion key: $auth_root/private.jwk"
 
 exec "$server_binary"

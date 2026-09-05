@@ -23,6 +23,10 @@ book, buys it, demonstrates an idempotent retry, and shows that a new buy can
 no longer acquire it. The REST offer list is
 an RFC 7464 JSON Text Sequence, so the runner also parses every frame with
 `jq --seq` and verifies ordering and the terminal count.
+The same scenario preloads the dedicated `demo-rate-limited` principal's
+current window, verifies HTTP `429`, a bounded integer `Retry-After`, and the
+generic error body, then moves the operational window back and verifies the
+next request is admitted.
 
 Run the short correctness-gated generated workload with:
 
@@ -45,7 +49,9 @@ must not exceed 90 seconds so the demo assertions remain valid.
 The manual task defaults to 1,000 operations per main phase at 50 requests per
 second with at most 20 workers. The CI smoke profile uses 120 operations per
 main phase at 12 requests per second with at most 12 workers.
-The load runner creates unique authenticated targets for these scenarios:
+The load runner provisions disposable sellers and buyers, rotates targets
+through enough principals that each remains within its shared allowance, and
+creates unique authenticated targets for these scenarios:
 
 | Scenario | Required result |
 | --- | --- |

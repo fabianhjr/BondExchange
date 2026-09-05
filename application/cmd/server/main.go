@@ -104,7 +104,7 @@ func run() (runErr error) {
 	if err != nil {
 		return err
 	}
-	apiServer := rpcapi.NewServer(service, store, jwtAuthenticator)
+	apiServer := rpcapi.NewServer(service, store, jwtAuthenticator, store)
 	httpHandler, err := httpapi.NewHandler(apiServer)
 	if err != nil {
 		return err

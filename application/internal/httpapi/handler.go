@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -219,7 +221,7 @@ func serveActiveOffersStream(
 	}
 	converted := status.Convert(err)
 	if !stream.started {
-		writeRESTError(response, runtime.HTTPStatusFromCode(converted.Code()), converted.Message())
+		writeStatusError(response, converted)
 		return
 	}
 	_ = stream.writeJSONSequence(&bondexchangev1.Error{Error: converted.Message()})
@@ -391,6 +393,25 @@ func writeError(
 	err error,
 ) {
 	grpcStatus := status.Convert(err)
+	writeStatusError(response, grpcStatus)
+}
+
+func writeStatusError(response http.ResponseWriter, grpcStatus *status.Status) {
+	for _, detail := range grpcStatus.Details() {
+		retry, ok := detail.(*errdetails.RetryInfo)
+		if !ok || retry.GetRetryDelay() == nil {
+			continue
+		}
+		delay := retry.GetRetryDelay().AsDuration()
+		seconds := int64(delay / time.Second)
+		if delay%time.Second != 0 {
+			seconds++
+		}
+		if seconds > 0 {
+			response.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+		}
+		break
+	}
 	writeRESTError(response, runtime.HTTPStatusFromCode(grpcStatus.Code()), grpcStatus.Message())
 }
 

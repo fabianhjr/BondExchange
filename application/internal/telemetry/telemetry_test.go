@@ -53,6 +53,7 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 	RecordEventPublisherCount(ctx, 2)
 	RecordDatabaseRetry(ctx, "transaction")
 	RecordIdempotency(ctx, "purchases.buy", "replayed")
+	RecordRateLimit(ctx, "purchases.buy", "rejected")
 
 	ended := spanRecorder.Ended()
 	if len(ended) != 3 {
@@ -89,6 +90,7 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 		"bondexchange.rate.fetch.count",
 		"bondexchange.rate.fetch.duration",
 		"bondexchange.rate.observation.age",
+		"bondexchange.request.rate_limit.count",
 		"bondexchange.stream.offer.count",
 	}
 	var got []string

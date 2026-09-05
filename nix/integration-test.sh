@@ -76,4 +76,45 @@ jq --seq --slurp --exit-status '
   and (.[-1].complete.offer_count == "2")
 ' "$test_root/final-offers.json-seq" >/dev/null
 
+rate_limit_token="$(issue_token demo-rate-limited bond-series.list - '{}')"
+psql "$BOND_EXCHANGE_TEST_DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
+  --set principal_uuid='01991a20-0000-7000-8000-000000000003' <<'SQL'
+INSERT INTO bond_exchange.principal_rate_limits
+  (principal_uuid, window_started_at, request_count)
+VALUES (
+  :'principal_uuid',
+  date_trunc('minute', statement_timestamp()),
+  100
+)
+ON CONFLICT (principal_uuid) DO UPDATE
+SET window_started_at = EXCLUDED.window_started_at,
+    request_count = EXCLUDED.request_count,
+    updated_at = statement_timestamp();
+SQL
+rate_limit_status="$(curl --silent --dump-header "$test_root/rate-limit.headers" \
+  --output "$test_root/rate-limit.json" --write-out '%{http_code}' \
+  --header "Authorization: Bearer $rate_limit_token" \
+  "$base_url/active-bond-series")"
+if [[ "$rate_limit_status" != 429 ]]; then
+  echo "rate-limited request returned HTTP $rate_limit_status" >&2
+  exit 1
+fi
+if ! grep -Eiq '^Retry-After: ([1-9]|[1-5][0-9]|60)[[:space:]]*$' "$test_root/rate-limit.headers"; then
+  echo "rate-limited response did not carry a bounded Retry-After header" >&2
+  exit 1
+fi
+jq --exit-status '.error == "request rate limit exceeded"' "$test_root/rate-limit.json" >/dev/null
+
+psql "$BOND_EXCHANGE_TEST_DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
+  --set principal_uuid='01991a20-0000-7000-8000-000000000003' <<'SQL'
+UPDATE bond_exchange.principal_rate_limits
+SET window_started_at = date_trunc('minute', statement_timestamp()) - interval '1 minute',
+    updated_at = statement_timestamp()
+WHERE principal_uuid = :'principal_uuid';
+SQL
+curl --fail --silent \
+  --header "Authorization: Bearer $rate_limit_token" \
+  "$base_url/active-bond-series" >"$test_root/rate-limit-reset.json"
+jq --exit-status '.bond_series | type == "array"' "$test_root/rate-limit-reset.json" >/dev/null
+
 echo "HTTP integration test passed"

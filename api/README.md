@@ -40,6 +40,13 @@ listener. The adapter maps domain errors to canonical gRPC codes; the REST
 gateway maps those codes to HTTP statuses while retaining the existing
 `{"error":"..."}` JSON error shape.
 
+After successful authentication, every method shares one 100-request
+database-clock UTC-minute allowance for the internal principal. Exhaustion is
+gRPC `ResourceExhausted` with `google.rpc.RetryInfo`; REST maps it to HTTP `429`
+and an integer-seconds `Retry-After` response header. A limiter persistence
+failure is gRPC `Unavailable`/HTTP `503`. The Proto3 OpenAPI annotations list
+the `429` response on every REST operation.
+
 Every method requires one `Authorization: Bearer <assertion>` metadata value.
 Mutations and the explicit pending-event recovery operation additionally
 require exactly one `Idempotency-Key`. Identity fields

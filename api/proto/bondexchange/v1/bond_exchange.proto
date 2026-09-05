@@ -80,6 +80,17 @@ service BondExchangeService {
         }
       }
       responses: {
+        key: "429"
+        value: {
+          description: "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+          headers: {
+            key: "Retry-After"
+            value: {description: "Whole seconds until the next database-clock minute." type: "integer" format: "int64"}
+          }
+        }
+      }
+      responses: {
         key: "500"
         value: {
           description: "The server could not complete the request."
@@ -141,6 +152,17 @@ service BondExchangeService {
           schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
         }
       }
+      responses: {
+        key: "429"
+        value: {
+          description: "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+          headers: {
+            key: "Retry-After"
+            value: {description: "Whole seconds until the next database-clock minute." type: "integer" format: "int64"}
+          }
+        }
+      }
     };
   }
 
@@ -196,6 +218,17 @@ service BondExchangeService {
         }
       }
       responses: {
+        key: "429"
+        value: {
+          description: "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+          headers: {
+            key: "Retry-After"
+            value: {description: "Whole seconds until the next database-clock minute." type: "integer" format: "int64"}
+          }
+        }
+      }
+      responses: {
         key: "500"
         value: {
           description: "The server could not complete the request."
@@ -230,6 +263,17 @@ service BondExchangeService {
         }
       }
       responses: {
+        key: "429"
+        value: {
+          description: "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+          headers: {
+            key: "Retry-After"
+            value: {description: "Whole seconds until the next database-clock minute." type: "integer" format: "int64"}
+          }
+        }
+      }
+      responses: {
         key: "500"
         value: {
           description: "The server could not complete the request."
@@ -255,6 +299,17 @@ service BondExchangeService {
         }
       }
       responses: {
+        key: "429"
+        value: {
+          description: "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+          headers: {
+            key: "Retry-After"
+            value: {description: "Whole seconds until the next database-clock minute." type: "integer" format: "int64"}
+          }
+        }
+      }
+      responses: {
         key: "500"
         value: {
           description: "The server could not complete the request."
@@ -276,6 +331,17 @@ service BondExchangeService {
           description: "The service is healthy."
           schema: {
             json_schema: {ref: ".bondexchange.v1.CheckHealthResponse"}
+          }
+        }
+      }
+      responses: {
+        key: "429"
+        value: {
+          description: "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+          headers: {
+            key: "Retry-After"
+            value: {description: "Whole seconds until the next database-clock minute." type: "integer" format: "int64"}
           }
         }
       }
@@ -322,6 +388,17 @@ service BondExchangeService {
           description: "The destination is invalid or no publisher is configured."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
+          }
+        }
+      }
+      responses: {
+        key: "429"
+        value: {
+          description: "The authenticated principal exhausted its shared 100-request allowance for the current UTC minute. Retry-After gives whole seconds until reset."
+          schema: {json_schema: {ref: ".bondexchange.v1.Error"}}
+          headers: {
+            key: "Retry-After"
+            value: {description: "Whole seconds until the next database-clock minute." type: "integer" format: "int64"}
           }
         }
       }
