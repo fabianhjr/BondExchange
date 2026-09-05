@@ -17,15 +17,22 @@ fetch coordination, are added by
 [`migrations/20260904120000_add_sie_exchange_rates.sql`](migrations/20260904120000_add_sie_exchange_rates.sql).
 The PostgreSQL 18 UUID identity and nonce cutover is
 [`migrations/20260904130000_use_uuid_keys_and_nonces.sql`](migrations/20260904130000_use_uuid_keys_and_nonces.sql).
+UUID-only writer compatibility is prepared by
+[`migrations/20260904140000_prepare_uuid_only_writers.sql`](migrations/20260904140000_prepare_uuid_only_writers.sql),
+non-derivable history is preserved by
+[`migrations/20260904150000_archive_legacy_identifiers.sql`](migrations/20260904150000_archive_legacy_identifiers.sql),
+and the operational legacy graph is removed by
+[`migrations/20260904160000_contract_legacy_identifier_graph.sql`](migrations/20260904160000_contract_legacy_identifier_graph.sql).
 
 PostgreSQL 18 is required. Every application table has a `uuid_id uuid`
 primary key generated with `uuidv7()` and constrained with
 `uuid_extract_version(uuid_id) = 7`. Natural identifiers remain unique lookup
-attributes. The migration retains legacy keys, foreign keys, views, and
-synchronization triggers for a rolling application transition; the current Go
-adapter uses only the UUID relationship graph. A later contract migration may
-remove compatibility structures only after old writers are retired and drift
-checks pass.
+attributes. The original rolling migration retained legacy keys, foreign keys,
+views, and synchronization triggers. The contract migration removes that live
+graph after verifying archive coverage and a quiescent lease window. The
+current Go adapter uses only UUID relationships. UUID-backed `_v2` views remain
+temporarily as application-release aliases; they do not expose the removed
+legacy graph.
 
 Non-derivable values needed for audit and reconciliation are copied into the
 append-only `legacy_identifier_archive` before contraction. It is keyed by
@@ -150,16 +157,18 @@ destructive down migration. Fetch coordination and provider state require
 narrow `SELECT`, `INSERT`, and `UPDATE` runtime privileges; immutable imports
 and observations require only `SELECT` and `INSERT`.
 
-The UUID migration calls PostgreSQL 18 native functions and therefore cannot
+The UUID migrations call PostgreSQL 18 native functions and therefore cannot
 run on PostgreSQL 17. For an existing deployment, first take and verify a
 restorable backup, rehearse the selected PostgreSQL major-upgrade procedure,
 review extensions and collation changes, upgrade the cluster to 18, and verify
-`server_version_num` before running `dbmate up`. Supported choices include
+`server_version_num` before running the UUID expand migration. Supported choices include
 deployment-owned `pg_upgrade`, logical replication, or dump/restore. Do not
-start the UUID-aware application until the schema migration completes. During
-rollback, the migrated compatibility graph permits the previous application to
-run on PostgreSQL 18; do not downgrade the data directory or use the migration's
-non-destructive down section as a rollback mechanism.
+start the UUID-aware application until the schema migration completes. Before
+contraction, the compatibility graph permits the previous application to run
+on PostgreSQL 18. After contraction, rollback targets the UUID-only preparation
+release; a schema problem requires a corrective forward migration. Do not
+downgrade the data directory or use a non-destructive down section as a rollback
+mechanism.
 
 Before removing the rolling-compatibility graph, run:
 

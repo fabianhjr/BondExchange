@@ -97,3 +97,41 @@ BEGIN
 END;
 $$;
 SQL
+
+ln -s \
+  "$project_root/db/migrations/20260904160000_contract_legacy_identifier_graph.sql" \
+  "$migration_root/20260904160000_contract_legacy_identifier_graph.sql"
+DATABASE_URL="$history_url" DBMATE_MIGRATIONS_DIR="$migration_root" dbmate up
+
+psql "$history_url" --no-psqlrc --set ON_ERROR_STOP=1 <<'SQL'
+DO $$
+DECLARE
+  forbidden_count bigint;
+  archived_count bigint;
+BEGIN
+  SELECT count(*) INTO forbidden_count
+  FROM information_schema.columns
+  WHERE table_schema = 'bond_exchange'
+    AND (table_name, column_name) IN (
+      ('users', 'id'),
+      ('sale_offers', 'id'),
+      ('sale_offers', 'seller_id'),
+      ('sale_offers', 'bond_series'),
+      ('purchases', 'sale_offer_id'),
+      ('operation_claims', 'idempotency_key'),
+      ('integration_event_deliveries', 'lease_token'),
+      ('sie_exchange_rate_fetch_coordination', 'lease_token'),
+      ('sie_exchange_rate_imports', 'id')
+    );
+  IF forbidden_count <> 0 THEN
+    RAISE EXCEPTION '% reviewed legacy columns remain after contraction', forbidden_count;
+  END IF;
+
+  SELECT count(*) INTO archived_count
+  FROM bond_exchange.legacy_identifier_archive;
+  IF archived_count < 7 THEN
+    RAISE EXCEPTION 'legacy archive lost rows during contraction';
+  END IF;
+END;
+$$;
+SQL

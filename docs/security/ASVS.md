@@ -132,7 +132,7 @@ panics are logged without request or credential contents.
 | AD-13 | Runtime gRPC reflection is absent; clients use a versioned descriptor set. | Operators lose live discovery and must select an artifact matching the deployed API. |
 | AD-14 | Integration events persist only immutable source references and use immediate best-effort delivery with explicit manual recovery. | Source loaders must remain compatible for the retention period, delivery is at least once, and pending events can remain indefinitely without operator action. |
 | AD-15 | Banxico SIE responses and exact exchange-rate revisions are durable; PostgreSQL leases and cooldowns coordinate on-demand fetches. | Durable provenance grows over time, stale latest values are possible during refresh failures, and a crash before import commit can cause a repeated upstream request. |
-| AD-16 | PostgreSQL 18 generates and enforces UUIDv7 table identities; UUIDv4 is reserved for idempotency, assertion, and lease nonces. | UUIDv7 reveals approximate creation time, and the rolling compatibility graph must remain synchronized until its later contract migration. |
+| AD-16 | PostgreSQL 18 generates and enforces UUIDv7 table identities; UUIDv4 is reserved for idempotency, assertion, and lease nonces. Non-derivable pre-UUID values are isolated in a restricted append-only archive. | UUIDv7 reveals approximate creation time; archive access, capacity, retention, and erasure require deployment policy. |
 
 ## Pending non-code and deployment decisions
 

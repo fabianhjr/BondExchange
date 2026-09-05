@@ -607,8 +607,8 @@ func TestLoadEventRejectsUnsupportedVersionAndMissingReference(t *testing.T) {
 		t.Fatal("missing event reference loaded")
 	}
 	if _, err := pool.Exec(context.Background(), `
-		INSERT INTO bond_exchange.integration_events (table_name, id, source_uuid, schema_version, completed_at)
-		VALUES ('sale_offers', $1, $2, 1, transaction_timestamp())`, uniqueID(t, "missing-source"), missingSource); err != nil {
+		INSERT INTO bond_exchange.integration_events (table_name, source_uuid, schema_version, completed_at)
+		VALUES ('sale_offers', $1, 1, transaction_timestamp())`, missingSource); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.LoadEvent(context.Background(), eventing.SourceRef{
@@ -937,6 +937,71 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 		if !found {
 			t.Errorf("table %q has no reviewed UUID primary key", table)
 		}
+	}
+}
+
+func TestLegacyIdentifierGraphIsContracted(t *testing.T) {
+	pool := openTestPool(t)
+	ctx := context.Background()
+
+	var forbiddenColumns int
+	if err := pool.QueryRow(ctx, `
+WITH forbidden(table_name, column_name) AS (VALUES
+  ('users', 'id'),
+  ('sale_offers', 'id'), ('sale_offers', 'seller_id'), ('sale_offers', 'bond_series'),
+  ('purchases', 'sale_offer_id'), ('purchases', 'buyer_id'),
+  ('principals', 'id'),
+  ('principal_suspensions', 'id'), ('principal_suspensions', 'principal_id'), ('principal_suspensions', 'suspended_by'),
+  ('principal_reinstatements', 'id'), ('principal_reinstatements', 'suspension_id'), ('principal_reinstatements', 'reinstated_by'),
+  ('role_permission_grants', 'id'), ('role_permission_grants', 'role_id'), ('role_permission_grants', 'permission_id'), ('role_permission_grants', 'granted_by'),
+  ('role_permission_revocations', 'id'), ('role_permission_revocations', 'grant_id'), ('role_permission_revocations', 'revoked_by'),
+  ('principal_role_grants', 'id'), ('principal_role_grants', 'principal_id'), ('principal_role_grants', 'role_id'), ('principal_role_grants', 'granted_by'),
+  ('principal_role_revocations', 'id'), ('principal_role_revocations', 'grant_id'), ('principal_role_revocations', 'revoked_by'),
+  ('operation_claims', 'id'), ('operation_claims', 'principal_id'), ('operation_claims', 'idempotency_key'),
+  ('operation_results', 'claim_id'), ('operation_results', 'resource_id'),
+  ('integration_events', 'id'),
+  ('integration_event_deliveries', 'table_name'), ('integration_event_deliveries', 'id'), ('integration_event_deliveries', 'lease_token'),
+  ('sie_exchange_rate_imports', 'id'),
+  ('sie_exchange_rate_observations', 'id'), ('sie_exchange_rate_observations', 'import_id'),
+  ('sie_exchange_rate_fetch_coordination', 'lease_token')
+)
+SELECT count(*)
+FROM information_schema.columns AS column_info
+JOIN forbidden USING (table_name, column_name)
+WHERE column_info.table_schema = 'bond_exchange'`).Scan(&forbiddenColumns); err != nil {
+		t.Fatal(err)
+	}
+	if forbiddenColumns != 0 {
+		t.Fatalf("contracted schema retains %d forbidden columns", forbiddenColumns)
+	}
+
+	var compatibilityTriggers, compatibilityFunctions int
+	if err := pool.QueryRow(ctx, `
+SELECT
+  (SELECT count(*) FROM information_schema.triggers
+   WHERE trigger_schema = 'bond_exchange' AND trigger_name LIKE '%sync%'),
+  (SELECT count(*) FROM information_schema.routines
+   WHERE routine_schema = 'bond_exchange' AND routine_name LIKE 'sync_%')`).Scan(
+		&compatibilityTriggers,
+		&compatibilityFunctions,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if compatibilityTriggers != 0 || compatibilityFunctions != 0 {
+		t.Fatalf("compatibility machinery remains: %d triggers, %d functions", compatibilityTriggers, compatibilityFunctions)
+	}
+
+	var canonicalViews, transitionalViews int
+	if err := pool.QueryRow(ctx, `
+SELECT
+  count(*) FILTER (WHERE table_name IN ('active_offers', 'effective_principal_permissions', 'current_sie_exchange_rates')),
+  count(*) FILTER (WHERE table_name IN ('active_offers_v2', 'effective_principal_permissions_v2', 'current_sie_exchange_rates_v2'))
+FROM information_schema.views
+WHERE table_schema = 'bond_exchange'`).Scan(&canonicalViews, &transitionalViews); err != nil {
+		t.Fatal(err)
+	}
+	if canonicalViews != 3 || transitionalViews != 3 {
+		t.Fatalf("view transition = %d canonical, %d transitional; want 3 each", canonicalViews, transitionalViews)
 	}
 }
 

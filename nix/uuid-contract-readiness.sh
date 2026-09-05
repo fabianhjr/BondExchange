@@ -10,6 +10,10 @@ psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 <<'SQL'
 DO $$
 DECLARE
   drift_count bigint;
+  historical_nonce_count bigint;
+  user_alias_count bigint;
+  offer_alias_count bigint;
+  import_sequence_count bigint;
 BEGIN
   IF current_setting('server_version_num')::integer NOT BETWEEN 180000 AND 189999 THEN
     RAISE EXCEPTION 'UUID contraction requires PostgreSQL 18';
@@ -185,15 +189,16 @@ BEGIN
   IF drift_count <> 0 THEN
     RAISE EXCEPTION 'UUID contraction requires a quiescent lease window; % active leases remain', drift_count;
   END IF;
+
+  SELECT count(*) INTO historical_nonce_count
+  FROM bond_exchange.operation_claims WHERE idempotency_nonce IS NULL;
+  SELECT count(*) INTO user_alias_count FROM bond_exchange.users;
+  SELECT count(*) INTO offer_alias_count FROM bond_exchange.sale_offers;
+  SELECT count(*) INTO import_sequence_count FROM bond_exchange.sie_exchange_rate_imports;
+  RAISE NOTICE 'archive candidates: % non-UUID nonces, % users, % offers, % import sequences',
+    historical_nonce_count, user_alias_count, offer_alias_count, import_sequence_count;
 END;
 $$;
-
-SELECT
-  (SELECT count(*) FROM bond_exchange.operation_claims WHERE idempotency_nonce IS NULL)
-    AS historical_non_uuid_idempotency_keys,
-  (SELECT count(*) FROM bond_exchange.users) AS user_aliases_to_archive,
-  (SELECT count(*) FROM bond_exchange.sale_offers) AS offer_aliases_to_archive,
-  (SELECT count(*) FROM bond_exchange.sie_exchange_rate_imports) AS import_sequences_to_archive;
 SQL
 
 echo "UUID contraction data checks passed."

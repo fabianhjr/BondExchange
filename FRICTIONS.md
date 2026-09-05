@@ -72,25 +72,20 @@ accept or do not cover.
   including a safe plan for pre-existing nonconforming facts and retirement of
   the legacy aliases after the compatibility period.
 
-### F-018 — The UUID migration retains a dual identifier graph (P2)
+### F-018 — UUID-backed versioned view aliases remain after graph contraction (P2)
 
-- **Evidence:** The PostgreSQL 18 migration makes UUIDv7 columns primary and
-  current foreign keys authoritative, but deliberately retains every legacy
-  key and relationship as a unique compatibility graph. Insert triggers and
-  versioned views keep old and current application versions writable during a
-  rolling transition. Historical non-UUID nonce values have a null UUID
-  counterpart.
-  The archive expansion now preserves non-derivable aliases and historical
-  non-UUID idempotency values outside the eventual operational graph, but the
-  live compatibility structures have not yet been contracted.
-- **Impact:** The temporary graph consumes storage and index/write work, makes
-  sanctioned direct SQL more complex, and could drift if a future writer or
-  migration bypasses the synchronization triggers. Leaving it indefinitely
-  would preserve ambiguity about which columns integrations should use.
-- **Complete when:** Inventory and retire all legacy application and direct-SQL
-  writers, verify zero identifier and relationship drift, rehearse rollback,
-  and apply a corrective-forward contract migration that removes redundant
-  aliases, legacy views, constraints, and triggers without losing facts.
+- **Evidence:** The corrective-forward contract migration removes redundant
+  operational aliases, relationship columns, constraints, indexes, and sync
+  triggers after preserving non-derivable values in the immutable archive.
+  The UUID-backed `active_offers_v2`, `effective_principal_permissions_v2`, and
+  `current_sie_exchange_rates_v2` views remain for the application deployment
+  boundary alongside their canonical replacements.
+- **Impact:** There is no remaining dual relationship graph or write overhead,
+  but integrations could continue adopting the transitional view names if the
+  aliases remain indefinitely.
+- **Complete when:** The application uses the canonical views, all prior UUID
+  application instances are retired, and a final forward migration removes the
+  three `_v2` aliases.
 
 ### F-005 — Append-only and event-delivery data has no lifecycle policy (P1)
 

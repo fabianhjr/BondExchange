@@ -164,8 +164,8 @@ production-readiness decision.
   SQL, while several database constraints are looser than service validation.
 - **Current controls and detection:** Go validates API inputs, foreign keys and
   PostgreSQL UUID-version checks reject invalid current identifiers and nonces,
-  and append-only triggers prevent silent rewriting. Legacy text aliases and
-  currency constraints remain looser, there is no supported provisioning path
+  and append-only triggers prevent silent rewriting. Operational legacy aliases
+  have been contracted, but currency constraints remain looser and there is no supported provisioning path
   or complete storage-level constraint equivalence, and no pre-insert detection
   for privileged SQL.
 - **Action:** Define and test a supported administration workflow and add a
@@ -395,21 +395,23 @@ production-readiness decision.
   required privileges or columns without expansion, unsafe backfill, or use of
   a destructive down migration. The PostgreSQL 18 UUID transition additionally
   depends on a correctly sequenced major-version upgrade and a synchronized
-  legacy/UUID relationship graph during its compatibility period.
+  legacy/UUID relationship graph during its compatibility period and then on a
+  complete immutable archive before contraction.
 - **Current controls and detection:** Repository guidance requires timestamped
   dbmate migrations, lossless backward-compatible expand/backfill/contract
   changes, corrective roll-forward, and separately owned migrations. Fresh
   isolated PostgreSQL 18 database and lifecycle checks exercise the full
   history; schema tests verify the server major version and all 21 UUID primary
-  keys, while compatibility triggers preserve prior-writer inserts and
-  append-only triggers prevent ordinary fact mutation. These checks do not
+  keys. A dedicated historical-data fixture verifies archival before the
+  contract migration; schema tests reject reviewed legacy columns and sync
+  machinery, while append-only triggers prevent ordinary fact mutation. These checks do not
   simulate every production dataset, PostgreSQL major upgrade, direct writer,
   or mixed-version rollout.
 - **Action:** Preserve the guardrails; for every schema change, test the prior
   application against the expanded schema and representative existing data,
-  document rollout/rollback-forward steps, verify compatibility-graph drift,
-  and require PostgreSQL upgrade plus backup/restore evidence before production
-  execution.
+  document rollout/rollback-forward steps, verify archive coverage and a
+  quiescent lease window, and require PostgreSQL upgrade plus backup/restore
+  evidence before production execution.
 - **Traceability:** [ADR-0004](adr/0004-use-dbmate-for-database-migrations.md),
   [ADR-0017](adr/0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md),
   [F-018](../FRICTIONS.md#f-018--the-uuid-migration-retains-a-dual-identifier-graph-p2),
