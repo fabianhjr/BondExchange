@@ -36,3 +36,5 @@ Alternatives considered sections.
 - [ADR-0018: Contract the legacy identifier graph](0018-contract-the-legacy-identifier-graph.md)
 - [ADR-0019: Canonicalize sale offers to MXN at intake](0019-canonicalize-sale-offers-to-mxn-at-intake.md)
 - [ADR-0020: Keep the local test gate and continuous integration equivalent](0020-keep-local-and-ci-gates-equivalent.md)
+- [ADR-0021: Schedule security scanning and name a response owner](0021-schedule-security-scanning-and-name-a-response-owner.md)
+- [ADR-0022: Verify documentation against pinned sources](0022-verify-documentation-against-pinned-sources.md)

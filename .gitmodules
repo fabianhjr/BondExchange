@@ -1,0 +1,4 @@
+[submodule "asvs"]
+	path = third_party/asvs
+	url = https://github.com/OWASP/ASVS.git
+	shallow = true

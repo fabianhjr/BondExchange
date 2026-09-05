@@ -59,7 +59,7 @@ production-readiness decision.
 | FM-011 | An integration event is delivered more than once and applied twice. | 7 | 4 | 8 | 224 | High | Integration/consumer | Open external control |
 | FM-012 | A stale, future, over-age, corrected, or incorrectly directed FIX rate becomes accepted offer terms. | 9 | 2 | 3 | 54 | Monitored; severity review | Rates/intake | Controlled |
 | FM-013 | The reusable Banxico SIE token is disclosed. | 8 | 3 | 6 | 144 | Medium | Platform/security | Deployment action open |
-| FM-014 | A high-impact defect or vulnerability remains undetected. | 9 | 5 | 8 | 360 | High | Engineering/security | Open |
+| FM-014 | A high-impact defect or vulnerability remains undetected. | 9 | 5 | 6 | 270 | High | Engineering/security | Open |
 | FM-015 | Dependency failure is misclassified as process failure, causing restart churn. | 7 | 5 | 4 | 140 | Medium | Platform/operations | Open |
 | FM-016 | A migration loses facts or breaks the previously deployed application. | 10 | 2 | 4 | 80 | Monitored; severity review | Data/release | Controlled by workflow |
 | FM-017 | SIE or its cache is unavailable when a seller requests a USD quote. | 5 | 5 | 3 | 75 | Monitored | Rates/operations | Controlled degradation |
@@ -361,9 +361,10 @@ production-readiness decision.
   branch or remains present after a dependency vulnerability is disclosed.
 - **Effects:** Any domain, confidentiality, integrity, or availability failure
   can persist without a bounded discovery or remediation start time.
-- **Causes:** Security scanning is change-triggered rather than scheduled; a raw
-  Go test invocation can skip PostgreSQL; server composition has limited direct
-  failure-path tests; and current coverage metrics exclude `application/cmd/`.
+- **Causes:** A raw Go test invocation can skip PostgreSQL; server composition
+  has limited direct failure-path tests; and current coverage metrics exclude
+  `application/cmd/`. Scheduled scanning now bounds disclosure-to-confirmation
+  time, but a scan cannot detect a defect class it does not analyze.
 - **Current controls and detection:** `devenv test` composes formatting, static
   analysis, API generation checks, migration, archival and lifecycle checks,
   demo smoke, readable full-server REST scenarios, a generated load check, race
@@ -374,19 +375,26 @@ production-readiness decision.
   to the test entry point without joining an aggregate, so a gate cannot run
   locally while being absent from CI. The PostgreSQL integration tests fail
   rather than skip when `CI` is set, and `security:check` refuses to run outside
-  the migrated-database harness. Governance, FMEA, and integration test paths
-  trigger the workflow, but no idle-repository vulnerability cadence or complete
-  composition coverage exists.
-- **Action:** Schedule owned security scans and test server configuration,
-  partial startup, and forced shutdown. Keep remediation evidence and alert
-  ownership. Scores are unchanged: the vacuous-gate cause is now controlled, but
-  detection remains bounded by the absent scan cadence
-  ([F-012](../FRICTIONS.md#f-012--security-checks-are-change-triggered-rather-than-continuous-p2))
-  and by composition coverage
+  the migrated-database harness. A scheduled workflow runs `security:check`
+  daily and on demand, retains the module inventory for 90 days, and opens or
+  updates a tracking issue on failure, so confirmation of a disclosed Go
+  dependency vulnerability is bounded to one day rather than to the next
+  matching change. `docs:check` verifies that documentation links, anchors,
+  indexes, and register identifiers still resolve, and the ASVS profile is
+  compared against its pinned upstream source, so security evidence cannot decay
+  silently. Composition coverage remains incomplete.
+- **Action:** Test server configuration, partial startup, and forced shutdown,
+  and keep remediation evidence with the response ownership recorded in
+  `SECURITY.md` and `.github/CODEOWNERS`. Detection improves from 8 to 6 on the
+  implemented scan cadence and reporting path; severity and occurrence are
+  unchanged because scanning cannot find a defect class it does not analyze and
+  composition failure paths remain untested
   ([F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3)).
-- **Traceability:** [F-012](../FRICTIONS.md#f-012--security-checks-are-change-triggered-rather-than-continuous-p2),
-  [F-015](../FRICTIONS.md#f-015--the-default-contributor-path-can-silently-reduce-test-coverage-p3),
-  and [F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3).
+  Re-score again once the schedule has operational history, and note that
+  GitHub suspends scheduled workflows in an idle repository.
+- **Traceability:** [F-015](../FRICTIONS.md#f-015--the-default-contributor-path-can-silently-reduce-test-coverage-p3),
+  [F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3),
+  and [ADR-0021](adr/0021-schedule-security-scanning-and-name-a-response-owner.md).
 
 ### FM-015 — Dependency failure causes restart churn
 

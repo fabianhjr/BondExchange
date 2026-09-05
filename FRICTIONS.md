@@ -177,32 +177,6 @@ accept or do not cover.
 
 ## Verification and contributor workflow
 
-### F-012 — Security checks are change-triggered rather than continuous (P2)
-
-- **Evidence:** `govulncheck` runs in the Go quality workflow only for manual
-  dispatches and pushes or pull requests matching its path filters. There is no
-  scheduled scan, so a newly disclosed vulnerability can remain unseen while
-  the repository is idle.
-- **Impact:** The remediation windows in the security profile start at
-  confirmation, but confirmation itself has no bounded cadence.
-- **Complete when:** A scheduled dependency/security job runs at a documented
-  cadence, reports failures to an owner, and retains or publishes the evidence
-  needed by the response policy.
-
-### F-014 — The ASVS assessment input is not reproducible from the repository (P2)
-
-- **Evidence:** The security profile records an absolute path under one
-  contributor's `Downloads` directory and a source checksum. The repository
-  does not contain or fetch that source, and `asvs-profile-check.sh` verifies
-  row shape, count, dispositions, and evidence-path existence but not the
-  recorded source checksum or requirement text.
-- **Impact:** Another contributor can validate the derived TSV structurally but
-  cannot independently regenerate it or prove that its IDs and text match the
-  claimed ASVS release.
-- **Complete when:** A license-compliant, content-addressed retrieval or
-  regeneration procedure is documented and automated, and CI verifies the
-  checked-in profile against that pinned input.
-
 ### F-015 — The default contributor path can silently reduce test coverage (P3)
 
 - **Evidence:** A raw `go test ./...` from `application/` still skips PostgreSQL
@@ -249,3 +223,35 @@ accept or do not cover.
   payload approval, consumer deduplication, backlog monitoring, and tested
   recovery runbook are deployed, or an ADR deliberately accepts database-only
   event retention and removes the outbound-delivery claim.
+
+### F-018 — Verifying the ASVS baseline requires a large upstream checkout (P3)
+
+- **Evidence:** [`docs/security/ASVS.md`](docs/security/ASVS.md) is verified
+  against the `third_party/asvs` submodule, pinned to OWASP/ASVS
+  `v5.0.0_release`. Only `5.0/en` is read, but the checkout is roughly 160 MB
+  because the upstream repository retains every prior standard version and its
+  images. `.gitmodules` marks the submodule shallow, which bounds history but
+  not working-tree size. `security:check`, and therefore `devenv test` and the
+  Go quality workflow, fail without it.
+- **Impact:** Cloning, continuous integration, and a first `devenv test` each
+  pay for content the assessment never reads, and a contributor who skips
+  `git submodule update --init` sees a failing gate before writing any code.
+- **Complete when:** The pinned requirement text is obtained without the
+  unrelated history — through submodule sparse-checkout, an upstream
+  machine-readable requirement artifact, or a reviewed vendored extract with an
+  automated provenance check — or the cost is measured and accepted in an ADR.
+
+### F-019 — The repository has no license (P2)
+
+- **Evidence:** There is no `LICENSE` file at the repository root and no
+  copyright statement in the READMEs, so the default is exclusive copyright.
+  The repository now also references OWASP ASVS, which upstream licenses under
+  Creative Commons Attribution-ShareAlike 4.0 International, as a submodule.
+- **Impact:** No one can reuse, fork, or contribute to this repository with
+  legal confidence, and the relationship between this work and the terms of the
+  referenced standard is unstated. [`SECURITY.md`](SECURITY.md) and
+  [`.github/CODEOWNERS`](.github/CODEOWNERS) name a responsible maintainer but
+  cannot supply terms of use.
+- **Complete when:** The owner selects a license, adds it at the repository
+  root, states how it relates to the separately licensed ASVS source, and
+  records the choice where contributors will find it.
