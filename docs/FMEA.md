@@ -182,7 +182,8 @@ production-readiness decision.
 - **Effects:** Mutations fail, reads and recovery slow down, audit availability
   is lost, and legal retention or erasure obligations cannot be demonstrated.
 - **Causes:** The repository defines no capacity, retention, partitioning,
-  archival, protected-backup, or erasure policy.
+  protected-backup, or erasure policy. The restricted legacy-identifier
+  archive preserves migration evidence but is not a lifecycle policy.
 - **Current controls and detection:** Purpose-built indexes exist for current
   queries and the schema preserves provenance. No repository-owned capacity
   thresholds, alerts, or lifecycle mechanism detect or prevent exhaustion.

@@ -27,6 +27,12 @@ adapter uses only the UUID relationship graph. A later contract migration may
 remove compatibility structures only after old writers are retired and drift
 checks pass.
 
+Non-derivable values needed for audit and reconciliation are copied into the
+append-only `legacy_identifier_archive` before contraction. It is keyed by
+UUIDv7 and maps an entity UUID to its historical caller-selected identifier,
+pre-UUID idempotency value, or SIE import sequence. It is not a supported
+runtime alias lookup and receives no mutable application access.
+
 The `bond_exchange.monetary_amount` domain is based on PostgreSQL
 `numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
 positive value of `9999999999.9999`. Its constraint excludes NaN and infinite

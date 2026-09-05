@@ -891,7 +891,8 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 
 	expected := map[string]bool{
 		"bonds": false, "integration_event_deliveries": false, "integration_events": false,
-		"operation_claims": false, "operation_results": false, "permissions": false,
+		"legacy_identifier_archive": false,
+		"operation_claims":          false, "operation_results": false, "permissions": false,
 		"principal_reinstatements": false, "principal_role_grants": false,
 		"principal_role_revocations": false, "principal_suspensions": false,
 		"principals": false, "purchases": false, "role_permission_grants": false,

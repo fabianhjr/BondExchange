@@ -80,6 +80,9 @@ accept or do not cover.
   versioned views keep old and current application versions writable during a
   rolling transition. Historical non-UUID nonce values have a null UUID
   counterpart.
+  The archive expansion now preserves non-derivable aliases and historical
+  non-UUID idempotency values outside the eventual operational graph, but the
+  live compatibility structures have not yet been contracted.
 - **Impact:** The temporary graph consumes storage and index/write work, makes
   sanctioned direct SQL more complex, and could drift if a future writer or
   migration bypasses the synchronization triggers. Leaving it indefinitely
