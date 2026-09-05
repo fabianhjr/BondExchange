@@ -34,3 +34,4 @@ Alternatives considered sections.
 - [ADR-0016: Use readable HTTP scenarios and generated load targets](0016-use-readable-http-scenarios-and-generated-load.md)
 - [ADR-0017: Use PostgreSQL 18, UUIDv7 identities, and UUIDv4 nonces](0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md)
 - [ADR-0018: Contract the legacy identifier graph](0018-contract-the-legacy-identifier-graph.md)
+- [ADR-0020: Keep the local test gate and continuous integration equivalent](0020-keep-local-and-ci-gates-equivalent.md)

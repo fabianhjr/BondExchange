@@ -222,6 +222,7 @@ Run focused checks with devenv tasks:
 devenv tasks run api:check
 devenv tasks run spec:check
 devenv tasks run db:migrate
+devenv tasks run db:uuid-contract-history
 devenv tasks run postgres:lifecycle-check
 devenv tasks run demo:smoke
 devenv tasks run integration:test
@@ -287,14 +288,22 @@ private Unix socket and removes it on success, failure, or interruption. This
 makes repeated and parallel task invocations independent and avoids requiring a
 manually managed database. A raw `go test` from `application/` outside these
 tasks may skip the PostgreSQL integration package when
-`BOND_EXCHANGE_TEST_DATABASE_URL` is not set.
+`BOND_EXCHANGE_TEST_DATABASE_URL` is not set. Those tests fail instead of
+skipping whenever `CI` is set, so a quality gate cannot report success without
+having exercised persistence.
 
 Reports and the golangci-lint cache are written to `.artifacts/`. `devenv test`
 runs Nix and shell checks, Go formatting and static analysis, API artifact
-verification, PostgreSQL lifecycle and demo smoke checks, readable HTTP
-integration tests, a small generated load check, race-enabled tests, coverage,
-mutation testing, and the TLC model check.
-Coverage and mutation also run as separately visible CI gates.
+verification, migration archival, PostgreSQL lifecycle and demo smoke checks,
+readable HTTP integration tests, a small generated load check, race-enabled
+tests, coverage, mutation testing, and the TLC model check.
+
+`devenv test` reaches those gates through exactly two aggregate tasks:
+`dev:ci`, which runs everything except mutation testing, and `go:mutation`.
+Continuous integration runs the same two tasks as separately visible jobs, so
+the local and CI gates cover the same work. `dev:check` fails when any other
+task attaches itself to the test gate, because such a task would run locally
+and never run in CI.
 
 See the [formal model](spec/tla/README.md), [database design](db/README.md), and
 [architecture decisions](docs/adr/README.md) for the boundaries and rationale.

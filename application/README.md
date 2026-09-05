@@ -20,6 +20,13 @@ go test ./...
 go run ./cmd/server
 ```
 
+A bare `go test` is convenient while iterating, but it skips the PostgreSQL
+integration tests in `internal/postgres` unless
+`BOND_EXCHANGE_TEST_DATABASE_URL` points at a migrated database. Use
+`devenv tasks run go:test` from the repository root to provision that database
+automatically. The skip becomes a failure whenever `CI` is set, so an automated
+gate cannot pass without persistence coverage.
+
 Prefer the repository-root devenv tasks for complete checks because they also
 provision PostgreSQL, validate generated artifacts, and run the other project
 quality gates. Generated bindings must be changed through the root

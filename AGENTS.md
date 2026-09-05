@@ -92,6 +92,13 @@
 - Use devenv tasks for project commands. Run focused checks while iterating and
   `devenv test` before handing off cross-cutting changes; do not weaken quality
   gates without documenting the decision.
+- Attach a new quality gate to the `dev:ci` or `go:mutation` aggregate, never
+  directly to `devenv:enterTest`. Continuous integration runs those two
+  aggregates, so a directly attached task would run locally and never on the
+  shared branch. `dev:check` enforces this.
+- Make a gate fail when a dependency it needs is missing. A task that skips its
+  own subject and reports success is worse than an absent task, because the
+  documentation will credit it as evidence.
 
 ## Project map
 

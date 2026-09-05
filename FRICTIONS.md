@@ -186,13 +186,15 @@ accept or do not cover.
 
 ### F-015 — The default contributor path can silently reduce test coverage (P3)
 
-- **Evidence:** A raw `go test ./...` from `application/` skips PostgreSQL
-  integration tests when `BOND_EXCHANGE_TEST_DATABASE_URL` is absent. The
-  recommended devenv tasks fix this, but the README bootstrap installs an
-  unpinned `nixpkgs#devenv` CLI before the repository's lock and task graph take
-  effect.
-- **Impact:** Familiar Go commands can look green without persistence coverage,
-  and onboarding can change when the external devenv package advances.
+- **Evidence:** A raw `go test ./...` from `application/` still skips PostgreSQL
+  integration tests when `BOND_EXCHANGE_TEST_DATABASE_URL` is absent, though the
+  skip now names the task that provisions the database and becomes a failure
+  when `CI` is set. Both scoped READMEs carry the caveat. The README bootstrap
+  still installs an unpinned `nixpkgs#devenv` CLI before the repository's lock
+  and task graph take effect.
+- **Impact:** Familiar Go commands can still look green without persistence
+  coverage on a contributor's machine, and onboarding can change when the
+  external devenv package advances. Automated gates are no longer affected.
 - **Complete when:** The ordinary contributor command fails loudly or always
   provisions required integration dependencies, and the bootstrap toolchain is
   pinned or has an explicitly tested compatibility range.

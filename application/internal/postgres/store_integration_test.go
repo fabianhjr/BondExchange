@@ -38,7 +38,10 @@ func (scan rowScannerFunc) Scan(destinations ...any) error {
 	return scan(destinations...)
 }
 
-const testDatabaseEnvironment = "BOND_EXCHANGE_TEST_DATABASE_URL"
+const (
+	testDatabaseEnvironment          = "BOND_EXCHANGE_TEST_DATABASE_URL"
+	continuousIntegrationEnvironment = "CI"
+)
 
 func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 	pool := openTestPool(t)
@@ -1076,7 +1079,21 @@ func openTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := os.Getenv(testDatabaseEnvironment)
 	if databaseURL == "" {
-		t.Skipf("%s is not set", testDatabaseEnvironment)
+		// Skipping keeps a bare `go test ./...` usable while iterating, but a
+		// quality gate that silently drops persistence coverage would report
+		// success without verifying anything. Fail loudly wherever the
+		// disposable PostgreSQL harness is expected to have run.
+		if os.Getenv(continuousIntegrationEnvironment) != "" {
+			t.Fatalf(
+				"%s is required when %s is set; run PostgreSQL tests through a devenv task",
+				testDatabaseEnvironment,
+				continuousIntegrationEnvironment,
+			)
+		}
+		t.Skipf(
+			"%s is not set; run `devenv tasks run go:test` to include PostgreSQL integration tests",
+			testDatabaseEnvironment,
+		)
 	}
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {

@@ -163,13 +163,19 @@ loopback by default:
 
 `devenv tasks run security:check` validates the complete profile, generates a
 Go module inventory, runs `govulncheck`, and exercises the security-focused Go
-tests. `integration:test` verifies a freshly signed idempotent retry and
+tests. It runs inside the disposable migrated-PostgreSQL harness and refuses to
+start without it, because the persistence tests it names would otherwise skip
+and report success without verifying authorization, idempotency, or schema
+constraints. `integration:test` verifies a freshly signed idempotent retry and
 response identity minimization through the complete REST server, while
 `integration:load-smoke` verifies authenticated status distributions under a
 small generated workload. The Go quality gate also runs pinned, curated source
 analysis including `gosec`, dangerous-Unicode checks, context propagation,
 error handling, and resource-lifecycle checks. These tasks are part of
-`devenv test` and the Go quality workflow. API generation, race tests,
+`devenv test` and the Go quality workflow, which run the same gates through the
+`dev:ci` and `go:mutation` aggregates; `dev:check` fails when a gate attaches
+itself to the test entry point without joining one, so security evidence cannot
+be produced locally while being absent from CI. API generation, race tests,
 PostgreSQL integration, coverage, mutation, and TLC checks remain independent
 evidence layers.
 
