@@ -47,10 +47,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  coverage:
-    name: Coverage (minimum 95%)
+  quality-gates:
+    name: Quality gates (excluding mutation)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -69,10 +69,14 @@ jobs:
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
 
-      - name: Check PostgreSQL lifecycle and demo
+      # `dev:ci` is the aggregate of every gate that `devenv test` runs except
+      # mutation testing, which the job below runs. `dev:check` fails when a
+      # task attaches itself to `devenv:enterTest` without joining an
+      # aggregate, so this workflow cannot silently diverge from `devenv test`.
+      - name: Run quality gates
         env:
           CI: "true"
-        run: devenv tasks run dev:smoke
+        run: devenv tasks run dev:ci
 
       - name: Upload integration load reports
         if: always()
@@ -81,16 +85,6 @@ jobs:
           name: integration-load-smoke
           path: .artifacts/integration-load/
           if-no-files-found: ignore
-
-      - name: Check ASVS profile and application security
-        env:
-          CI: "true"
-        run: devenv tasks run security:check
-
-      - name: Run coverage gate
-        env:
-          CI: "true"
-        run: devenv tasks run go:coverage
 
       - name: Upload coverage profile
         if: always()

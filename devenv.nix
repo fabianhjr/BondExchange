@@ -199,6 +199,28 @@ let
     text = builtins.readFile ./nix/asvs-profile-check.sh;
   };
 
+  securityCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-security-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.go
+      pkgs.govulncheck
+      pkgs.stdenv.cc
+      asvsProfileCheck
+    ];
+    text = builtins.readFile ./nix/security-check.sh;
+  };
+
+  taskGraphCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-task-graph-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.gnugrep
+    ];
+    text = builtins.readFile ./nix/task-graph-check.sh;
+  };
+
   uuidContractReadiness = pkgs.writeShellApplication {
     name = "bond-exchange-uuid-contract-readiness";
     runtimeInputs = [ pkgs.postgresql_18 ];
@@ -266,16 +288,15 @@ in
     description = "Verify lossless archival of representative pre-UUID values";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${uuidContractHistoryTest}/bin/bond-exchange-uuid-contract-history-test";
     after = [ "db:migrate" ];
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."dev:check" = {
-    description = "Check Nix formatting and lifecycle shell scripts";
+    description = "Check Nix formatting, lifecycle shell scripts, and task-graph parity";
     exec = ''
       nixfmt --check devenv.nix
       shellcheck nix/*.sh
+      ${taskGraphCheck}/bin/bond-exchange-task-graph-check
     '';
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."go:check" = {
@@ -334,7 +355,6 @@ in
         exit 1
       fi
     '';
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."go:test" = {
@@ -374,26 +394,18 @@ in
 
   tasks."security:check" = {
     description = "Validate ASVS evidence, inventory Go modules, and scan Go vulnerabilities";
-    exec = ''
-      mkdir -p .artifacts
-      ${asvsProfileCheck}/bin/bond-exchange-asvs-profile-check
-      (cd application && go list -m -json all) > .artifacts/go-modules.json
-      (cd application && govulncheck ./...)
-      (cd application && go test ./internal/authn ./internal/httpapi ./internal/postgres ./internal/rpcapi)
-    '';
+    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${securityCheck}/bin/bond-exchange-security-check";
     after = [
       "api:check"
       "db:migrate"
       "spec:check"
     ];
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."postgres:lifecycle-check" = {
     description = "Verify temporary PostgreSQL isolation and cleanup";
     exec = "${postgresLifecycleCheck}/bin/bond-exchange-postgres-lifecycle-check";
     after = [ "dev:check" ];
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."demo:smoke" = {
@@ -403,7 +415,6 @@ in
       "go:check"
       "postgres:lifecycle-check"
     ];
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."integration:test" = {
@@ -413,7 +424,6 @@ in
       "go:check"
       "postgres:lifecycle-check"
     ];
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."integration:load-smoke" = {
@@ -425,7 +435,6 @@ in
         ${integrationLoad}/bin/bond-exchange-integration-load
     '';
     after = [ "integration:test" ];
-    before = [ "devenv:enterTest" ];
   };
 
   tasks."integration:load" = {
@@ -444,6 +453,32 @@ in
     ];
   };
 
+  # `dev:ci` and `go:mutation` are the only tasks that attach to
+  # `devenv:enterTest`. Continuous integration runs them as separate jobs, so
+  # `devenv test` and the Go quality workflow cover the same gates by
+  # construction. `dev:check` fails when any other task attaches itself here.
+  tasks."dev:ci" = {
+    description = "Run every quality gate that devenv test runs except mutation testing";
+    exec = "true";
+    after = [
+      "api:check"
+      "db:migrate"
+      "db:uuid-contract-history"
+      "demo:smoke"
+      "dev:check"
+      "dev:smoke"
+      "go:check"
+      "go:coverage"
+      "go:test"
+      "integration:load-smoke"
+      "integration:test"
+      "postgres:lifecycle-check"
+      "security:check"
+      "spec:check"
+    ];
+    before = [ "devenv:enterTest" ];
+  };
+
   tasks."spec:check" = {
     description = "Model-check the Bond Exchange TLA+ specification with TLC";
     cwd = "./spec/tla";
@@ -455,6 +490,5 @@ in
         -config BondExchange.cfg \
         BondExchange.tla
     '';
-    before = [ "devenv:enterTest" ];
   };
 }

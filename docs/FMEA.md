@@ -350,19 +350,29 @@ production-readiness decision.
   branch or remains present after a dependency vulnerability is disclosed.
 - **Effects:** Any domain, confidentiality, integrity, or availability failure
   can persist without a bounded discovery or remediation start time.
-- **Causes:** Security scanning is change-triggered rather than scheduled; raw
-  Go tests can skip PostgreSQL; server composition has limited direct
+- **Causes:** Security scanning is change-triggered rather than scheduled; a raw
+  Go test invocation can skip PostgreSQL; server composition has limited direct
   failure-path tests; and current coverage metrics exclude `application/cmd/`.
 - **Current controls and detection:** `devenv test` composes formatting, static
-  analysis, API generation checks, migration and lifecycle checks, demo smoke,
-  readable full-server REST scenarios, a generated load check, race tests, at
-  least 95% internal-package statement coverage and mutation efficacy,
-  `govulncheck`, ASVS evidence checks, and TLC. Governance, FMEA, and integration
-  test paths trigger that workflow, but no idle-repository vulnerability cadence
-  or complete composition coverage exists.
-- **Action:** Schedule owned security scans, ensure the default test path cannot
-  silently skip integration coverage, and test server configuration, partial
-  startup, and forced shutdown. Keep remediation evidence and alert ownership.
+  analysis, API generation checks, migration, archival and lifecycle checks,
+  demo smoke, readable full-server REST scenarios, a generated load check, race
+  tests, at least 95% internal-package statement coverage and mutation efficacy,
+  `govulncheck`, ASVS evidence checks, and TLC. It reaches those gates only
+  through the `dev:ci` and `go:mutation` aggregates, which the Go quality
+  workflow runs as separate jobs; `dev:check` fails when a gate attaches itself
+  to the test entry point without joining an aggregate, so a gate cannot run
+  locally while being absent from CI. The PostgreSQL integration tests fail
+  rather than skip when `CI` is set, and `security:check` refuses to run outside
+  the migrated-database harness. Governance, FMEA, and integration test paths
+  trigger the workflow, but no idle-repository vulnerability cadence or complete
+  composition coverage exists.
+- **Action:** Schedule owned security scans and test server configuration,
+  partial startup, and forced shutdown. Keep remediation evidence and alert
+  ownership. Scores are unchanged: the vacuous-gate cause is now controlled, but
+  detection remains bounded by the absent scan cadence
+  ([F-012](../FRICTIONS.md#f-012--security-checks-are-change-triggered-rather-than-continuous-p2))
+  and by composition coverage
+  ([F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3)).
 - **Traceability:** [F-012](../FRICTIONS.md#f-012--security-checks-are-change-triggered-rather-than-continuous-p2),
   [F-015](../FRICTIONS.md#f-015--the-default-contributor-path-can-silently-reduce-test-coverage-p3),
   and [F-016](../FRICTIONS.md#f-016--server-composition-has-limited-direct-test-coverage-p3).
@@ -403,9 +413,10 @@ production-readiness decision.
   isolated PostgreSQL 18 database and lifecycle checks exercise the full
   history; schema tests verify the server major version and all 22 UUID primary
   keys. A dedicated historical-data fixture verifies archival before the
-  contract migration; schema tests reject reviewed legacy columns and sync
-  machinery and transitional views, while append-only triggers prevent
-  ordinary fact mutation. These checks do not
+  contract migration and now runs in continuous integration through the `dev:ci`
+  aggregate rather than only in the local test gate; schema tests reject
+  reviewed legacy columns and sync machinery and transitional views, while
+  append-only triggers prevent ordinary fact mutation. These checks do not
   simulate every production dataset, PostgreSQL major upgrade, direct writer,
   or mixed-version rollout.
 - **Action:** Preserve the guardrails; for every schema change, test the prior

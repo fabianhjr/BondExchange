@@ -177,6 +177,15 @@ Before removing the rolling-compatibility graph, run:
 devenv tasks run db:uuid-contract-readiness
 ```
 
+Lossless archival of the values that contraction removed is verified against a
+representative pre-UUID fixture by `db:uuid-contract-history`. That task is
+part of the `dev:ci` aggregate, so it runs in continuous integration and in
+`devenv test` rather than only on demand:
+
+```console
+devenv tasks run db:uuid-contract-history
+```
+
 Against production, run `bond-exchange-uuid-contract-readiness` with an
 explicit `DATABASE_URL` during a quiescent lease window. The gate rejects any
 text/UUID relationship drift or active event-delivery/SIE lease and reports
