@@ -19,7 +19,7 @@ FROM (VALUES
   ('01991a20-0000-7000-8000-000000000002'::uuid, 'operator', 'Disposable demo health access.')
 ) AS seed(principal_uuid, role_code, reason)
 JOIN bond_exchange.principals AS principal ON principal.uuid_id = seed.principal_uuid
-JOIN bond_exchange.roles AS role ON role.id = seed.role_code;
+JOIN bond_exchange.roles AS role ON role.code = seed.role_code;
 
 INSERT INTO bond_exchange.bonds (series, uuid_id)
 VALUES

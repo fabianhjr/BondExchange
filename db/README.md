@@ -23,6 +23,8 @@ non-derivable history is preserved by
 [`migrations/20260904150000_archive_legacy_identifiers.sql`](migrations/20260904150000_archive_legacy_identifiers.sql),
 and the operational legacy graph is removed by
 [`migrations/20260904160000_contract_legacy_identifier_graph.sql`](migrations/20260904160000_contract_legacy_identifier_graph.sql).
+Canonical view names and business-code column names are finalized by
+[`migrations/20260904170000_finalize_uuid_contract.sql`](migrations/20260904170000_finalize_uuid_contract.sql).
 
 PostgreSQL 18 is required. Every application table has a `uuid_id uuid`
 primary key generated with `uuidv7()` and constrained with
@@ -30,9 +32,8 @@ primary key generated with `uuidv7()` and constrained with
 attributes. The original rolling migration retained legacy keys, foreign keys,
 views, and synchronization triggers. The contract migration removes that live
 graph after verifying archive coverage and a quiescent lease window. The
-current Go adapter uses only UUID relationships. UUID-backed `_v2` views remain
-temporarily as application-release aliases; they do not expose the removed
-legacy graph.
+current Go adapter uses only UUID relationships and the canonical unversioned
+views. The transitional `_v2` aliases have been removed.
 
 Non-derivable values needed for audit and reconciliation are copied into the
 append-only `legacy_identifier_archive` before contraction. It is keyed by
@@ -58,10 +59,10 @@ come from different server instances. The losing requests are reported as an
 unavailable offer, while the original offer row remains as history.
 
 The current adapter reads the non-materialized
-`bond_exchange.active_offers_v2` view, which excludes every offer
+`bond_exchange.active_offers` view, which excludes every offer
 that has a matching purchase. The API requires a bond series and returns all
 active offers for it in ID order; the
-`sale_offers_bond_series_uuid_id_idx` index supports that lookup. A separate
+`sale_offers_bond_uuid_uuid_id_idx` index supports the relationship join. A separate
 distinct query derives the sorted list of bond series represented in the view.
 The unique offer constraint supports the anti-join and enforces single-sale
 concurrency. Purchase history by buyer is supported by
@@ -130,7 +131,7 @@ the response into exact positive PostgreSQL numeric values and explicit
 series/base/quote/date coordinates. The short importing transaction serializes
 each coordinate, makes a repeated current value a no-op, and appends any
 change—including a return to an older value—as a correction. The
-`current_sie_exchange_rates_v2` view returns a UUIDv7 revision ID but selects
+`current_sie_exchange_rates` view returns a UUIDv7 revision ID but selects
 the greatest preserved bigint revision sequence without removing earlier
 values; it does not rely on transaction-start
 timestamps to order concurrent imports.

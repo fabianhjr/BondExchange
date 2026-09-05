@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-09-04
 
+The transition described below is complete: the application uses the
+canonical views and the `_v2` aliases have been removed.
+
 ## Context
 
 ADR-0017 moved every application table to a UUIDv7 primary key and every

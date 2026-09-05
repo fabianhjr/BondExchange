@@ -665,7 +665,7 @@ func TestAppendOnlyRBACRevocationTakesEffect(t *testing.T) {
 		FROM bond_exchange.principal_role_grants AS principal_role_grant
 		JOIN bond_exchange.roles AS role
 		  ON role.uuid_id = principal_role_grant.role_uuid
-		WHERE principal_role_grant.principal_uuid = $1 AND role.id = 'trader'`, principal).Scan(&grantID); err != nil {
+		WHERE principal_role_grant.principal_uuid = $1 AND role.code = 'trader'`, principal).Scan(&grantID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
@@ -1000,8 +1000,20 @@ FROM information_schema.views
 WHERE table_schema = 'bond_exchange'`).Scan(&canonicalViews, &transitionalViews); err != nil {
 		t.Fatal(err)
 	}
-	if canonicalViews != 3 || transitionalViews != 3 {
-		t.Fatalf("view transition = %d canonical, %d transitional; want 3 each", canonicalViews, transitionalViews)
+	if canonicalViews != 3 || transitionalViews != 0 {
+		t.Fatalf("view contract = %d canonical, %d transitional; want 3 and 0", canonicalViews, transitionalViews)
+	}
+
+	var businessCodeColumns int
+	if err := pool.QueryRow(ctx, `
+SELECT count(*)
+FROM information_schema.columns
+WHERE table_schema = 'bond_exchange'
+  AND (table_name, column_name) IN (('roles', 'code'), ('permissions', 'code'))`).Scan(&businessCodeColumns); err != nil {
+		t.Fatal(err)
+	}
+	if businessCodeColumns != 2 {
+		t.Fatalf("business code columns = %d, want 2", businessCodeColumns)
 	}
 }
 
@@ -1090,7 +1102,7 @@ VALUES ($1, 'https://issuer.test', $2, 'automated')`, id, id); err != nil {
 	if _, err := pool.Exec(context.Background(), `
 INSERT INTO bond_exchange.principal_role_grants (principal_uuid, role_uuid, granted_by_uuid, reason)
 SELECT $1, uuid_id, $1, 'Integration test access.'
-FROM bond_exchange.roles WHERE id = 'trader'`, id); err != nil {
+FROM bond_exchange.roles WHERE code = 'trader'`, id); err != nil {
 		t.Fatalf("insert principal role grant: %v", err)
 	}
 	return id

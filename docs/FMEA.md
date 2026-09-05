@@ -401,10 +401,11 @@ production-readiness decision.
   dbmate migrations, lossless backward-compatible expand/backfill/contract
   changes, corrective roll-forward, and separately owned migrations. Fresh
   isolated PostgreSQL 18 database and lifecycle checks exercise the full
-  history; schema tests verify the server major version and all 21 UUID primary
+  history; schema tests verify the server major version and all 22 UUID primary
   keys. A dedicated historical-data fixture verifies archival before the
   contract migration; schema tests reject reviewed legacy columns and sync
-  machinery, while append-only triggers prevent ordinary fact mutation. These checks do not
+  machinery and transitional views, while append-only triggers prevent
+  ordinary fact mutation. These checks do not
   simulate every production dataset, PostgreSQL major upgrade, direct writer,
   or mixed-version rollout.
 - **Action:** Preserve the guardrails; for every schema change, test the prior
@@ -414,7 +415,7 @@ production-readiness decision.
   evidence before production execution.
 - **Traceability:** [ADR-0004](adr/0004-use-dbmate-for-database-migrations.md),
   [ADR-0017](adr/0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md),
-  [F-018](../FRICTIONS.md#f-018--the-uuid-migration-retains-a-dual-identifier-graph-p2),
+  [ADR-0018](adr/0018-contract-the-legacy-identifier-graph.md),
   [database migration policy](../db/README.md), and
   [repository guardrails](../AGENTS.md#architectural-guardrails).
 

@@ -59,9 +59,8 @@ accept or do not cover.
 ### F-004 — Database constraints are looser than domain validation (P1)
 
 - **Evidence:** Current primary keys are UUIDv7 and current mutation nonces are
-  UUIDv4 at both Go and PostgreSQL boundaries. The rolling-compatibility
-  columns still preserve the initial migration's loosely constrained text
-  aliases, and currency codes still need only be nonempty in PostgreSQL while
+  UUIDv4 at both Go and PostgreSQL boundaries. The legacy identifier graph has
+  been contracted, but currency codes still need only be nonempty in PostgreSQL while
   Go requires exactly three uppercase ASCII letters. This matters especially
   while F-003 requires direct SQL provisioning and the affected facts are
   append-only.
@@ -69,23 +68,7 @@ accept or do not cover.
   facts that the Go domain rejects or cannot reliably process.
 - **Complete when:** A backward-compatible forward migration makes storage
   constraints and every sanctioned writer agree with the documented domain,
-  including a safe plan for pre-existing nonconforming facts and retirement of
-  the legacy aliases after the compatibility period.
-
-### F-018 — UUID-backed versioned view aliases remain after graph contraction (P2)
-
-- **Evidence:** The corrective-forward contract migration removes redundant
-  operational aliases, relationship columns, constraints, indexes, and sync
-  triggers after preserving non-derivable values in the immutable archive.
-  The UUID-backed `active_offers_v2`, `effective_principal_permissions_v2`, and
-  `current_sie_exchange_rates_v2` views remain for the application deployment
-  boundary alongside their canonical replacements.
-- **Impact:** There is no remaining dual relationship graph or write overhead,
-  but integrations could continue adopting the transitional view names if the
-  aliases remain indefinitely.
-- **Complete when:** The application uses the canonical views, all prior UUID
-  application instances are retired, and a final forward migration removes the
-  three `_v2` aliases.
+  including a safe plan for pre-existing nonconforming facts.
 
 ### F-005 — Append-only and event-delivery data has no lifecycle policy (P1)
 

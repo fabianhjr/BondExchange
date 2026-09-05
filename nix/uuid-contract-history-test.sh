@@ -135,3 +135,37 @@ BEGIN
 END;
 $$;
 SQL
+
+ln -s \
+  "$project_root/db/migrations/20260904170000_finalize_uuid_contract.sql" \
+  "$migration_root/20260904170000_finalize_uuid_contract.sql"
+DATABASE_URL="$history_url" DBMATE_MIGRATIONS_DIR="$migration_root" dbmate up
+
+psql "$history_url" --no-psqlrc --set ON_ERROR_STOP=1 <<'SQL'
+DO $$
+DECLARE
+  transitional_view_count bigint;
+  code_column_count bigint;
+BEGIN
+  SELECT count(*) INTO transitional_view_count
+  FROM information_schema.views
+  WHERE table_schema = 'bond_exchange'
+    AND table_name IN (
+      'active_offers_v2',
+      'effective_principal_permissions_v2',
+      'current_sie_exchange_rates_v2'
+    );
+  IF transitional_view_count <> 0 THEN
+    RAISE EXCEPTION '% transitional views remain after finalization', transitional_view_count;
+  END IF;
+
+  SELECT count(*) INTO code_column_count
+  FROM information_schema.columns
+  WHERE table_schema = 'bond_exchange'
+    AND (table_name, column_name) IN (('roles', 'code'), ('permissions', 'code'));
+  IF code_column_count <> 2 THEN
+    RAISE EXCEPTION 'role and permission business-code columns were not finalized';
+  END IF;
+END;
+$$;
+SQL
