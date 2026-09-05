@@ -1,0 +1,29 @@
+# Code owners for the Bond Exchange repository.
+#
+# The failure mode and effects analysis requires a named accountable area for
+# every open action. This file names the accountable maintainer for review and
+# for the security response described in ../SECURITY.md. Assigning distinct
+# owners per area remains a prerequisite for any production-readiness decision
+# (see FM-008 and FM-014 in ../docs/FMEA.md).
+
+*                       @fabianhjr
+
+# Governance, risk, and security evidence.
+/AGENTS.md              @fabianhjr
+/FRICTIONS.md           @fabianhjr
+/SECURITY.md            @fabianhjr
+/docs/FMEA.md           @fabianhjr
+/docs/adr/              @fabianhjr
+/docs/security/         @fabianhjr
+
+# Verification workflow and quality gates.
+/.github/workflows/     @fabianhjr
+/devenv.nix             @fabianhjr
+/nix/                   @fabianhjr
+
+# Schema history is append-only and migrations are never rewritten.
+/db/migrations/         @fabianhjr
+
+# Domain behavior and its formal model change together.
+/application/internal/exchange/ @fabianhjr
+/spec/tla/              @fabianhjr

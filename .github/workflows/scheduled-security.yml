@@ -1,0 +1,87 @@
+name: Scheduled security scan
+
+# The Go quality workflow runs `security:check` only when a change touches one
+# of its path filters. A newly disclosed dependency vulnerability is not a
+# change to this repository, so without a cadence the remediation windows in
+# SECURITY.md would start at an unbounded time. This workflow bounds
+# confirmation to one day.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-security-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Dependency and ASVS evidence scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure devenv binary cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+
+      - name: Run security check
+        env:
+          CI: "true"
+        run: devenv tasks run security:check
+
+      - name: Upload module inventory
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-module-inventory
+          path: .artifacts/go-modules.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # The response policy needs an owned, durable signal rather than an email
+      # that a maintainer may not read. One tracking issue is reused so that a
+      # persistent failure does not create a new issue every day.
+      - name: Report failure to the maintainer
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: Scheduled security scan failed
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="The scheduled security scan failed on $(date -u +%Y-%m-%d).
+
+          Run: $RUN_URL
+
+          Triage against the remediation targets in SECURITY.md. A govulncheck
+          finding starts its clock at this confirmation."
+          existing="$(
+            gh issue list --state open --search "$TITLE in:title" --json number,title \
+              --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty"
+          )"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi

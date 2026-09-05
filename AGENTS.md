@@ -35,6 +35,9 @@
   TLA+ specification, migrations, configuration, and CI. If an apparent
   friction is an intentional long-term constraint, document that decision in
   the appropriate durable document and adjust the register accordingly.
+- When removing a resolved entry, remove every reference to its identifier in
+  the same change. `docs:check` fails on a reference to an identifier that the
+  register no longer defines.
 
 ## Maintain the failure mode and effects analysis
 
@@ -99,12 +102,16 @@
 - Make a gate fail when a dependency it needs is missing. A task that skips its
   own subject and reports success is worse than an absent task, because the
   documentation will credit it as evidence.
+- Pin an external source that verification reads, and check the pin. External
+  standards and specifications belong in `third_party/` as submodules recorded
+  at a specific commit, never as a contributor-local path or an unreproducible
+  checksum.
 
 ## Project map
 
 | Area | Responsibility |
 | --- | --- |
-| Repository root | Project guidance, contributor documentation, and the devenv configuration. |
+| Repository root | Project guidance, contributor documentation, the security policy, and the devenv configuration. |
 | `api/` | Proto3 API source, generated Swagger contract, and versioned descriptor set. |
 | `application/` | Go module containing the stateless server, demo-only assertion issuer, generated Go transport bindings, domain logic, authentication, Banxico SIE exchange-rate ingestion and caching, integration-event delivery orchestration, REST/gRPC adapters, PostgreSQL adapter, and Go quality configuration. |
 | `db/` | Versioned database schema, disposable demo fixtures, and persistence documentation. |
@@ -114,4 +121,5 @@
 | `docs/adr/` | Architecture decision records and their index. |
 | `docs/security/` | ASVS application profile, requirement dispositions, and continuous-compliance evidence. |
 | `tests/integration/` | Executable REST interaction documentation and generated load-test scenarios. |
-| `.github/workflows/` | Continuous integration workflows. |
+| `third_party/` | Pinned upstream sources that verification reads but this repository does not own. |
+| `.github/` | Continuous integration workflows and the code-owner assignments. |

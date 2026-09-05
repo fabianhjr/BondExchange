@@ -1,15 +1,29 @@
 # ASVS 5.0.0 Level 3 application profile
 
 This repository targets the application-controlled portions of OWASP ASVS
-5.0.0 Level 3. The source baseline is the English release at
-`/home/fabian/Downloads/ASVS-5.0.0_release/5.0/en`; the ordered Markdown-source
-checksum used for this profile is
-`114f24ef5ddac9105fd72804ca2bf652152c8f5d22e770c1a92cc66453b0a518`.
-That local path is an assessment input, not a build dependency.
+5.0.0 Level 3. The assessment baseline is the upstream English source, pinned
+as the `third_party/asvs` submodule of
+[OWASP/ASVS](https://github.com/OWASP/ASVS) at tag `v5.0.0_release`, commit
+`5cf9b032440be53ce345ab3c130fda46ba1ce7a2`. The requirement text lives in
+`third_party/asvs/5.0/en` and is licensed by OWASP under Creative Commons
+Attribution-ShareAlike 4.0 International; this repository references it rather
+than copying it. Check it out with:
+
+```console
+git submodule update --init --depth 1 third_party/asvs
+```
+
+`devenv tasks run security:check` verifies that the submodule is present, that
+it is at the recorded commit, and that this document records the same baseline.
+Anyone with the repository can therefore reproduce the assessment input; no
+contributor-local path is involved. Moving to another ASVS release requires
+re-pinning the submodule and reviewing every disposition below.
 
 The requirement-level profile is
-[`asvs-5.0.0-l3.tsv`](asvs-5.0.0-l3.tsv). It contains all 345 requirements in
-the supplied release and one of these dispositions:
+[`asvs-5.0.0-l3.tsv`](asvs-5.0.0-l3.tsv). Its 345 requirement identifiers and
+levels are compared against the pinned source on every run of the security
+check, so the profile cannot silently drift from the standard it claims to
+cover. Each requirement carries one of these dispositions:
 
 - `verified`: application-owned behavior has implementation, test, or design
   evidence in this repository;

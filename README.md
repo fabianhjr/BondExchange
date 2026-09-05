@@ -14,6 +14,16 @@ nix profile add nixpkgs#devenv
 `devenv.lock` pins Go, PostgreSQL, dbmate, TLA+, golangci-lint, Gremlins, and
 the other development tools. They do not need to be installed globally.
 
+Clone with submodules, or initialize them afterwards:
+
+```console
+git clone --recurse-submodules https://github.com/fabianhjr/BondExchange.git
+git submodule update --init --depth 1 third_party/asvs
+```
+
+`third_party/asvs` pins the OWASP ASVS source that the security profile is
+verified against. `devenv test` and `security:check` fail without it.
+
 ## Architecture
 
 The Go module and its commands, internal packages, generated bindings, and Go
@@ -114,7 +124,7 @@ Available endpoints are:
 - `GET /active-offers?bond=BND2026`, which streams every active offer and a
   terminal count as `application/json-seq`;
 - `GET /active-bond-series`, which returns every bond series having an active
-  offer; and
+  offer;
 - `GET /healthz`; and
 - `POST /event-publications:publish-pending` with an optional
   `{"destination_id":"..."}`, which explicitly attempts pending integration
@@ -126,7 +136,7 @@ The matching native gRPC methods are:
 - `bondexchange.v1.BondExchangeService/Buy`;
 - `bondexchange.v1.BondExchangeService/CreateSaleOffer`;
 - `bondexchange.v1.BondExchangeService/ListActiveOffers`;
-- `bondexchange.v1.BondExchangeService/ListActiveBondSeries`; and
+- `bondexchange.v1.BondExchangeService/ListActiveBondSeries`;
 - `bondexchange.v1.BondExchangeService/CheckHealth`; and
 - `bondexchange.v1.BondExchangeService/PublishPendingEvents`.
 
@@ -220,6 +230,7 @@ Run focused checks with devenv tasks:
 
 ```console
 devenv tasks run api:check
+devenv tasks run docs:check
 devenv tasks run spec:check
 devenv tasks run db:migrate
 devenv tasks run db:uuid-contract-history
@@ -274,6 +285,13 @@ the generated Go, Swagger, or descriptor output was stale. Remote schema
 dependencies are content-addressed in `api/buf.lock`; update that lock intentionally with
 `devenv tasks run api:update-deps`.
 
+`docs:check` resolves every relative documentation link and heading anchor,
+requires each migration to appear in the database README and each architecture
+decision record to appear in its index, and rejects a reference to a friction
+or failure-mode identifier that its register does not define. `security:check`
+additionally verifies the ASVS profile against the pinned `third_party/asvs`
+source rather than against a contributor-local copy.
+
 `go:check` verifies `gofmt` and runs the pinned golangci-lint standard set plus
 the curated correctness, security, context, resource-lifecycle, logging, test,
 and dependency-direction checks in `application/.golangci.yml`. Suppressions
@@ -314,4 +332,6 @@ The [ASVS 5.0 Level 3 application profile](docs/security/ASVS.md) records
 requirement-level evidence and the deployment and identity controls that remain
 pending rather than assumed. The [repository friction register](FRICTIONS.md)
 collects verified product, implementation, operations, and contributor rough
-edges that remain unresolved.
+edges that remain unresolved. The [security policy](SECURITY.md) describes how
+to report a vulnerability, who responds, and the scheduled scan that bounds
+confirmation time.

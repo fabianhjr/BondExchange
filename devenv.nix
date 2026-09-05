@@ -199,6 +199,30 @@ let
     text = builtins.readFile ./nix/asvs-profile-check.sh;
   };
 
+  asvsSourceCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-asvs-source-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.diffutils
+      pkgs.gawk
+      pkgs.git
+      pkgs.gnugrep
+    ];
+    text = builtins.readFile ./nix/asvs-source-check.sh;
+  };
+
+  docsCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-docs-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.gawk
+      pkgs.gnugrep
+      pkgs.gnused
+    ];
+    text = builtins.readFile ./nix/docs-check.sh;
+  };
+
   securityCheck = pkgs.writeShellApplication {
     name = "bond-exchange-security-check";
     runtimeInputs = [
@@ -207,6 +231,7 @@ let
       pkgs.govulncheck
       pkgs.stdenv.cc
       asvsProfileCheck
+      asvsSourceCheck
     ];
     text = builtins.readFile ./nix/security-check.sh;
   };
@@ -297,6 +322,11 @@ in
       shellcheck nix/*.sh
       ${taskGraphCheck}/bin/bond-exchange-task-graph-check
     '';
+  };
+
+  tasks."docs:check" = {
+    description = "Verify documentation links, anchors, indexes, and register identifiers";
+    exec = "${docsCheck}/bin/bond-exchange-docs-check";
   };
 
   tasks."go:check" = {
@@ -467,6 +497,7 @@ in
       "demo:smoke"
       "dev:check"
       "dev:smoke"
+      "docs:check"
       "go:check"
       "go:coverage"
       "go:test"

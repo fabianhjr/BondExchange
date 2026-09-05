@@ -14,6 +14,7 @@ if [[ -z "${BOND_EXCHANGE_TEST_DATABASE_URL:-}" ]]; then
 fi
 
 mkdir -p .artifacts
+bond-exchange-asvs-source-check
 bond-exchange-asvs-profile-check
 (cd application && go list -m -json all) >.artifacts/go-modules.json
 (cd application && govulncheck ./...)

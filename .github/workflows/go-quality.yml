@@ -6,6 +6,7 @@ on:
       - ".github/workflows/go-quality.yml"
       - "AGENTS.md"
       - "FRICTIONS.md"
+      - "SECURITY.md"
       - "application/**"
       - "api/**"
       - "db/**"
@@ -18,6 +19,8 @@ on:
       - "devenv.nix"
       - "devenv.yaml"
       - "devenv.lock"
+      - ".gitmodules"
+      - "third_party/**"
   push:
     branches:
       - main
@@ -25,6 +28,7 @@ on:
       - ".github/workflows/go-quality.yml"
       - "AGENTS.md"
       - "FRICTIONS.md"
+      - "SECURITY.md"
       - "application/**"
       - "api/**"
       - "db/**"
@@ -37,6 +41,8 @@ on:
       - "devenv.nix"
       - "devenv.yaml"
       - "devenv.lock"
+      - ".gitmodules"
+      - "third_party/**"
   workflow_dispatch:
 
 permissions:
@@ -53,8 +59,12 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # `security:check` verifies the ASVS profile against the pinned upstream
+      # source in the third_party/asvs submodule.
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          submodules: true
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
