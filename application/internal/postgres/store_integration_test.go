@@ -109,7 +109,7 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bond_exchange.sale_offers WHERE uuid_id = $1`, offer).Scan(&offerCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bond_exchange.active_offers_v2 WHERE id = $1`, offer).Scan(&activeCount); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bond_exchange.active_offers WHERE id = $1`, offer).Scan(&activeCount); err != nil {
 		t.Fatal(err)
 	}
 	if purchaseCount != 1 || offerCount != 1 || activeCount != 0 {

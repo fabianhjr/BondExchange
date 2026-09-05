@@ -41,12 +41,12 @@ privileges required by the application. The schema also rejects updates,
 deletes, and truncation of domain-fact tables as defense in depth. Schema
 migrations and exceptional recovery use a separately controlled owner.
 
-Expose active offers through a non-materialized view (`active_offers_v2` in
-the UUID schema). It
+Expose active offers through the non-materialized UUID-backed `active_offers`
+view. It
 contains sale offers for which no purchase exists. The refinement mapping is:
 
 ```text
-TLA+ saleOffers = rows visible through active_offers_v2
+TLA+ saleOffers = rows visible through active_offers
 TLA+ purchases  = purchase facts joined to their immutable sale offers
 ```
 

@@ -76,13 +76,13 @@ JOIN bond_exchange.bonds AS bond ON bond.uuid_id = inserted_offer.bond_uuid`
 
 const activeOffersQuery = `
 SELECT id, seller_id, bond_series, price, currency_code
-FROM bond_exchange.active_offers_v2
+FROM bond_exchange.active_offers
 WHERE bond_series = $1
 ORDER BY id`
 
 const activeBondSeriesQuery = `
 SELECT DISTINCT bond_series
-FROM bond_exchange.active_offers_v2
+FROM bond_exchange.active_offers
 ORDER BY bond_series`
 
 type Store struct {
@@ -439,7 +439,7 @@ func authorize(ctx context.Context, tx pgx.Tx, access exchange.AccessContext, pe
 	err := tx.QueryRow(ctx, `
 SELECT EXISTS (
   SELECT 1
-  FROM bond_exchange.effective_principal_permissions_v2
+  FROM bond_exchange.effective_principal_permissions
   WHERE principal_id = $1 AND permission_code = $2
 )`, access.Principal.ID, permission).Scan(&allowed)
 	if err != nil {
@@ -684,9 +684,9 @@ func classifyCreateSaleOfferError(err error) error {
 	switch databaseError.ConstraintName {
 	case "sale_offers_pkey":
 		return exchange.ErrOfferAlreadyExists
-	case "sale_offers_seller_id_fkey", "sale_offers_seller_uuid_fkey":
+	case "sale_offers_seller_uuid_fkey":
 		return exchange.ErrSellerNotFound
-	case "sale_offers_bond_series_fkey", "sale_offers_bond_uuid_fkey":
+	case "sale_offers_bond_uuid_fkey":
 		return exchange.ErrBondNotFound
 	default:
 		return err

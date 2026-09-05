@@ -30,7 +30,7 @@ uses JSON Text Sequences and gRPC uses server streaming.
 
 Add `ListActiveBondSeries`, exposed as `GET /active-bond-series`, to return each
 bond series represented by at least one active offer exactly once and in
-lexicographic order. Derive both reads from the UUID-backed `active_offers_v2` view.
+lexicographic order. Derive both reads from the UUID-backed `active_offers` view.
 
 Add `CreateSaleOffer`, exposed as `POST /sale-offers`. A caller supplies the
 bond series, exact decimal price string, and currency code; the

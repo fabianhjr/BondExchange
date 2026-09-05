@@ -205,7 +205,7 @@ INSERT INTO bond_exchange.sie_exchange_rate_observations
 SELECT $1, $2, $3, $4, $5, $6::numeric
 WHERE NOT EXISTS (
   SELECT 1
-  FROM bond_exchange.current_sie_exchange_rates_v2
+  FROM bond_exchange.current_sie_exchange_rates
   WHERE series_id = $2
     AND base_currency = $3
     AND quote_currency = $4
@@ -288,7 +288,7 @@ func (store *Store) LatestObservations(
 	for _, item := range series {
 		observation, err := scanRate(store.pool.QueryRow(ctx, `
 SELECT series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
-FROM bond_exchange.current_sie_exchange_rates_v2
+FROM bond_exchange.current_sie_exchange_rates
 WHERE series_id = $1 AND base_currency = $2 AND quote_currency = $3
 ORDER BY observed_on DESC
 LIMIT 1`, item.ID, item.Base, item.Quote))
@@ -325,7 +325,7 @@ WITH requested AS (
     AS item(series_id, base_currency, quote_currency)
 )
 SELECT series_id, base_currency, quote_currency, observed_on, value::text, recorded_at
-FROM bond_exchange.current_sie_exchange_rates_v2 AS rate
+FROM bond_exchange.current_sie_exchange_rates AS rate
 JOIN requested AS item USING (series_id, base_currency, quote_currency)
 WHERE observed_on BETWEEN $4 AND $5
 ORDER BY series_id, observed_on`, seriesIDs, bases, quotes, from, to)
