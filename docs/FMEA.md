@@ -166,11 +166,18 @@ production-readiness decision.
   to take effect on the next claim, `EffectivePermissionsMatchAuthorizationFacts`
   cross-checks the view against the raw facts, and
   `EveryFactHasASucceededOperation` requires that no domain fact exists without
-  an authorized, idempotent operation.
+  an authorized, idempotent operation. The model covers mutations only: it
+  evaluates authorization in the same step that claims the scope, so it cannot
+  detect a check moved outside the mutation transaction, it represents no read
+  operation, and it produces only the `offer_unavailable` rejection. Those three
+  causes are detected by the Go and PostgreSQL tests alone
+  ([F-024](../FRICTIONS.md#f-024--the-model-omits-authorization-timing-reads-and-rejection-paths-p2)).
 - **Action:** Preserve these controls and add a negative test for every new
   operation or authentication input. Reassess deployment identity assurance,
   telemetry, and key lifecycle under FM-008 and FM-009. Scores are unchanged;
-  the model now supports the detection score of 3 that already credited it.
+  the detection score of 3 rests on the transaction-scoped RBAC check and the
+  negative tests, with the model contributing revocation semantics rather than
+  the timing of the check.
 - **Traceability:** [ADR-0009](adr/0009-bind-federated-authorization-to-idempotent-operations.md),
   [ADR-0027](adr/0027-model-contended-buying-and-revocable-authorization.md),
   and [ASVS security architecture](security/ASVS.md#security-architecture).
@@ -203,13 +210,18 @@ production-readiness decision.
   There is still no supported provisioning path and no pre-insert detection for
   privileged SQL, and the model constrains the application's own writers rather
   than an alternate one.
-- **Action:** Define and test a supported administration workflow, and decide
+  No constraint relates a principal to the user its facts are attributed to, so
+  provisioning can create a principal that authenticates and passes
+  authorization but cannot own an offer or a purchase.
+- **Action:** Define and test a supported administration workflow, decide
   whether the monetary representation should reject rather than round an
-  over-precise price. Occurrence drops from 6 to 4 and detection from 8 to 6 on
+  over-precise price, and state the principal-to-user relationship as an
+  enforced constraint. Occurrence drops from 6 to 4 and detection from 8 to 6 on
   the implemented constraints and the equivalence test; severity is unchanged
   because a nonconforming fact remains permanent.
 - **Traceability:** [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1),
   [F-004](../FRICTIONS.md#f-004--database-constraints-are-looser-than-domain-validation-p1),
+  [F-023](../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2),
   and [ADR-0023](adr/0023-align-storage-constraints-with-domain-validation.md).
 
 ### FM-006 — Storage or query exhaustion from retained history

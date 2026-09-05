@@ -52,10 +52,55 @@ service's derived active-offer read. Buying therefore never removes a record;
 it appends a purchase that removes the offer from the derived book.
 
 The only non-monotonic variable is `inFlightBuys`, which holds binding orders
-that have been claimed and not yet resolved.
+that have been claimed and not yet resolved. It represents a request in
+progress, not a persisted row: the service claims the scope, appends the
+purchase, and records the result inside one transaction, so a claim without a
+result is never committed.
 
 `EffectivePermissions` is likewise a view, written in the shape of the
 service's effective-permission join.
+
+### Refinement mapping
+
+A model name is not always the database object a reader would expect. The
+mapping is:
+
+| Model | Implementation |
+| --- | --- |
+| `publishedOffers` | `sale_offers` joined to `sale_offer_canonical_terms` |
+| `offer.price`, `offer.currency` | `sale_offer_canonical_terms.price` and `.currency_code` |
+| `ActiveOffers` | the adapter's active-offer read: canonical terms, no purchase |
+| `purchases` | `purchases`, referencing its offer by `sale_offer_uuid` |
+| `claims` | `operation_claims`, keyed by the scope's unique constraint |
+| `results` | `operation_results`, including the succeeded/rejected shape |
+| `inFlightBuys` | a mutation request between claim and commit, not a row |
+| authorization facts | the RBAC grant, revocation, suspension, and reinstatement tables |
+| `EffectivePermissions` | `effective_principal_permissions` |
+| `Users` | `principals` and `users` together — see below |
+
+Two conflations are deliberate and both narrow what a checked property means:
+
+- **Offer terms.** `sale_offers.currency_code` is constrained only to
+  `^[A-Z]{3}$`, while `sale_offer_canonical_terms.currency_code` requires MXN.
+  Pre-existing non-MXN offers have no canonical terms and are excluded by the
+  read and buy queries, which is
+  [F-018](../../FRICTIONS.md#f-018--legacy-non-mxn-offers-have-no-seller-disposition-workflow-p1).
+  `AllPublishedOffersAreMXN` therefore verifies the canonical terms that reads
+  and buys use, not every `sale_offers` row.
+
+  Note that `ActiveOffers` does not correspond to the database view named
+  `bond_exchange.active_offers`. That view still selects `sale_offers.price` and
+  `.currency_code` and does not require canonical terms; it is retained for an
+  expand-first rolling deployment and the current adapter does not read it. The
+  model corresponds to the adapter's query, so it says nothing about what the
+  compatibility view returns while legacy rows remain.
+- **Identity.** `bond_exchange.users` and `bond_exchange.principals` are
+  separate tables with no foreign key between them: `sale_offers.seller_uuid`
+  references `users`, while `operation_claims.principal_uuid` references
+  `principals`. `Users` is one set, so the model cannot represent an
+  authenticated principal with no user row, which is the state behind
+  `buyer_not_found` and `seller_not_found`. See
+  [F-023](../../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2).
 
 ## Behavior
 
@@ -132,7 +177,10 @@ settlement process in this model. Settlement semantics remain pending.
   several authorized buyers hold simultaneous claims against it.
 - `ActiveAndPurchasedOffersAreDisjoint` and `EveryPurchasedOfferWasPublished` —
   the derived book and the purchase history stay consistent.
-- `UniqueSaleOfferIds` and `AllPublishedOffersAreMXN`.
+- `UniqueSaleOfferIds`.
+- `AllPublishedOffersAreMXN` — every offer the model publishes carries MXN
+  terms. This corresponds to canonical terms, not to every `sale_offers` row;
+  see the refinement mapping above.
 
 ### Provenance
 
@@ -192,6 +240,58 @@ enabled in the instance that checks it.
   into a committed purchase or a recorded rejection. Nothing requires an offer
   to be published or an order to be claimed, so liveness here asserts only
   that the service finishes work it has already accepted.
+
+  These describe the lifecycle of a request, not recoverable state. Because the
+  service claims, commits, and records a result in one transaction, an
+  unresolved claim is never durable, and a crashed request is resolved by
+  transaction rollback rather than by a recovery step. The properties are what a
+  future design that persisted an unresolved claim would have to keep.
+
+## What a passing check does not establish
+
+The failure-mode analysis credits this model as a detection control. These are
+the boundaries of that credit, so a reviewer does not read more into a green
+`spec:check` than it supports.
+
+**Authorization is checked only where the model checks it.** `ClaimBuy`
+evaluates authorization and appends the claim in one step, so
+`NewClaimsAreAuthorizedWhenClaimed` holds by construction of that step. The
+model cannot express a check performed at one moment and a claim committed at a
+later one, which is the cause FM-004 names as "RBAC evaluated outside the
+mutation transaction". The service performs authorization, claim, and commit in
+one transaction; only the Go and PostgreSQL tests verify that it still does.
+
+**Read operations are absent.** Active-offer listing and bond-series discovery
+require the `offers.list` permission, but they change no state and have no
+modeled action, so nothing here verifies that a revoked or suspended principal
+cannot read the book.
+
+**Rejection paths are largely absent.** `offer_unavailable` is the only
+recorded rejection the model produces. The service also records
+`buyer_not_found`, `seller_not_found`, `bond_not_found`,
+`offer_already_exists`, and `conversion_quote_unavailable` as durable rejected
+results and replays them. Publishing cannot fail in the model, so
+`ResultShapeIsWellFormed` and the provenance properties exercise one rejection
+code out of six.
+
+**Assertion binding is absent.** `operation_claims.assertion_digest` and the
+issuer, audience, `jti`, and audience-binding checks have no counterpart.
+`RequestDigests` is an abstract set with no structure, so the model verifies
+that a scope's digest never changes, not that a digest binds a request.
+
+**There is no clock.** Quote expiry, delivery leases, retry scheduling, and
+assertion lifetime are all time-based and entirely outside the model.
+
+**One known divergence.** `RejectConflictingRetry` is enabled whenever a claim
+with a different digest exists, whereas `replayResource` joins claims to
+results and would report no rows before comparing digests if a claim were
+unresolved. The state is not durably reachable, so the two cannot disagree in
+practice, but the model is the more permissive of the two.
+
+`FRICTIONS.md` records the coverage gaps that remain open:
+[F-022](../../FRICTIONS.md#f-022--marketplace-and-authorization-behavior-are-model-checked-separately-p3),
+[F-023](../../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2), and
+[F-024](../../FRICTIONS.md#f-024--the-model-omits-authorization-timing-reads-and-rejection-paths-p2).
 
 ## Verification
 
