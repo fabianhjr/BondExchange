@@ -38,3 +38,5 @@ Alternatives considered sections.
 - [ADR-0020: Keep the local test gate and continuous integration equivalent](0020-keep-local-and-ci-gates-equivalent.md)
 - [ADR-0021: Schedule security scanning and name a response owner](0021-schedule-security-scanning-and-name-a-response-owner.md)
 - [ADR-0022: Verify documentation against pinned sources](0022-verify-documentation-against-pinned-sources.md)
+- [ADR-0023: Align storage constraints with domain validation](0023-align-storage-constraints-with-domain-validation.md)
+- [ADR-0024: Define health-probe and verification-key rotation contracts](0024-define-probe-and-key-rotation-contracts.md)

@@ -330,6 +330,113 @@ func TestAuthenticationTextAndIdempotencyBoundaries(t *testing.T) {
 	}
 }
 
+// TestVerificationKeyRotationOverlap is the tested rotation procedure that
+// F-008 and FM-009 require. Verification keys are read once at startup, so
+// rotation is a restart with an overlap window: publish the new key alongside
+// the old one, restart, move signers to the new key, then restart again with
+// the old key removed. Each step below is one of those deployments, and the
+// final step is emergency revocation of the retired key.
+func TestVerificationKeyRotationOverlap(t *testing.T) {
+	now := time.Date(2026, time.September, 5, 12, 0, 0, 0, time.UTC)
+	retiringPublic, retiringPrivate := generateSigningKey(t)
+	incomingPublic, incomingPrivate := generateSigningKey(t)
+
+	retiringKey := jose.JSONWebKey{
+		Key: retiringPublic, KeyID: "retiring-key", Use: "sig", Algorithm: string(jose.EdDSA),
+	}
+	incomingKey := jose.JSONWebKey{
+		Key: incomingPublic, KeyID: "incoming-key", Use: "sig", Algorithm: string(jose.EdDSA),
+	}
+
+	deployments := []struct {
+		name             string
+		keys             []jose.JSONWebKey
+		retiringAccepted bool
+		incomingAccepted bool
+	}{
+		{"before rotation", []jose.JSONWebKey{retiringKey}, true, false},
+		{"overlap window publishes both keys", []jose.JSONWebKey{retiringKey, incomingKey}, true, true},
+		{"retired key removed", []jose.JSONWebKey{incomingKey}, false, true},
+	}
+
+	for _, deployment := range deployments {
+		t.Run(deployment.name, func(t *testing.T) {
+			authenticator := authenticatorWithKeys(t, now, deployment.keys)
+			assertAssertionAccepted(t, authenticator, retiringPrivate, "retiring-key", deployment.retiringAccepted)
+			assertAssertionAccepted(t, authenticator, incomingPrivate, "incoming-key", deployment.incomingAccepted)
+		})
+	}
+}
+
+// TestVerificationKeySetRejectsDuplicateKeyIDs pins the failure that makes an
+// overlap window safe: two keys published under one identifier would make the
+// accepted signer ambiguous, so startup must refuse rather than choose.
+func TestVerificationKeySetRejectsDuplicateKeyIDs(t *testing.T) {
+	firstPublic, _ := generateSigningKey(t)
+	secondPublic, _ := generateSigningKey(t)
+	_, err := NewJWTAuthenticator(JWTConfig{
+		Issuer: "https://issuer.test", Audience: "bond-exchange",
+		Keys: jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
+			{Key: firstPublic, KeyID: "shared", Use: "sig", Algorithm: string(jose.EdDSA)},
+			{Key: secondPublic, KeyID: "shared", Use: "sig", Algorithm: string(jose.EdDSA)},
+		}},
+		Algorithms: []jose.SignatureAlgorithm{jose.EdDSA},
+	}, resolverStub{principal: exchange.Principal{ID: testPrincipalID}})
+	if err == nil {
+		t.Fatal("NewJWTAuthenticator() accepted two keys sharing one key ID")
+	}
+}
+
+func generateSigningKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
+	t.Helper()
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return publicKey, privateKey
+}
+
+func authenticatorWithKeys(t *testing.T, now time.Time, keys []jose.JSONWebKey) *JWTAuthenticator {
+	t.Helper()
+	authenticator, err := NewJWTAuthenticator(JWTConfig{
+		Issuer: "https://issuer.test", Audience: "bond-exchange", Now: func() time.Time { return now },
+		Keys:       jose.JSONWebKeySet{Keys: keys},
+		Algorithms: []jose.SignatureAlgorithm{jose.EdDSA},
+	}, resolverStub{principal: exchange.Principal{ID: testPrincipalID, ClientClass: exchange.ClientClassAutomated}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authenticator
+}
+
+func assertAssertionAccepted(
+	t *testing.T,
+	authenticator *JWTAuthenticator,
+	key ed25519.PrivateKey,
+	keyID string,
+	want bool,
+) {
+	t.Helper()
+	now := time.Date(2026, time.September, 5, 12, 0, 0, 0, time.UTC)
+	request := []byte("canonical protobuf request")
+	token := signAssertionWithKeyID(t, key, keyID, standardClaims(now), operationClaims{
+		ClientID: "automated-client-1",
+		AuthorizationDetails: []authorizationDetails{{
+			Type:           AuthorizationType,
+			Actions:        []string{exchange.OperationBuy},
+			RequestSHA256:  requestDigest(request),
+			IdempotencyKey: testNonce,
+		}},
+	})
+	_, err := authenticator.Authenticate(incomingContext(token, testNonce), exchange.OperationBuy, request, true)
+	if want && err != nil {
+		t.Errorf("assertion signed by %s was rejected during rotation: %v", keyID, err)
+	}
+	if !want && err == nil {
+		t.Errorf("assertion signed by %s was accepted after that key left the key set", keyID)
+	}
+}
+
 func newTestAuthenticator(t *testing.T, now time.Time) (*JWTAuthenticator, ed25519.PrivateKey) {
 	t.Helper()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -356,7 +463,21 @@ func standardClaims(now time.Time) jwt.Claims {
 
 func signAssertion(t *testing.T, key ed25519.PrivateKey, standard jwt.Claims, operation operationClaims) string {
 	t.Helper()
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.EdDSA, Key: key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "test-key"))
+	return signAssertionWithKeyID(t, key, "test-key", standard, operation)
+}
+
+func signAssertionWithKeyID(
+	t *testing.T,
+	key ed25519.PrivateKey,
+	keyID string,
+	standard jwt.Claims,
+	operation operationClaims,
+) string {
+	t.Helper()
+	signer, err := jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.EdDSA, Key: key},
+		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", keyID),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

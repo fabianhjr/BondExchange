@@ -111,7 +111,20 @@ BANXICO_SIE_TOKEN=replace-with-64-character-token \
 ```
 
 The JWKS must contain public EdDSA or ES256 signature keys with unique `kid`
-values and `use: "sig"`. Apply migrations to that external database separately with `dbmate up`; the
+values and `use: "sig"`. The key set is read once at startup, so rotation is a
+sequence of restarts: publish the incoming key alongside the retiring one and
+restart, move signers to the incoming key, then remove the retiring key and
+restart again. Size the overlap for the longest assertion lifetime the issuer
+grants plus the signer rollout. Emergency revocation is the last step executed
+immediately.
+
+`CheckHealth` is a readiness signal: it requires an assertion, `health.read`,
+and a database ping, so an orchestrator must remove a failing instance from
+service rather than restart it. Use a TCP connection to either listener as the
+liveness signal. [ADR-0024](docs/adr/0024-define-probe-and-key-rotation-contracts.md)
+records both contracts.
+
+Apply migrations to that external database separately with `dbmate up`; the
 application never migrates during startup. Both listeners are plaintext;
 production deployments should provide transport security at the workload or
 ingress boundary. A production exchange runtime role should receive only the

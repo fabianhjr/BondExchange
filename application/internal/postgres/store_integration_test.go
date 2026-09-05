@@ -1343,6 +1343,276 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	}
 }
 
+// TestStreamActiveOffersReleasesConnectionsOnEveryExit covers the resource path
+// in FM-007. Active-offer listing is deliberately unbounded and holds a
+// repeatable-read snapshot, open rows, and a pooled connection for as long as
+// the reader takes. A slow, failing, or abandoned reader must therefore release
+// all three on every exit, or a handful of them exhausts the fixed pool.
+func TestStreamActiveOffersReleasesConnectionsOnEveryExit(t *testing.T) {
+	const poolSize = 2
+	pool := openBoundedTestPool(t, poolSize)
+	store := NewStore(pool)
+	ctx := context.Background()
+	seller := insertUser(t, pool, "")
+	bond := insertBond(t, pool)
+	for range 3 {
+		insertOffer(t, pool, seller, bond)
+	}
+	reader := access(seller, exchange.OperationListActiveOffers)
+
+	yieldFailure := errors.New("reader stopped early")
+	exits := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "reader consumes every offer",
+			run: func() error {
+				return store.StreamActiveOffers(ctx, reader, bond, func(exchange.SaleOffer) error { return nil })
+			},
+		},
+		{
+			name: "reader abandons the stream after one offer",
+			run: func() error {
+				seen := 0
+				err := store.StreamActiveOffers(ctx, reader, bond, func(exchange.SaleOffer) error {
+					seen++
+					return yieldFailure
+				})
+				if seen != 1 {
+					t.Errorf("yield called %d times after refusing the first offer, want 1", seen)
+				}
+				if !errors.Is(err, yieldFailure) {
+					t.Errorf("StreamActiveOffers() error = %v, want %v", err, yieldFailure)
+				}
+				return nil
+			},
+		},
+		{
+			name: "caller cancels mid-stream",
+			run: func() error {
+				streamContext, cancel := context.WithCancel(ctx)
+				defer cancel()
+				seen := 0
+				err := store.StreamActiveOffers(
+					streamContext,
+					reader,
+					bond,
+					func(exchange.SaleOffer) error {
+						seen++
+						cancel()
+						return nil
+					},
+				)
+				if err == nil {
+					t.Error("StreamActiveOffers() succeeded after the caller cancelled mid-stream")
+				}
+				if seen == 0 {
+					t.Error("StreamActiveOffers() cancelled before yielding any offer")
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, exit := range exits {
+		t.Run(exit.name, func(t *testing.T) {
+			// Repeat past the pool size: a connection leaked on this path would
+			// block instead of returning, so the exhaustion is observable here
+			// rather than in production.
+			for attempt := range poolSize + 2 {
+				if err := exit.run(); err != nil {
+					t.Fatalf("attempt %d: %v", attempt, err)
+				}
+			}
+			requirePoolDrains(t, pool)
+		})
+	}
+}
+
+// TestConcurrentSlowReadersDoNotExhaustThePool pins the behavior that AD-7 in
+// the security profile accepts: readers queue for a bounded pool rather than
+// failing, and a reader that finishes returns its connection promptly.
+func TestConcurrentSlowReadersDoNotExhaustThePool(t *testing.T) {
+	const poolSize = 2
+	pool := openBoundedTestPool(t, poolSize)
+	store := NewStore(pool)
+	ctx := context.Background()
+	seller := insertUser(t, pool, "")
+	bond := insertBond(t, pool)
+	for range 2 {
+		insertOffer(t, pool, seller, bond)
+	}
+	reader := access(seller, exchange.OperationListActiveOffers)
+
+	release := make(chan struct{})
+	var readers sync.WaitGroup
+	errs := make(chan error, poolSize*2)
+	for range poolSize * 2 {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			errs <- store.StreamActiveOffers(ctx, reader, bond, func(exchange.SaleOffer) error {
+				<-release
+				return nil
+			})
+		}()
+	}
+
+	// Every reader is either holding a connection or waiting for one. None may
+	// fail while the pool is merely saturated.
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	readers.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("slow reader failed while the pool was saturated: %v", err)
+		}
+	}
+	requirePoolDrains(t, pool)
+}
+
+// requirePoolDrains waits for every pooled connection to be released.
+//
+// A connection cancelled mid-query cannot be reused, because the server may
+// still be sending rows, so pgx destroys it rather than returning it and the
+// pool drains asynchronously. Polling distinguishes that from a genuine leak,
+// which never drains. A burst of cancellations therefore churns connections
+// instead of merely returning them, which is a cost worth knowing about.
+func requirePoolDrains(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		acquired := pool.Stat().AcquiredConns()
+		if acquired == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("pool still holds %d acquired connection(s); a stream did not release it", acquired)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestStorageConstraintsMatchDomainValidation pins the equivalence that F-004
+// tracks. Domain facts are append-only, so a value the Go domain rejects must
+// also be impossible to append through direct SQL: an alternate or privileged
+// writer would otherwise create an immutable row the application cannot
+// interpret, and no correction could remove it.
+func TestStorageConstraintsMatchDomainValidation(t *testing.T) {
+	pool := openTestPool(t)
+	ctx := context.Background()
+	seller := insertUser(t, pool, "")
+	bond := insertBond(t, pool)
+
+	insertCurrency := func(candidate string) error {
+		return probeInsert(ctx, t, pool, `
+INSERT INTO bond_exchange.sale_offers (seller_uuid, bond_uuid, price, currency_code)
+SELECT $1, uuid_id, 100.25, $3
+FROM bond_exchange.bonds WHERE series = $2`, seller, bond, candidate)
+	}
+	insertPrice := func(candidate string) error {
+		return probeInsert(ctx, t, pool, `
+INSERT INTO bond_exchange.sale_offers (seller_uuid, bond_uuid, price, currency_code)
+SELECT $1, uuid_id, $3::numeric, 'USD'
+FROM bond_exchange.bonds WHERE series = $2`, seller, bond, candidate)
+	}
+
+	t.Run("currency code", func(t *testing.T) {
+		// "USD\n" is the anchor trap: a regular-expression dialect whose "$"
+		// matches before a trailing newline would accept it while Go does not.
+		for _, candidate := range []string{
+			"USD", "EUR", "MXN",
+			"", "US", "USDD", "usd", "Usd", "U5D", "U$D",
+			"US ", " US", "US\n", "USD\n", "ＵＳＤ",
+		} {
+			_, domainErr := exchange.ParseCurrencyCode(candidate)
+			requireSameVerdict(t, "currency code", candidate, domainErr == nil, insertCurrency(candidate))
+		}
+	})
+
+	t.Run("bond series", func(t *testing.T) {
+		// Storage holds the canonical form, so the domain side of the
+		// comparison is the canonical predicate rather than the parser, which
+		// also uppercases its input at the service boundary.
+		for _, candidate := range []string{
+			"BND", "BOND2026", strings.Repeat("A", exchange.MaxBondSeriesLength),
+			"", "AB", strings.Repeat("A", exchange.MaxBondSeriesLength+1),
+			"bnd", "BND-1", "BND 1", "BND\n", "BÑD",
+		} {
+			requireSameVerdict(
+				t,
+				"bond series",
+				candidate,
+				exchange.IsCanonicalBondSeries(candidate),
+				probeInsert(ctx, t, pool, `INSERT INTO bond_exchange.bonds (series) VALUES ($1)`, candidate),
+			)
+		}
+	})
+
+	t.Run("price", func(t *testing.T) {
+		for _, candidate := range []string{
+			"100.25", "0.0001", "9999999999.9999",
+			"0", "-1", "-0.0001", "10000000000.0000", "NaN", "Infinity", "abc", "",
+		} {
+			_, domainErr := exchange.ParsePrice(candidate)
+			requireSameVerdict(t, "price", candidate, domainErr == nil, insertPrice(candidate))
+		}
+	})
+
+	// A documented, deliberate divergence rather than an oversight: the price
+	// column is numeric(14,4), and PostgreSQL rounds a more precise input at
+	// cast time, before any CHECK constraint observes the value. No column
+	// constraint can reject it. The Go boundary validates scale first, so the
+	// sanctioned writer never relies on this. Removing the divergence requires
+	// changing the monetary domain's base type, which F-004 still tracks; this
+	// test fails if that happens, so the register and database README must be
+	// updated in the same change.
+	t.Run("documented price scale divergence", func(t *testing.T) {
+		const overPrecise = "1.00005"
+		if _, err := exchange.ParsePrice(overPrecise); err == nil {
+			t.Fatalf("ParsePrice(%q) accepted an over-precise value; update F-004 and db/README.md", overPrecise)
+		}
+		if err := insertPrice(overPrecise); err != nil {
+			t.Fatalf(
+				"storage now rejects the over-precise price %q (%v); the divergence is closed, so update F-004 and db/README.md",
+				overPrecise,
+				err,
+			)
+		}
+	})
+}
+
+// probeInsert reports whether storage accepts a candidate value. The insert
+// always rolls back, so probing cannot collide with unique constraints or
+// leave rows behind for other tests.
+func probeInsert(ctx context.Context, t *testing.T, pool *pgxpool.Pool, statement string, args ...any) error {
+	t.Helper()
+	transaction, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Begin() error = %v", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	_, execErr := transaction.Exec(ctx, statement, args...)
+	return execErr
+}
+
+func requireSameVerdict(t *testing.T, class, candidate string, domainAccepts bool, storageErr error) {
+	t.Helper()
+	switch {
+	case domainAccepts && storageErr != nil:
+		t.Errorf("%s %q: the domain accepts it but storage rejects it: %v", class, candidate, storageErr)
+	case !domainAccepts && storageErr == nil:
+		t.Errorf(
+			"%s %q: storage accepts it but the domain rejects it; an alternate writer could append an uninterpretable fact",
+			class,
+			candidate,
+		)
+	}
+}
+
 func countSeries(series []exchange.BondSeries, target exchange.BondSeries) int {
 	count := 0
 	for _, candidate := range series {
@@ -1354,6 +1624,34 @@ func countSeries(series []exchange.BondSeries, target exchange.BondSeries) int {
 }
 
 func openTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("pgxpool.New() error = %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+// openBoundedTestPool bounds the connection pool so that a leaked connection
+// blocks a later acquisition instead of hiding behind the default ceiling.
+func openBoundedTestPool(t *testing.T, maxConnections int32) *pgxpool.Pool {
+	t.Helper()
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("pgxpool.ParseConfig() error = %v", err)
+	}
+	config.MaxConns = maxConnections
+	config.MinConns = 0
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		t.Fatalf("pgxpool.NewWithConfig() error = %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+func testDatabaseURL(t *testing.T) string {
 	t.Helper()
 	databaseURL := os.Getenv(testDatabaseEnvironment)
 	if databaseURL == "" {
@@ -1373,12 +1671,7 @@ func openTestPool(t *testing.T) *pgxpool.Pool {
 			testDatabaseEnvironment,
 		)
 	}
-	pool, err := pgxpool.New(context.Background(), databaseURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New() error = %v", err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return databaseURL
 }
 
 func insertUser(t *testing.T, pool *pgxpool.Pool, _ string) exchange.UserID {
