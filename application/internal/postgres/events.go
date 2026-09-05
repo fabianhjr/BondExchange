@@ -37,9 +37,10 @@ WHERE table_name = $1 AND source_uuid = $2`, ref.TableName, ref.ID).Scan(&envelo
 		var payload eventing.SaleOfferCreated
 		var priceText string
 		err = store.pool.QueryRow(ctx, `
-SELECT uuid_id, bond_series, price::text, currency_code
-FROM bond_exchange.sale_offers
-WHERE uuid_id = $1`, ref.ID).Scan(
+SELECT offer.uuid_id, bond.series, offer.price::text, offer.currency_code
+FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
+WHERE offer.uuid_id = $1`, ref.ID).Scan(
 			&payload.ID,
 			&payload.BondSeries,
 			&priceText,
@@ -60,13 +61,15 @@ WHERE uuid_id = $1`, ref.ID).Scan(
 		err = store.pool.QueryRow(ctx, `
 SELECT
   purchase.sale_offer_uuid,
-  sale_offer.bond_series,
+  bond.series,
   sale_offer.price::text,
   sale_offer.currency_code,
   purchase.bought_at
 FROM bond_exchange.purchases AS purchase
 JOIN bond_exchange.sale_offers AS sale_offer
   ON sale_offer.uuid_id = purchase.sale_offer_uuid
+JOIN bond_exchange.bonds AS bond
+  ON bond.uuid_id = sale_offer.bond_uuid
 WHERE purchase.uuid_id = $1`, ref.ID).Scan(
 			&payload.SaleOfferID,
 			&payload.BondSeries,
@@ -138,7 +141,6 @@ func (store *Store) MarkEventDelivered(
 UPDATE bond_exchange.integration_event_deliveries
 SET
   delivered_at = transaction_timestamp(),
-  lease_token = NULL,
   lease_nonce = NULL,
   lease_until = NULL,
   last_error_class = NULL
@@ -169,7 +171,6 @@ func (store *Store) MarkEventFailed(
 	result, err := store.pool.Exec(ctx, `
 UPDATE bond_exchange.integration_event_deliveries
 SET
-  lease_token = NULL,
   lease_nonce = NULL,
   lease_until = NULL,
   next_attempt_at = transaction_timestamp() + ($5 * interval '1 microsecond'),

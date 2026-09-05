@@ -17,15 +17,29 @@ fetch coordination, are added by
 [`migrations/20260904120000_add_sie_exchange_rates.sql`](migrations/20260904120000_add_sie_exchange_rates.sql).
 The PostgreSQL 18 UUID identity and nonce cutover is
 [`migrations/20260904130000_use_uuid_keys_and_nonces.sql`](migrations/20260904130000_use_uuid_keys_and_nonces.sql).
+UUID-only writer compatibility is prepared by
+[`migrations/20260904140000_prepare_uuid_only_writers.sql`](migrations/20260904140000_prepare_uuid_only_writers.sql),
+non-derivable history is preserved by
+[`migrations/20260904150000_archive_legacy_identifiers.sql`](migrations/20260904150000_archive_legacy_identifiers.sql),
+and the operational legacy graph is removed by
+[`migrations/20260904160000_contract_legacy_identifier_graph.sql`](migrations/20260904160000_contract_legacy_identifier_graph.sql).
+Canonical view names and business-code column names are finalized by
+[`migrations/20260904170000_finalize_uuid_contract.sql`](migrations/20260904170000_finalize_uuid_contract.sql).
 
 PostgreSQL 18 is required. Every application table has a `uuid_id uuid`
 primary key generated with `uuidv7()` and constrained with
 `uuid_extract_version(uuid_id) = 7`. Natural identifiers remain unique lookup
-attributes. The migration retains legacy keys, foreign keys, views, and
-synchronization triggers for a rolling application transition; the current Go
-adapter uses only the UUID relationship graph. A later contract migration may
-remove compatibility structures only after old writers are retired and drift
-checks pass.
+attributes. The original rolling migration retained legacy keys, foreign keys,
+views, and synchronization triggers. The contract migration removes that live
+graph after verifying archive coverage and a quiescent lease window. The
+current Go adapter uses only UUID relationships and the canonical unversioned
+views. The transitional `_v2` aliases have been removed.
+
+Non-derivable values needed for audit and reconciliation are copied into the
+append-only `legacy_identifier_archive` before contraction. It is keyed by
+UUIDv7 and maps an entity UUID to its historical caller-selected identifier,
+pre-UUID idempotency value, or SIE import sequence. It is not a supported
+runtime alias lookup and receives no mutable application access.
 
 The `bond_exchange.monetary_amount` domain is based on PostgreSQL
 `numeric(14,4)`: ten integer digits and four fractional digits, with a maximum
@@ -45,10 +59,10 @@ come from different server instances. The losing requests are reported as an
 unavailable offer, while the original offer row remains as history.
 
 The current adapter reads the non-materialized
-`bond_exchange.active_offers_v2` view, which excludes every offer
+`bond_exchange.active_offers` view, which excludes every offer
 that has a matching purchase. The API requires a bond series and returns all
 active offers for it in ID order; the
-`sale_offers_bond_series_uuid_id_idx` index supports that lookup. A separate
+`sale_offers_bond_uuid_uuid_id_idx` index supports the relationship join. A separate
 distinct query derives the sorted list of bond series represented in the view.
 The unique offer constraint supports the anti-join and enforces single-sale
 concurrency. Purchase history by buyer is supported by
@@ -117,7 +131,7 @@ the response into exact positive PostgreSQL numeric values and explicit
 series/base/quote/date coordinates. The short importing transaction serializes
 each coordinate, makes a repeated current value a no-op, and appends any
 change—including a return to an older value—as a correction. The
-`current_sie_exchange_rates_v2` view returns a UUIDv7 revision ID but selects
+`current_sie_exchange_rates` view returns a UUIDv7 revision ID but selects
 the greatest preserved bigint revision sequence without removing earlier
 values; it does not rely on transaction-start
 timestamps to order concurrent imports.
@@ -144,16 +158,33 @@ destructive down migration. Fetch coordination and provider state require
 narrow `SELECT`, `INSERT`, and `UPDATE` runtime privileges; immutable imports
 and observations require only `SELECT` and `INSERT`.
 
-The UUID migration calls PostgreSQL 18 native functions and therefore cannot
+The UUID migrations call PostgreSQL 18 native functions and therefore cannot
 run on PostgreSQL 17. For an existing deployment, first take and verify a
 restorable backup, rehearse the selected PostgreSQL major-upgrade procedure,
 review extensions and collation changes, upgrade the cluster to 18, and verify
-`server_version_num` before running `dbmate up`. Supported choices include
+`server_version_num` before running the UUID expand migration. Supported choices include
 deployment-owned `pg_upgrade`, logical replication, or dump/restore. Do not
-start the UUID-aware application until the schema migration completes. During
-rollback, the migrated compatibility graph permits the previous application to
-run on PostgreSQL 18; do not downgrade the data directory or use the migration's
-non-destructive down section as a rollback mechanism.
+start the UUID-aware application until the schema migration completes. Before
+contraction, the compatibility graph permits the previous application to run
+on PostgreSQL 18. After contraction, rollback targets the UUID-only preparation
+release; a schema problem requires a corrective forward migration. Do not
+downgrade the data directory or use a non-destructive down section as a rollback
+mechanism.
+
+Before removing the rolling-compatibility graph, run:
+
+```console
+devenv tasks run db:uuid-contract-readiness
+```
+
+Against production, run `bond-exchange-uuid-contract-readiness` with an
+explicit `DATABASE_URL` during a quiescent lease window. The gate rejects any
+text/UUID relationship drift or active event-delivery/SIE lease and reports
+the historical aliases that require lossless archival. Database checks cannot
+prove writer retirement: release evidence must also show that pre-UUID
+binaries and direct-SQL writers are retired, their credentials are revoked,
+query logs no longer use compatibility columns or views, and backup restore
+has been rehearsed.
 
 Dbmate records applied versions in `schema_migrations` and applies pending
 migrations transactionally in strict version order. Migrations are the schema

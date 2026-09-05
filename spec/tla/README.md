@@ -26,6 +26,11 @@ implementation's UUIDv7 identity representation, UUIDv4 nonce syntax, and
 PostgreSQL 18 generation mechanics do not change domain behavior and remain
 outside the model.
 
+The later removal of the legacy identifier graph and promotion of
+`active_offers` from its transitional view name likewise changes only the
+persistence refinement. It does not change an action or invariant in the TLA+
+modules.
+
 `Prices` uses positive natural numbers in the finite TLC instance as abstract
 representatives of positive exact monetary values. Decimal precision,
 PostgreSQL encoding, and JSON serialization do not affect buying behavior or

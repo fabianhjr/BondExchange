@@ -3,6 +3,11 @@
 - Status: Accepted
 - Date: 2026-09-04
 
+ADR-0017 changed durable import and observation identities to UUIDv7. ADR-0018
+retains the observation's original bigint as `revision_sequence` and removes
+the redundant bigint import identity. The revision-ordering decision below
+remains accepted.
+
 ## Context
 
 Exchange-rate consumers need current and historical observations from Banco de
@@ -37,7 +42,8 @@ import with its request scope and digest. Persist normalized observations as
 append-only rows. The importing transaction briefly serializes each
 series/currency/date coordinate and omits a value equal to its current
 revision; a changed value, including a return to an older value, appends a new
-revision. A view derives the current revision by its serialized observation ID
+revision. A view derives the current revision by its serialized observation
+revision sequence
 while retaining the complete observed history, avoiding transaction-start
 timestamps as a concurrency order.
 

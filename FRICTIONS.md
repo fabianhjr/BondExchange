@@ -59,9 +59,8 @@ accept or do not cover.
 ### F-004 — Database constraints are looser than domain validation (P1)
 
 - **Evidence:** Current primary keys are UUIDv7 and current mutation nonces are
-  UUIDv4 at both Go and PostgreSQL boundaries. The rolling-compatibility
-  columns still preserve the initial migration's loosely constrained text
-  aliases, and currency codes still need only be nonempty in PostgreSQL while
+  UUIDv4 at both Go and PostgreSQL boundaries. The legacy identifier graph has
+  been contracted, but currency codes still need only be nonempty in PostgreSQL while
   Go requires exactly three uppercase ASCII letters. This matters especially
   while F-003 requires direct SQL provisioning and the affected facts are
   append-only.
@@ -69,25 +68,7 @@ accept or do not cover.
   facts that the Go domain rejects or cannot reliably process.
 - **Complete when:** A backward-compatible forward migration makes storage
   constraints and every sanctioned writer agree with the documented domain,
-  including a safe plan for pre-existing nonconforming facts and retirement of
-  the legacy aliases after the compatibility period.
-
-### F-018 — The UUID migration retains a dual identifier graph (P2)
-
-- **Evidence:** The PostgreSQL 18 migration makes UUIDv7 columns primary and
-  current foreign keys authoritative, but deliberately retains every legacy
-  key and relationship as a unique compatibility graph. Insert triggers and
-  versioned views keep old and current application versions writable during a
-  rolling transition. Historical non-UUID nonce values have a null UUID
-  counterpart.
-- **Impact:** The temporary graph consumes storage and index/write work, makes
-  sanctioned direct SQL more complex, and could drift if a future writer or
-  migration bypasses the synchronization triggers. Leaving it indefinitely
-  would preserve ambiguity about which columns integrations should use.
-- **Complete when:** Inventory and retire all legacy application and direct-SQL
-  writers, verify zero identifier and relationship drift, rehearse rollback,
-  and apply a corrective-forward contract migration that removes redundant
-  aliases, legacy views, constraints, and triggers without losing facts.
+  including a safe plan for pre-existing nonconforming facts.
 
 ### F-005 — Append-only and event-delivery data has no lifecycle policy (P1)
 

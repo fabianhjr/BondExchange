@@ -198,6 +198,22 @@ let
     runtimeInputs = [ pkgs.gawk ];
     text = builtins.readFile ./nix/asvs-profile-check.sh;
   };
+
+  uuidContractReadiness = pkgs.writeShellApplication {
+    name = "bond-exchange-uuid-contract-readiness";
+    runtimeInputs = [ pkgs.postgresql_18 ];
+    text = builtins.readFile ./nix/uuid-contract-readiness.sh;
+  };
+
+  uuidContractHistoryTest = pkgs.writeShellApplication {
+    name = "bond-exchange-uuid-contract-history-test";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.dbmate
+      pkgs.postgresql_18
+    ];
+    text = builtins.readFile ./nix/uuid-contract-history-test.sh;
+  };
 in
 {
   packages = [
@@ -224,6 +240,8 @@ in
     demo
     integrationCheck
     integrationLoad
+    uuidContractReadiness
+    uuidContractHistoryTest
   ];
 
   env = {
@@ -237,6 +255,18 @@ in
   tasks."db:migrate" = {
     description = "Validate migrations against a fresh temporary PostgreSQL database";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres true";
+  };
+
+  tasks."db:uuid-contract-readiness" = {
+    description = "Verify UUID/text graph consistency before the contract migration";
+    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${uuidContractReadiness}/bin/bond-exchange-uuid-contract-readiness";
+  };
+
+  tasks."db:uuid-contract-history" = {
+    description = "Verify lossless archival of representative pre-UUID values";
+    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${uuidContractHistoryTest}/bin/bond-exchange-uuid-contract-history-test";
+    after = [ "db:migrate" ];
+    before = [ "devenv:enterTest" ];
   };
 
   tasks."dev:check" = {
