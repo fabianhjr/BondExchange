@@ -61,9 +61,10 @@ are not introduced by this decision.
   Clients must retain idempotency nonces and request bytes for safe retries.
 - The API compatibility break removes `buyer_id` and `seller_id`; their field
   numbers and names remain reserved in Proto3.
-- External identity lifecycle, TLS, secret delivery, mesh policy, telemetry
-  export, immutable log storage, and retention remain explicit pending
-  deployment decisions.
+- External identity lifecycle, TLS, secret delivery, mesh policy, protected
+  telemetry routing, immutable log storage, alert ownership, and retention
+  remain explicit pending deployment decisions. Application instrumentation is
+  governed separately by ADR-0025.
 
 ## Alternatives considered
 

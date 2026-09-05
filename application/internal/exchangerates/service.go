@@ -7,7 +7,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Provider interface {
@@ -215,8 +217,10 @@ func (service *Service) resolve(ctx context.Context, units []WorkUnit) error {
 		}
 		pending := pendingUnits(units, states)
 		if len(pending) == 0 {
+			telemetry.RecordRateCache(ctx, "hit")
 			return nil
 		}
+		telemetry.RecordRateCache(ctx, "miss")
 		leaseToken, err := newLeaseToken()
 		if err != nil {
 			return err
@@ -226,6 +230,7 @@ func (service *Service) resolve(ctx context.Context, units []WorkUnit) error {
 			return err
 		}
 		if len(claimed) == 0 {
+			telemetry.RecordRateCache(ctx, "lease_contended")
 			if allLatest(units) {
 				return ErrColdFetchInProgress
 			}
@@ -289,6 +294,7 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 		return err
 	}
 	if blockedUntil.After(service.config.Now()) {
+		telemetry.RecordRateFetch(ctx, "cooldown", "rate_limited", len(units), 0)
 		delay := blockedUntil.Sub(service.config.Now())
 		if failErr := service.store.Fail(ctx, leaseToken, units, "provider_rate_limited", delay); failErr != nil {
 			return failErr
@@ -298,11 +304,22 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 	batches := makeBatches(units)
 	for index, batch := range batches {
 		request := requestForBatch(batch)
-		result, fetchErr := service.provider.Fetch(ctx, request)
+		kind := "range"
+		if request.Kind == FetchLatest {
+			kind = "latest"
+		}
+		fetchContext, span := telemetry.Start(ctx, "exchange_rate.fetch",
+			attribute.String("fetch.kind", kind),
+			attribute.Int("fetch.unit.count", len(batch)),
+		)
+		started := time.Now()
+		result, fetchErr := service.provider.Fetch(fetchContext, request)
 		if fetchErr == nil && request.Kind == FetchLatest {
 			fetchErr = requireLatestObservations(request, result)
 		}
 		if fetchErr == nil {
+			telemetry.RecordRateFetch(fetchContext, kind, "succeeded", len(batch), time.Since(started))
+			telemetry.End(span, "")
 			if err := service.store.Complete(ctx, leaseToken, batch, request, result, service.config.FreshFor); err != nil {
 				return err
 			}
@@ -311,14 +328,18 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 		delay := service.config.RetryAfter
 		errorClass := "provider_error"
 		var limited *RateLimitError
+		var blockErr error
 		if errors.As(fetchErr, &limited) {
 			errorClass = "provider_rate_limited"
 			if limited.RetryAt.After(service.config.Now()) {
 				delay = limited.RetryAt.Sub(service.config.Now())
 			}
-			if err := service.store.BlockProviderUntil(ctx, limited.RetryAt); err != nil {
-				return err
-			}
+			blockErr = service.store.BlockProviderUntil(ctx, limited.RetryAt)
+		}
+		telemetry.RecordRateFetch(fetchContext, kind, errorClass, len(batch), time.Since(started))
+		telemetry.End(span, errorClass)
+		if blockErr != nil {
+			return blockErr
 		}
 		if err := service.store.Fail(ctx, leaseToken, remainingUnits(batches[index:]), errorClass, delay); err != nil {
 			return err

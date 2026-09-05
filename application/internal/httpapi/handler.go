@@ -14,6 +14,9 @@ import (
 
 	bondexchangev1 "github.com/fabianhjr/BondExchange/application/gen/go/bondexchange/v1"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -43,7 +46,70 @@ func NewHandler(server bondexchangev1.BondExchangeServiceServer) (http.Handler, 
 		}
 		mux.ServeHTTP(response, request)
 	})
-	return recoverPanics(securityHeaders(requireSingleJSONDocument(handler))), nil
+	secured := recoverPanics(securityHeaders(requireSingleJSONDocument(handler)))
+	return instrumentHTTP(secured), nil
+}
+
+type originalRequestKey struct{}
+
+func instrumentHTTP(next http.Handler) http.Handler {
+	instrumented := otelhttp.NewHandler(
+		http.HandlerFunc(func(response http.ResponseWriter, sanitized *http.Request) {
+			trace.SpanFromContext(sanitized.Context()).SetAttributes(attribute.String("http.route", sanitized.URL.Path))
+			original, ok := sanitized.Context().Value(originalRequestKey{}).(*http.Request)
+			if !ok {
+				next.ServeHTTP(response, sanitized)
+				return
+			}
+			next.ServeHTTP(response, original.Clone(sanitized.Context()))
+		}),
+		"bondexchange.http",
+		otelhttp.WithSpanNameFormatter(func(_ string, request *http.Request) string {
+			return request.Method + " " + request.URL.Path
+		}),
+	)
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		route := routeTemplate(request.URL.Path)
+		sanitized := request.Clone(context.WithValue(request.Context(), originalRequestKey{}, request))
+		sanitizedURL := *request.URL
+		sanitizedURL.Path = route
+		sanitizedURL.RawPath = ""
+		sanitizedURL.RawQuery = ""
+		sanitizedURL.ForceQuery = false
+		sanitizedURL.Fragment = ""
+		sanitizedURL.RawFragment = ""
+		sanitized.URL = &sanitizedURL
+		sanitized.Method = methodTemplate(request.Method)
+		sanitized.Host = "bond-exchange"
+		sanitized.RemoteAddr = ""
+		sanitized.RequestURI = route
+		sanitized.ContentLength = 0
+		sanitized.Header = make(http.Header)
+		for _, name := range []string{"Traceparent", "Tracestate", "Baggage"} {
+			if values := request.Header.Values(name); len(values) > 0 {
+				sanitized.Header[name] = append([]string(nil), values...)
+			}
+		}
+		instrumented.ServeHTTP(response, sanitized)
+	})
+}
+
+func methodTemplate(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodPost:
+		return method
+	default:
+		return "OTHER"
+	}
+}
+
+func routeTemplate(path string) string {
+	switch path {
+	case "/buys", "/sale-offer-quotes", "/sale-offers", "/active-offers", "/active-bond-series", "/healthz", "/event-publications:publish-pending":
+		return path
+	default:
+		return "unmatched"
+	}
 }
 
 func recoverPanics(next http.Handler) http.Handler {

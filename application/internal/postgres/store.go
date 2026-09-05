@@ -9,6 +9,7 @@ import (
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -181,6 +182,7 @@ func (store *Store) createSaleOfferOnce(
 		return exchange.SaleOffer{}, err
 	}
 	if !claimed {
+		telemetry.RecordIdempotency(ctx, exchange.OperationCreateSaleOffer, "replayed")
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 			return exchange.SaleOffer{}, err
 		}
@@ -291,6 +293,7 @@ func (store *Store) buyOnce(
 		return exchange.Purchase{}, err
 	}
 	if !claimed {
+		telemetry.RecordIdempotency(ctx, exchange.OperationBuy, "replayed")
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 			return exchange.Purchase{}, err
 		}
@@ -663,6 +666,7 @@ func retryTransaction[T any](ctx context.Context, operation func() (T, error)) (
 		if !isRetryableTransactionError(err) {
 			return value, err
 		}
+		telemetry.RecordDatabaseRetry(ctx, "transaction")
 		lastErr = err
 		if err := waitBeforeTransactionRetry(ctx, attempt); err != nil {
 			return zero, err

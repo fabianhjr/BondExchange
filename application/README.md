@@ -14,6 +14,8 @@ This directory is the Go module for the Bond Exchange service. It contains:
 - `internal/serverruntime`, the composition decisions the server command used
   to make inline: environment parsing, verification-key loading, pool and
   transport limits, listener binding, and shutdown;
+- `internal/telemetry`, the application-owned OpenTelemetry SDK lifecycle,
+  bounded signal contract, and structured-log correlation;
 - the remaining `internal/` packages, including provider-neutral rates, SIE,
   transport, eventing, and PostgreSQL adapters; and
 - `gen/go/`, the checked-in Go bindings generated from the Proto3 contract in
@@ -45,3 +47,9 @@ the rest of the environment so that a missing credential fails startup with
 every other missing variable named at once, and it is never logged or
 persisted. The marketplace core does not import the intake or exchange-rate
 packages and accepts only MXN.
+
+The server enables OTLP traces or metrics only when the corresponding standard
+`OTEL_*` exporter or endpoint configuration is present. Without it the
+instrumentation is no-op. Run the repository-root `observability:check` task for
+the export, propagation, privacy/cardinality, and collector contract tests; see
+`../docs/observability.md` for configuration and signal names.

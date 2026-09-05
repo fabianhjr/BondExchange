@@ -39,6 +39,14 @@ RBAC changes, and operation results are append-only facts. A unique purchase
 constraint on the offer UUID guarantees that only one buyer wins a race for an offer. A database view
 derives the currently active offers.
 
+The application owns OpenTelemetry tracing and metrics instrumentation for its
+REST, gRPC, PostgreSQL, Banxico SIE, runtime, and application workflow
+boundaries. It exports over OTLP only when standard `OTEL_*` configuration
+enables a signal. Structured JSON logs stay on stdout and correlate every
+context-aware record with its active trace. See
+[`docs/observability.md`](docs/observability.md) for the signal and data-handling
+contract.
+
 Successful offer creation and buying also append minimal integration-event
 references in the same transaction. An event has its own UUIDv7 and contains
 only the immutable source table and source UUID, its event-schema version, and completion time; payloads
@@ -89,7 +97,9 @@ devenv up
 ```
 
 Devenv creates a temporary PostgreSQL cluster, applies every dbmate migration,
-loads the fixtures in `db/demo/seed.sql`, and starts both server transports.
+loads the fixtures in `db/demo/seed.sql`, starts both server transports, and
+starts a loopback OpenTelemetry Collector that prints a basic trace and metric
+representation to its process log.
 Stopping `devenv up` also stops PostgreSQL and removes the demo database. Each
 new demo therefore starts from the same known state with users `demo-seller`
 and `demo-buyer`, bonds `DEMO2026` and `DEMO2027`, and three active offers.
@@ -131,6 +141,13 @@ ingress boundary. A production exchange runtime role should receive only the
 required `SELECT` and `INSERT` privileges. A future configured publisher also
 needs narrowly scoped `UPDATE` access to integration-event delivery state;
 schema ownership belongs to a separate migration role.
+
+An externally started server does not contact a default collector unless an
+OTLP exporter or endpoint is explicitly configured. For example, add
+`OTEL_TRACES_EXPORTER=otlp`, `OTEL_METRICS_EXPORTER=otlp`,
+`OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example`, and
+`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`. Export failure does not fail a
+business request, and shutdown gives providers five seconds to flush.
 
 Available endpoints are:
 
@@ -268,6 +285,7 @@ devenv tasks run postgres:lifecycle-check
 devenv tasks run demo:smoke
 devenv tasks run integration:test
 devenv tasks run integration:load-smoke
+devenv tasks run observability:check
 devenv tasks run go:check
 devenv tasks run go:test
 devenv tasks run go:coverage

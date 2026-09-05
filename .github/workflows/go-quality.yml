@@ -12,6 +12,7 @@ on:
       - "db/**"
       - "docs/adr/**"
       - "docs/FMEA.md"
+      - "docs/observability.md"
       - "docs/security/**"
       - "nix/**"
       - "tests/**"
@@ -34,6 +35,7 @@ on:
       - "db/**"
       - "docs/adr/**"
       - "docs/FMEA.md"
+      - "docs/observability.md"
       - "docs/security/**"
       - "nix/**"
       - "tests/**"
@@ -110,6 +112,14 @@ jobs:
         with:
           name: go-module-inventory
           path: .artifacts/go-modules.json
+          if-no-files-found: ignore
+
+      - name: Upload observability contract report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: observability-contract
+          path: .artifacts/observability-test.json
           if-no-files-found: ignore
 
   mutation:

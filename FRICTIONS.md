@@ -8,8 +8,8 @@ disposable demo: P1 blocks a credible production use, P2 is a material
 correctness, security, operability, or scaling concern, and P3 primarily
 affects maintainability or contributor experience.
 
-The repository was reviewed on 2026-09-04. `devenv test` and the default
-configurable integration load task passed at that point, so there is no known
+The repository was reviewed on 2026-09-05. `devenv test` and the default
+configurable integration load task passed for this review, so there is no known
 failing quality gate; the items below are gaps that the current gates either
 accept or do not cover.
 
@@ -145,10 +145,12 @@ accept or do not cover.
 ### F-011 — The production deployment boundary is unspecified (P1)
 
 - **Evidence:** The server provides plaintext loopback listeners and no
-  production package. The ASVS profile still has `pending-deployment` and
-  `pending-external-identity` dispositions for TLS/workload identity, ingress
-  trust, rate limiting, Banxico token and other secret delivery, database roles
-  and protection, telemetry, identity assurance, and related controls.
+  production package. It now owns tested OTLP trace/metric instrumentation and
+  devenv runs a loopback development collector, but the ASVS profile still has
+  `pending-deployment` and `pending-external-identity` dispositions for
+  TLS/workload identity, ingress trust, rate limiting, secret delivery,
+  database protection, a protected telemetry backend and alerts, identity
+  assurance, and related controls.
 - **Impact:** Passing application tests does not establish a secure or operable
   production system, and several controls cannot be verified until the hosting
   architecture exists.
@@ -180,7 +182,9 @@ accept or do not cover.
   one immediate attempt per configured destination, but the repository ships
   no concrete publisher. There is deliberately no startup sweep, scheduled
   retry, or background worker; only an authorized operator can invoke
-  `PublishPendingEvents`.
+  `PublishPendingEvents`. The application now reports configured-publisher and
+  claimed-delivery outcome metrics, but no destination exists from which to
+  derive or alert on a continuously measured shared backlog.
 - **Impact:** No event leaves the service in the checked-in configuration, and
   a crash or publisher failure can leave events pending indefinitely unless an
   operator detects the backlog and explicitly retries it. At-least-once

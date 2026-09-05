@@ -7,6 +7,7 @@ import (
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -93,6 +94,7 @@ func (store *Store) CreateConversionQuote(
 			return offerintake.Quote{}, err
 		}
 		if !claimed {
+			telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "replayed")
 			if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 				return offerintake.Quote{}, err
 			}
@@ -172,6 +174,7 @@ func (store *Store) CreateSaleOfferFromSubmission(
 			return exchange.SaleOffer{}, err
 		}
 		if !claimed {
+			telemetry.RecordIdempotency(ctx, exchange.OperationCreateSaleOffer, "replayed")
 			if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 				return exchange.SaleOffer{}, err
 			}

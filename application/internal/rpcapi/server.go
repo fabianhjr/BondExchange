@@ -12,7 +12,7 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -62,6 +62,7 @@ func (server *Server) QuoteSaleOffer(
 	ctx context.Context,
 	request *bondexchangev1.QuoteSaleOfferRequest,
 ) (*bondexchangev1.QuoteSaleOfferResponse, error) {
+	ctx = telemetry.BeginOperation(ctx, exchange.OperationQuoteSaleOffer)
 	authenticated, err := server.authenticate(ctx, exchange.OperationQuoteSaleOffer, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationQuoteSaleOffer, nil, err)
@@ -98,6 +99,7 @@ func (server *Server) CreateSaleOffer(
 	ctx context.Context,
 	request *bondexchangev1.CreateSaleOfferRequest,
 ) (*bondexchangev1.CreateSaleOfferResponse, error) {
+	ctx = telemetry.BeginOperation(ctx, exchange.OperationCreateSaleOffer)
 	authenticated, err := server.authenticate(ctx, exchange.OperationCreateSaleOffer, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationCreateSaleOffer, nil, err)
@@ -132,6 +134,7 @@ func NewServer(application Application, health HealthChecker, authenticator auth
 }
 
 func (server *Server) Buy(ctx context.Context, request *bondexchangev1.BuyRequest) (*bondexchangev1.BuyResponse, error) {
+	ctx = telemetry.BeginOperation(ctx, exchange.OperationBuy)
 	authenticated, err := server.authenticate(ctx, exchange.OperationBuy, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationBuy, nil, err)
@@ -156,6 +159,7 @@ func (server *Server) ListActiveOffers(
 	stream bondexchangev1.BondExchangeService_ListActiveOffersServer,
 ) error {
 	ctx := stream.Context()
+	ctx = telemetry.BeginOperation(ctx, exchange.OperationListActiveOffers)
 	authenticated, err := server.authenticate(ctx, exchange.OperationListActiveOffers, request, false)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationListActiveOffers, nil, err)
@@ -188,6 +192,7 @@ func (server *Server) ListActiveBondSeries(
 	ctx context.Context,
 	_ *bondexchangev1.ListActiveBondSeriesRequest,
 ) (*bondexchangev1.ListActiveBondSeriesResponse, error) {
+	ctx = telemetry.BeginOperation(ctx, exchange.OperationListBondSeries)
 	authenticated, err := server.authenticate(ctx, exchange.OperationListBondSeries, &bondexchangev1.ListActiveBondSeriesRequest{}, false)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationListBondSeries, nil, err)
@@ -212,6 +217,7 @@ func (server *Server) CheckHealth(
 	ctx context.Context,
 	_ *bondexchangev1.CheckHealthRequest,
 ) (*bondexchangev1.CheckHealthResponse, error) {
+	ctx = telemetry.BeginOperation(ctx, exchange.OperationCheckHealth)
 	authenticated, err := server.authenticate(ctx, exchange.OperationCheckHealth, &bondexchangev1.CheckHealthRequest{}, false)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationCheckHealth, nil, err)
@@ -222,8 +228,9 @@ func (server *Server) CheckHealth(
 		return nil, transportError(err)
 	}
 	if err := server.health.Ping(ctx); err != nil {
-		logSecurityOperation(ctx, exchange.OperationCheckHealth, &authenticated.AccessContext, err)
-		return nil, status.Error(codes.Unavailable, "database unavailable")
+		unavailable := status.Error(codes.Unavailable, "database unavailable")
+		logSecurityOperation(ctx, exchange.OperationCheckHealth, &authenticated.AccessContext, unavailable)
+		return nil, unavailable
 	}
 	logSecurityOperation(ctx, exchange.OperationCheckHealth, &authenticated.AccessContext, nil)
 	return &bondexchangev1.CheckHealthResponse{Status: "ok"}, nil
@@ -233,6 +240,7 @@ func (server *Server) PublishPendingEvents(
 	ctx context.Context,
 	request *bondexchangev1.PublishPendingEventsRequest,
 ) (*bondexchangev1.PublishPendingEventsResponse, error) {
+	ctx = telemetry.BeginOperation(ctx, exchange.OperationPublishPendingEvents)
 	authenticated, err := server.authenticate(ctx, exchange.OperationPublishPendingEvents, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationPublishPendingEvents, nil, err)
@@ -294,10 +302,24 @@ func logSecurityOperation(
 			"request_sha256", hex.EncodeToString(access.RequestDigest[:]),
 		)
 	}
-	span := trace.SpanContextFromContext(ctx)
-	if span.IsValid() {
-		attributes = append(attributes, "trace_id", span.TraceID().String(), "span_id", span.SpanID().String())
+	streamedOffers := int64(-1)
+	for index := 0; index+1 < len(extra); index += 2 {
+		if extra[index] == "offer_count" {
+			switch count := extra[index+1].(type) {
+			case uint64:
+				streamedOffers = int64(count) //nolint:gosec // The count is bounded by successfully emitted Go values.
+			case int:
+				streamedOffers = int64(count)
+			}
+		}
 	}
+	outcome := "succeeded"
+	errorCode := ""
+	if err != nil {
+		outcome = "rejected"
+		errorCode = status.Code(transportError(err)).String()
+	}
+	telemetry.CompleteOperation(ctx, operation, outcome, errorCode, streamedOffers)
 	attributes = append(attributes, extra...)
 	if err == nil {
 		slog.InfoContext(ctx, "operation completed", attributes...)

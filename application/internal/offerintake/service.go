@@ -7,6 +7,7 @@ import (
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/exchangerates"
+	"github.com/fabianhjr/BondExchange/application/internal/telemetry"
 )
 
 type Exchange interface {
@@ -62,6 +63,8 @@ func (service *Service) QuoteSaleOffer(
 	price string,
 	currency string,
 ) (Quote, error) {
+	ctx, span := telemetry.Start(ctx, "offer_intake.quote")
+	defer span.End()
 	if access.Operation != exchange.OperationQuoteSaleOffer || access.Principal.ID == "" {
 		return Quote{}, exchange.ErrInvalidOperation
 	}
@@ -98,6 +101,7 @@ func (service *Service) QuoteSaleOffer(
 		observation.Date.After(today) || today.Sub(observation.Date) > service.config.MaxObservationAge {
 		return Quote{}, ErrExchangeRateUnavailable
 	}
+	telemetry.RecordObservationAge(ctx, today.Sub(observation.Date))
 	mxnPrice, err := exchange.ParsePrice(submittedPrice.Mul(observation.Value).RoundBank(exchange.MonetaryAmountScale).String())
 	if err != nil {
 		return Quote{}, err
@@ -121,6 +125,8 @@ func (service *Service) CreateSaleOffer(
 	currency string,
 	quoteID string,
 ) (exchange.SaleOffer, error) {
+	ctx, span := telemetry.Start(ctx, "offer_intake.create")
+	defer span.End()
 	if access.Operation != exchange.OperationCreateSaleOffer || access.Principal.ID == "" {
 		return exchange.SaleOffer{}, exchange.ErrInvalidOperation
 	}

@@ -16,6 +16,8 @@ import (
 
 	"github.com/fabianhjr/BondExchange/application/internal/exchangerates"
 	"github.com/shopspring/decimal"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 const (
@@ -60,6 +62,16 @@ func NewClient(config Config) (*Client, error) {
 	clientCopy := *client
 	clientCopy.Timeout = config.Timeout
 	clientCopy.CheckRedirect = sameOriginRedirect
+	transport := clientCopy.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	// Banxico is a public dependency, not part of this service's trace trust domain.
+	// Create a child client span without injecting trace or baggage headers upstream.
+	clientCopy.Transport = otelhttp.NewTransport(
+		transport,
+		otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator()),
+	)
 	return &Client{token: config.Token, httpClient: &clientCopy, maxBodySize: config.MaxBodySize}, nil
 }
 
