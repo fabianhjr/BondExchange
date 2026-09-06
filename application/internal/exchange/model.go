@@ -19,27 +19,23 @@ const (
 var maxMonetaryAmount = decimal.New(99_999_999_999_999, -MonetaryAmountScale)
 
 var (
-	ErrInvalidUserID       = errors.New("user ID must be a canonical UUIDv7")
 	ErrInvalidOfferID      = errors.New("sale-offer ID must be a canonical UUIDv7")
 	ErrInvalidBondSeries   = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
 	ErrInvalidPrice        = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
 	ErrInvalidCurrencyCode = errors.New("currency code must contain exactly three uppercase ASCII letters")
-	ErrBuyerNotFound       = errors.New("buyer does not exist")
-	ErrSellerNotFound      = errors.New("seller does not exist")
+	ErrBuyerNotFound       = errors.New("buyer is not a known principal")
+	ErrSellerNotFound      = errors.New("seller is not a known principal")
 	ErrBondNotFound        = errors.New("bond series does not exist")
 	ErrOfferAlreadyExists  = errors.New("sale-offer ID already exists")
 	ErrOfferUnavailable    = errors.New("sale offer does not exist or has already been bought")
 	ErrSelfTradeProhibited = errors.New("a buyer cannot reserve their own sale offer")
 )
 
-type UserID string
-
-func ParseUserID(value string) (UserID, error) {
-	if !isCanonicalUUIDVersion(value, uuid.Version(7)) {
-		return "", ErrInvalidUserID
-	}
-	return UserID(value), nil
-}
+// PrincipalID identifies one authenticated principal. It is also the identity
+// that sale offers and purchases are attributed to: the service has a single
+// identity table, and the seller or buyer of a fact is always the principal
+// that appended it, never a value a caller supplies. See ADR-0034.
+type PrincipalID string
 
 type OfferID string
 
@@ -109,15 +105,15 @@ func isCanonicalUUIDVersion(value string, version uuid.Version) bool {
 
 type SaleOffer struct {
 	ID         OfferID         `json:"id"`
-	SellerID   UserID          `json:"seller_id"`
+	SellerID   PrincipalID     `json:"seller_id"`
 	BondSeries BondSeries      `json:"bond_series"`
 	Price      decimal.Decimal `json:"price"`
 	Currency   CurrencyCode    `json:"currency_code"`
 }
 
 type Purchase struct {
-	ID       PurchaseID `json:"id"`
-	Offer    SaleOffer  `json:"offer"`
-	BuyerID  UserID     `json:"buyer_id"`
-	BoughtAt time.Time  `json:"bought_at"`
+	ID       PurchaseID  `json:"id"`
+	Offer    SaleOffer   `json:"offer"`
+	BuyerID  PrincipalID `json:"buyer_id"`
+	BoughtAt time.Time   `json:"bought_at"`
 }

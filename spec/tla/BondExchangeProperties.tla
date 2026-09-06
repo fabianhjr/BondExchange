@@ -139,13 +139,13 @@ IsSuspended(principal) ==
     /\ suspension \notin reinstatements
 
 EffectivePermissionsMatchAuthorizationFacts ==
-  \A principal \in Users :
+  \A principal \in Principals :
     \A permission \in Permissions :
       (permission \in EffectivePermissions(principal)) <=>
         (HasUnrevokedGrantChain(principal, permission) /\ ~IsSuspended(principal))
 
 SuspendedPrincipalsHaveNoPermissions ==
-  \A principal \in Users :
+  \A principal \in Principals :
     IsSuspended(principal) => EffectivePermissions(principal) = {}
 
 RevocationsReferenceGrants ==
@@ -163,7 +163,7 @@ RevocationsReferenceGrants ==
 
 BuyIsClaimableForAnActiveOffer ==
   \A offer \in ActiveOffers :
-    \A buyer \in Users :
+    \A buyer \in Principals :
       \A client \in Clients :
         \A key \in IdempotencyKeys :
           \A requestDigest \in RequestDigests :

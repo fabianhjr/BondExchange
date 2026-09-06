@@ -50,8 +50,6 @@ FROM generate_series(1, :buyer_count) AS index
 UNION ALL
 SELECT uuidv7(), 'load-denied-' || index, false
 FROM generate_series(1, :denied_count) AS index;
-INSERT INTO bond_exchange.users (uuid_id)
-SELECT uuid_id FROM load_principals;
 INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
 SELECT uuid_id, 'https://demo-issuer.invalid', subject, 'automated'
 FROM load_principals;

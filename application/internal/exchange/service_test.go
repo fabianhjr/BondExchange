@@ -11,7 +11,7 @@ import (
 )
 
 type storeStub struct {
-	buyBuyer     UserID
+	buyBuyer     PrincipalID
 	buyOffer     OfferID
 	buyValue     Purchase
 	buyError     error
@@ -27,9 +27,9 @@ type storeStub struct {
 }
 
 const (
-	testUserID  = "019535d9-3df7-79fb-b466-fa907fa17f9e"
-	testOfferID = "019535d9-3df7-79fb-b466-fa907fa17f9f"
-	testNonce   = "41db1265-8bc1-4ab3-992f-885799a4af1d"
+	testPrincipalID = "019535d9-3df7-79fb-b466-fa907fa17f9e"
+	testOfferID     = "019535d9-3df7-79fb-b466-fa907fa17f9f"
+	testNonce       = "41db1265-8bc1-4ab3-992f-885799a4af1d"
 )
 
 func (store *storeStub) Buy(_ context.Context, operation MutationContext, offer OfferID) (Purchase, error) {
@@ -75,7 +75,7 @@ func (store *storeStub) ActiveBondSeries(_ context.Context, access AccessContext
 
 func testAccess(operation string) AccessContext {
 	return AccessContext{
-		Principal: Principal{ID: testUserID, ClientID: "test-client", ClientClass: ClientClassHuman},
+		Principal: Principal{ID: testPrincipalID, ClientID: "test-client", ClientClass: ClientClassHuman},
 		Operation: operation,
 	}
 }
@@ -83,13 +83,13 @@ func testAccess(operation string) AccessContext {
 func TestServiceBuy(t *testing.T) {
 	t.Parallel()
 
-	expected := Purchase{BuyerID: testUserID, BoughtAt: time.Unix(1, 0)}
+	expected := Purchase{BuyerID: testPrincipalID, BoughtAt: time.Unix(1, 0)}
 	store := &storeStub{buyValue: expected}
 	actual, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID)
 	if err != nil || !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("Buy() = %#v, %v", actual, err)
 	}
-	if store.buyBuyer != testUserID || store.buyOffer != testOfferID {
+	if store.buyBuyer != testPrincipalID || store.buyOffer != testOfferID {
 		t.Fatalf("store received buyer %q and offer %q", store.buyBuyer, store.buyOffer)
 	}
 
@@ -105,7 +105,7 @@ func TestServiceBuy(t *testing.T) {
 func TestServiceCreateSaleOffer(t *testing.T) {
 	t.Parallel()
 
-	expected := SaleOffer{ID: testOfferID, SellerID: testUserID, BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "MXN"}
+	expected := SaleOffer{ID: testOfferID, SellerID: testPrincipalID, BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "MXN"}
 	store := &storeStub{createdValue: expected}
 	created, err := NewService(store).CreateSaleOffer(
 		context.Background(),
@@ -119,7 +119,7 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 		t.Fatalf("CreateSaleOffer() = %#v, %v", created, err)
 	}
 	if store.createdInput.ID != "" ||
-		store.createdInput.SellerID != testUserID ||
+		store.createdInput.SellerID != testPrincipalID ||
 		store.createdInput.BondSeries != "BND" ||
 		!store.createdInput.Price.Equal(decimal.RequireFromString("100.25")) ||
 		store.createdInput.Currency != "MXN" {

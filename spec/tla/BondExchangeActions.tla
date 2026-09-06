@@ -12,7 +12,7 @@ EXTENDS FiniteSets, Naturals, Sequences, TLC
 (* but not yet resolved, so that two orders can contend for one offer.     *)
 (***************************************************************************)
 
-CONSTANTS Users, Clients, Bonds, SaleOfferIds, Prices, MXN,
+CONSTANTS Principals, Clients, Bonds, SaleOfferIds, Prices, MXN,
           IdempotencyKeys, RequestDigests, MaxGrantGeneration
 
 VARIABLES
@@ -89,8 +89,8 @@ IsValidBondSeries(series) ==
   /\ \A position \in 1..Len(series) :
        SubSeq(series, position, position) \in UppercaseAlphaNumericCharacters
 
-ASSUME /\ Users # {}
-       /\ IsFiniteSet(Users)
+ASSUME /\ Principals # {}
+       /\ IsFiniteSet(Principals)
        /\ Clients # {}
        /\ IsFiniteSet(Clients)
        /\ Bonds # {}
@@ -114,7 +114,7 @@ ASSUME /\ Users # {}
 
 SaleOffer == [
   id       : SaleOfferIds,
-  seller   : Users,
+  seller   : Principals,
   bond     : Bonds,
   price    : Prices,
   currency : {MXN}
@@ -122,11 +122,11 @@ SaleOffer == [
 
 Purchase == [
   offer : SaleOfferIds,
-  buyer : Users
+  buyer : Principals
 ]
 
 Scope == [
-  principal : Users,
+  principal : Principals,
   client    : Clients,
   operation : Operations,
   key       : IdempotencyKeys
@@ -156,13 +156,13 @@ RolePermissionGrant == [
 ]
 
 PrincipalRoleGrant == [
-  principal  : Users,
+  principal  : Principals,
   role       : Roles,
   generation : Generations
 ]
 
 Suspension == [
-  principal  : Users,
+  principal  : Principals,
   generation : Generations
 ]
 

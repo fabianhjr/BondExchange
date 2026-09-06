@@ -51,8 +51,10 @@ BANXICO_SIE_TOKEN=replace-with-64-character-token \
   devenv shell go -C application run ./cmd/server
 ```
 
-Users and bonds must already exist. The API has no method for creating them, so
-they are provisioned separately before publishing or buying sale offers. See
+Principals and bonds must already exist. The API has no method for creating
+them, so they are provisioned separately before publishing or buying sale
+offers. A principal is one insert: `bond_exchange.principals` generates its own
+UUIDv7, and it is the only identity a sale offer or purchase can name. See
 [`db/README.md`](../db/README.md) for the schema and migration gates that
 must pass before a rolling release.
 

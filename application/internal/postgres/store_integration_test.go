@@ -54,14 +54,14 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 		t.Fatalf("Ping() error = %v", err)
 	}
 
-	seller := insertUser(t, pool, "seller")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := insertOffer(t, pool, seller, bond)
 
 	const competitors = 16
-	buyers := make([]exchange.UserID, competitors)
+	buyers := make([]exchange.PrincipalID, competitors)
 	for index := range buyers {
-		buyers[index] = insertUser(t, pool, "buyer")
+		buyers[index] = insertPrincipal(t, pool)
 	}
 
 	results := make(chan exchange.Purchase, competitors)
@@ -70,7 +70,7 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 	var waitGroup sync.WaitGroup
 	for _, buyer := range buyers {
 		waitGroup.Add(1)
-		go func(buyer exchange.UserID) {
+		go func(buyer exchange.PrincipalID) {
 			defer waitGroup.Done()
 			<-start
 			purchase, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, "buy-request-key-"+string(buyer), string(offer)), offer)
@@ -127,7 +127,7 @@ func TestPrincipalRateLimitIsAtomicAcrossInstances(t *testing.T) {
 	pool := openTestPool(t)
 	secondPool := openTestPool(t)
 	stores := []*Store{NewStore(pool), NewStore(secondPool)}
-	principal := insertUser(t, pool, "rate-limited")
+	principal := insertPrincipal(t, pool)
 
 	const attempts = ratelimit.RequestsPerMinute + 40
 	start := make(chan struct{})
@@ -175,7 +175,7 @@ WHERE principal_uuid = $1`, principal).Scan(&count); err != nil {
 		t.Fatalf("persisted request count = %d", count)
 	}
 
-	otherPrincipal := insertUser(t, pool, "other-rate-limit")
+	otherPrincipal := insertPrincipal(t, pool)
 	if err := stores[0].AdmitRequest(context.Background(), otherPrincipal); err != nil {
 		t.Fatalf("independent principal admission failed: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestBuyRejectsMissingOffer(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	buyer := insertUser(t, pool, "buyer")
+	buyer := insertPrincipal(t, pool)
 	missing := exchange.OfferID(uniqueUUIDv7(t))
 	if _, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(missing)), missing); !errors.Is(err, exchange.ErrOfferUnavailable) {
 		t.Fatalf("missing offer error = %v", err)
@@ -216,7 +216,7 @@ func TestSelfTradeIsRejectedAndReplayed(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
 	ctx := context.Background()
-	seller := insertUser(t, pool, "seller")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := insertOffer(t, pool, seller, bond)
 	operation := mutation(seller, exchange.OperationBuy, uniqueID(t, "self-buy"), string(offer))
@@ -256,7 +256,7 @@ VALUES ($1, $2)`, offer, seller)
 func TestCreateSaleOffer(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "seller")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID:   seller,
@@ -285,7 +285,7 @@ func TestCreateSaleOffer(t *testing.T) {
 	if err != nil || countSeries(activeSeries, bond) != 0 {
 		t.Fatalf("seller-visible ActiveBondSeries() after creation = %#v, %v", activeSeries, err)
 	}
-	buyer := insertUser(t, pool, "buyer")
+	buyer := insertPrincipal(t, pool)
 	activeOffers, err = collectOffers(store, access(buyer, exchange.OperationListActiveOffers), bond)
 	if err != nil || len(activeOffers) != 1 || activeOffers[0].ID != created.ID {
 		t.Fatalf("buyer-visible ActiveOffers() after creation = %#v, %v", activeOffers, err)
@@ -310,7 +310,7 @@ func TestUSDSubmissionPersistsCanonicalMXNAndImmutableProvenance(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
 	ctx := context.Background()
-	seller := insertUser(t, pool, "usd-seller")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	observedOn := time.Now().UTC().Truncate(24 * time.Hour)
 
@@ -527,7 +527,7 @@ WHERE offer.uuid_id = $1`, created.ID).Scan(
 		t.Fatal("CreateSaleOfferFromSubmission() accepted a zero MXN amount")
 	}
 
-	unauthorized := insertUnprivilegedUser(t, pool)
+	unauthorized := insertUnprivilegedPrincipal(t, pool)
 	unauthorizedQuote := mutation(unauthorized, exchange.OperationQuoteSaleOffer, uniqueID(t, "unauthorized-quote"), "unauthorized")
 	if _, _, err := store.ReplayConversionQuote(ctx, unauthorizedQuote); !errors.Is(err, exchange.ErrPermissionDenied) {
 		t.Fatalf("unauthorized quote replay error = %v", err)
@@ -548,7 +548,7 @@ func TestConcurrentCreateSaleOfferGeneratesDistinctIDs(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
 	offer := exchange.SaleOffer{
-		SellerID:   insertUser(t, pool, "seller"),
+		SellerID:   insertPrincipal(t, pool),
 		BondSeries: insertBond(t, pool),
 		Price:      decimal.RequireFromString("100.25"),
 		Currency:   "MXN",
@@ -598,7 +598,7 @@ func TestConcurrentCreateSaleOfferGeneratesDistinctIDs(t *testing.T) {
 func TestActiveOffersAndBondSeries(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "seller")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	first := insertOffer(t, pool, seller, bond)
 	second := insertOffer(t, pool, seller, bond)
@@ -607,7 +607,7 @@ func TestActiveOffersAndBondSeries(t *testing.T) {
 	insertOffer(t, pool, seller, otherBond)
 	inactiveBond := insertBond(t, pool)
 	inactiveOffer := insertOffer(t, pool, seller, inactiveBond)
-	buyer := insertUser(t, pool, "buyer")
+	buyer := insertPrincipal(t, pool)
 	if _, err := store.Buy(context.Background(), mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(first)), first); err != nil {
 		t.Fatalf("buy first offer: %v", err)
 	}
@@ -647,20 +647,20 @@ func TestActiveOffersAndBondSeries(t *testing.T) {
 
 func TestDomainFactTablesRejectMutation(t *testing.T) {
 	pool := openTestPool(t)
-	user := insertUser(t, pool, "immutable")
+	principal := insertPrincipal(t, pool)
 
 	for _, statement := range []string{
-		`UPDATE bond_exchange.users SET uuid_id = uuid_id WHERE uuid_id = $1`,
-		`DELETE FROM bond_exchange.users WHERE uuid_id = $1`,
+		`UPDATE bond_exchange.principals SET client_class = client_class WHERE uuid_id = $1`,
+		`DELETE FROM bond_exchange.principals WHERE uuid_id = $1`,
 	} {
-		_, err := pool.Exec(context.Background(), statement, user)
+		_, err := pool.Exec(context.Background(), statement, principal)
 		var databaseError *pgconn.PgError
 		if !errors.As(err, &databaseError) || databaseError.Code != "55000" {
 			t.Fatalf("statement %q error = %v", statement, err)
 		}
 	}
 
-	offer := insertOffer(t, pool, user, insertBond(t, pool))
+	offer := insertOffer(t, pool, principal, insertBond(t, pool))
 	var eventUUID string
 	if _, err := pool.Exec(context.Background(), `
 		INSERT INTO bond_exchange.integration_events (table_name, source_uuid, schema_version, completed_at)
@@ -685,7 +685,7 @@ func TestDomainFactTablesRejectMutation(t *testing.T) {
 func TestMutationIdempotencyReplaysResultAndRejectsKeyReuse(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "seller")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID: seller, BondSeries: bond,
@@ -725,8 +725,8 @@ SELECT
 func TestSuccessfulMutationsRecordMinimalIntegrationEventReferences(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "event-seller")
-	buyer := insertUser(t, pool, "event-buyer")
+	seller := insertPrincipal(t, pool)
+	buyer := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID:   seller,
@@ -806,7 +806,7 @@ WHERE table_schema = 'bond_exchange'
 func TestIntegrationEventDeliveryIsLeasedAndDeduplicated(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "publisher")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID:   seller,
@@ -852,7 +852,7 @@ WHERE destination_id = 'test'
 func TestIntegrationEventLeaseCoordinatesOverlappingAttempts(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "lease-publisher")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID:   seller,
@@ -903,7 +903,7 @@ func TestIntegrationEventLeaseCoordinatesOverlappingAttempts(t *testing.T) {
 func TestManualIntegrationEventRecoveryRetriesFailedDelivery(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "recovery-publisher")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID:   seller,
@@ -956,7 +956,7 @@ WHERE destination_id = 'test'
 func TestLoadEventRejectsUnsupportedVersionAndMissingReference(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "versioned-event")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := insertOffer(t, pool, seller, bond)
 	if _, err := pool.Exec(context.Background(), `
@@ -999,8 +999,8 @@ func TestLoadEventRejectsUnsupportedVersionAndMissingReference(t *testing.T) {
 func TestBuyIdempotencyReplaysOriginalBinding(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "seller")
-	buyer := insertUser(t, pool, "buyer")
+	seller := insertPrincipal(t, pool)
+	buyer := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	offer := insertOffer(t, pool, seller, bond)
 	operation := mutation(buyer, exchange.OperationBuy, "stable-buy-key-0001", string(offer))
@@ -1025,7 +1025,7 @@ func TestBuyIdempotencyReplaysOriginalBinding(t *testing.T) {
 func TestAppendOnlyRBACRevocationTakesEffect(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	principal := insertUser(t, pool, "principal")
+	principal := insertPrincipal(t, pool)
 	ctx := context.Background()
 	if err := store.Authorize(ctx, access(principal, exchange.OperationBuy), exchange.PermissionBuy); err != nil {
 		t.Fatalf("initial Authorize() error = %v", err)
@@ -1061,7 +1061,7 @@ VALUES ($1, $2, 'integration test')`, grantID, principal); err != nil {
 func TestResolveFederatedPrincipal(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	id := insertUser(t, pool, "federated")
+	id := insertPrincipal(t, pool)
 	principal, err := store.ResolvePrincipal(context.Background(), "https://issuer.test", string(id))
 	if err != nil || principal.ID != id || principal.ClientClass != exchange.ClientClassAutomated {
 		t.Fatalf("ResolvePrincipal() = %#v, %v", principal, err)
@@ -1071,7 +1071,7 @@ func TestResolveFederatedPrincipal(t *testing.T) {
 func TestSuspendedPrincipalCannotResolveOrAuthorize(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	id := insertUser(t, pool, "suspended")
+	id := insertPrincipal(t, pool)
 	if _, err := pool.Exec(context.Background(), `
 INSERT INTO bond_exchange.principal_suspensions (principal_uuid, suspended_by_uuid, reason)
 VALUES ($1, $1, 'Integration test suspension.')`, id); err != nil {
@@ -1088,8 +1088,8 @@ VALUES ($1, $1, 'Integration test suspension.')`, id); err != nil {
 func TestStreamStopsOnConsumerError(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
-	seller := insertUser(t, pool, "seller")
-	reader := insertUser(t, pool, "reader")
+	seller := insertPrincipal(t, pool)
+	reader := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	insertOffer(t, pool, seller, bond)
 	want := errors.New("consumer stopped")
@@ -1150,6 +1150,7 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 		want       error
 	}{
 		{constraint: "sale_offers_pkey", want: exchange.ErrOfferAlreadyExists},
+		{constraint: "sale_offers_seller_principal_fkey", want: exchange.ErrSellerNotFound},
 		{constraint: "sale_offers_seller_uuid_fkey", want: exchange.ErrSellerNotFound},
 		{constraint: "sale_offers_bond_uuid_fkey", want: exchange.ErrBondNotFound},
 	} {
@@ -1225,7 +1226,7 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 
 func TestSaleOffersRejectInvalidDecimalPrices(t *testing.T) {
 	pool := openTestPool(t)
-	seller := insertUser(t, pool, "seller")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 
 	for _, price := range []string{
@@ -1305,7 +1306,7 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 		"sale_offer_canonical_terms": false, "sale_offer_conversion_quotes": false,
 		"sale_offer_submissions":               false,
 		"sie_exchange_rate_fetch_coordination": false, "sie_exchange_rate_imports": false,
-		"sie_exchange_rate_observations": false, "sie_provider_state": false, "users": false,
+		"sie_exchange_rate_observations": false, "sie_provider_state": false,
 	}
 	rows, err := pool.Query(ctx, `
 		SELECT table_name, column_name, data_type
@@ -1347,6 +1348,65 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 	}
 }
 
+// The service has one identity table. `bond_exchange.users` carried no
+// attribute of its own and was contracted away, and the marketplace facts now
+// reference `principals` directly, so an identity that sells or buys is always
+// one that can authenticate. See ADR-0034.
+func TestPrincipalIsTheSoleIdentityTable(t *testing.T) {
+	pool := openTestPool(t)
+	ctx := context.Background()
+
+	var (
+		usersContracted  bool
+		sellerReferences int
+		buyerReferences  int
+		principalDefault string
+	)
+	if err := pool.QueryRow(ctx, `
+SELECT
+  to_regclass('bond_exchange.users') IS NULL,
+  (SELECT count(*) FROM pg_constraint
+   WHERE contype = 'f' AND convalidated
+     AND conname = 'sale_offers_seller_principal_fkey'
+     AND conrelid = 'bond_exchange.sale_offers'::regclass
+     AND confrelid = 'bond_exchange.principals'::regclass),
+  (SELECT count(*) FROM pg_constraint
+   WHERE contype = 'f' AND convalidated
+     AND conname = 'purchases_buyer_principal_fkey'
+     AND conrelid = 'bond_exchange.purchases'::regclass
+     AND confrelid = 'bond_exchange.principals'::regclass),
+  (SELECT column_default FROM information_schema.columns
+   WHERE table_schema = 'bond_exchange'
+     AND table_name = 'principals'
+     AND column_name = 'uuid_id')`).Scan(
+		&usersContracted,
+		&sellerReferences,
+		&buyerReferences,
+		&principalDefault,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !usersContracted {
+		t.Fatal("bond_exchange.users still exists; principals is not the sole identity table")
+	}
+	if sellerReferences != 1 || buyerReferences != 1 {
+		t.Fatalf("validated principal references = %d seller, %d buyer, want 1 each", sellerReferences, buyerReferences)
+	}
+	if principalDefault != "uuidv7()" {
+		t.Fatalf("principals.uuid_id default = %q, want uuidv7()", principalDefault)
+	}
+
+	// An identity that is not a principal cannot be attributed a domain fact.
+	_, err := pool.Exec(ctx, `
+INSERT INTO bond_exchange.sale_offers (seller_uuid, bond_uuid, price, currency_code)
+SELECT uuidv7(), uuid_id, 100.0000, 'MXN'
+FROM bond_exchange.bonds WHERE series = $1`, insertBond(t, pool))
+	var databaseError *pgconn.PgError
+	if !errors.As(err, &databaseError) || databaseError.ConstraintName != "sale_offers_seller_principal_fkey" {
+		t.Fatalf("sale offer for a non-principal seller error = %v", err)
+	}
+}
+
 func TestLegacyIdentifierArtifactsAreRetired(t *testing.T) {
 	pool := openTestPool(t)
 	ctx := context.Background()
@@ -1366,7 +1426,6 @@ WHERE table_schema = 'bond_exchange'
 	var forbiddenColumns int
 	if err := pool.QueryRow(ctx, `
 WITH forbidden(table_name, column_name) AS (VALUES
-  ('users', 'id'),
   ('sale_offers', 'id'), ('sale_offers', 'seller_id'), ('sale_offers', 'bond_series'),
   ('purchases', 'sale_offer_id'), ('purchases', 'buyer_id'),
   ('principals', 'id'),
@@ -1504,8 +1563,8 @@ func TestStreamActiveOffersReleasesConnectionsOnEveryExit(t *testing.T) {
 	pool := openBoundedTestPool(t, poolSize)
 	store := NewStore(pool)
 	ctx := context.Background()
-	seller := insertUser(t, pool, "")
-	readerID := insertUser(t, pool, "")
+	seller := insertPrincipal(t, pool)
+	readerID := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	for range 3 {
 		insertOffer(t, pool, seller, bond)
@@ -1590,8 +1649,8 @@ func TestConcurrentSlowReadersDoNotExhaustThePool(t *testing.T) {
 	pool := openBoundedTestPool(t, poolSize)
 	store := NewStore(pool)
 	ctx := context.Background()
-	seller := insertUser(t, pool, "")
-	readerID := insertUser(t, pool, "")
+	seller := insertPrincipal(t, pool)
+	readerID := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 	for range 2 {
 		insertOffer(t, pool, seller, bond)
@@ -1657,7 +1716,7 @@ func requirePoolDrains(t *testing.T, pool *pgxpool.Pool) {
 func TestStorageConstraintsMatchDomainValidation(t *testing.T) {
 	pool := openTestPool(t)
 	ctx := context.Background()
-	seller := insertUser(t, pool, "")
+	seller := insertPrincipal(t, pool)
 	bond := insertBond(t, pool)
 
 	insertCurrency := func(candidate string) error {
@@ -1827,19 +1886,9 @@ func testDatabaseURL(t *testing.T) string {
 	return databaseURL
 }
 
-func insertUser(t *testing.T, pool *pgxpool.Pool, _ string) exchange.UserID {
+func insertPrincipal(t *testing.T, pool *pgxpool.Pool) exchange.PrincipalID {
 	t.Helper()
-	var id exchange.UserID
-	if err := pool.QueryRow(context.Background(), `
-INSERT INTO bond_exchange.users DEFAULT VALUES
-RETURNING uuid_id`).Scan(&id); err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-	if _, err := pool.Exec(context.Background(), `
-INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
-VALUES ($1, 'https://issuer.test', $2, 'automated')`, id, id); err != nil {
-		t.Fatalf("insert principal: %v", err)
-	}
+	id := insertUnprivilegedPrincipal(t, pool)
 	if _, err := pool.Exec(context.Background(), `
 INSERT INTO bond_exchange.principal_role_grants (principal_uuid, role_uuid, granted_by_uuid, reason)
 SELECT $1, uuid_id, $1, 'Integration test access.'
@@ -1849,30 +1898,30 @@ FROM bond_exchange.roles WHERE code = 'trader'`, id); err != nil {
 	return id
 }
 
-func insertUnprivilegedUser(t *testing.T, pool *pgxpool.Pool) exchange.UserID {
+func insertUnprivilegedPrincipal(t *testing.T, pool *pgxpool.Pool) exchange.PrincipalID {
 	t.Helper()
-	var id exchange.UserID
-	if err := pool.QueryRow(context.Background(), `INSERT INTO bond_exchange.users DEFAULT VALUES RETURNING uuid_id`).Scan(&id); err != nil {
-		t.Fatalf("insert unprivileged user: %v", err)
-	}
-	if _, err := pool.Exec(context.Background(), `
+	var id exchange.PrincipalID
+	if err := pool.QueryRow(context.Background(), `
+WITH generated AS (SELECT uuidv7() AS uuid_id)
 INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
-VALUES ($1, 'https://issuer.test', $2, 'automated')`, id, id); err != nil {
-		t.Fatalf("insert unprivileged principal: %v", err)
+SELECT uuid_id, 'https://issuer.test', uuid_id::text, 'automated'
+FROM generated
+RETURNING uuid_id`).Scan(&id); err != nil {
+		t.Fatalf("insert principal: %v", err)
 	}
 	return id
 }
 
-func access(user exchange.UserID, operation string) exchange.AccessContext {
+func access(principal exchange.PrincipalID, operation string) exchange.AccessContext {
 	return exchange.AccessContext{
-		Principal: exchange.Principal{ID: user, ClientID: "integration-client", ClientClass: exchange.ClientClassAutomated},
+		Principal: exchange.Principal{ID: principal, ClientID: "integration-client", ClientClass: exchange.ClientClassAutomated},
 		Operation: operation,
 	}
 }
 
-func mutation(user exchange.UserID, operation, idempotencyKey, request string) exchange.MutationContext {
+func mutation(principal exchange.PrincipalID, operation, idempotencyKey, request string) exchange.MutationContext {
 	idempotencyKey = testNonce(idempotencyKey)
-	value := access(user, operation)
+	value := access(principal, operation)
 	value.RequestDigest = sha256.Sum256([]byte(request))
 	value.AssertionDigest = sha256.Sum256([]byte("fresh assertion: " + idempotencyKey))
 	value.AssertionID = idempotencyKey
@@ -1930,7 +1979,7 @@ func insertBond(t *testing.T, pool *pgxpool.Pool) exchange.BondSeries {
 func insertOffer(
 	t *testing.T,
 	pool *pgxpool.Pool,
-	seller exchange.UserID,
+	seller exchange.PrincipalID,
 	bond exchange.BondSeries,
 ) exchange.OfferID {
 	t.Helper()

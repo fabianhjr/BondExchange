@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	testPrincipalID      = exchange.UserID("01991a20-0000-7000-8000-000000000001")
-	testSellerID         = exchange.UserID("01991a20-0000-7000-8000-000000000002")
-	testBuyerID          = exchange.UserID("01991a20-0000-7000-8000-000000000003")
+	testPrincipalID      = exchange.PrincipalID("01991a20-0000-7000-8000-000000000001")
+	testSellerID         = exchange.PrincipalID("01991a20-0000-7000-8000-000000000002")
+	testBuyerID          = exchange.PrincipalID("01991a20-0000-7000-8000-000000000003")
 	testOfferID          = exchange.OfferID("01991a20-0000-7000-8000-000000000101")
 	testOtherOfferID     = exchange.OfferID("01991a20-0000-7000-8000-000000000102")
 	testIdempotencyNonce = "41db1265-8bc1-4ab3-992f-885799a4af1d"
@@ -152,7 +152,9 @@ func (stub authenticatorStub) Authenticate(_ context.Context, operation string, 
 
 type rateLimiterStub struct{ err error }
 
-func (stub rateLimiterStub) AdmitRequest(context.Context, exchange.UserID) error { return stub.err }
+func (stub rateLimiterStub) AdmitRequest(context.Context, exchange.PrincipalID) error {
+	return stub.err
+}
 
 type listStreamStub struct {
 	grpc.ServerStream
@@ -311,7 +313,7 @@ func TestGRPCErrors(t *testing.T) {
 		{name: "deadline", err: context.DeadlineExceeded, code: codes.DeadlineExceeded},
 		{name: "unauthenticated", err: exchange.ErrUnauthenticated, code: codes.Unauthenticated},
 		{name: "permission", err: exchange.ErrPermissionDenied, code: codes.PermissionDenied},
-		{name: "invalid", err: exchange.ErrInvalidUserID, code: codes.InvalidArgument},
+		{name: "invalid", err: exchange.ErrInvalidOfferID, code: codes.InvalidArgument},
 		{name: "missing offer", err: exchange.ErrOfferUnavailable, code: codes.NotFound},
 		{name: "self trade", err: exchange.ErrSelfTradeProhibited, code: codes.FailedPrecondition},
 		{name: "identity inconsistency", err: exchange.ErrBuyerNotFound, code: codes.Internal},

@@ -22,7 +22,7 @@ WITH inserted_purchase AS (
   FROM bond_exchange.sale_offers AS sale_offer
   JOIN bond_exchange.sale_offer_canonical_terms AS canonical
     ON canonical.sale_offer_uuid = sale_offer.uuid_id
-  CROSS JOIN bond_exchange.users AS buyer
+  CROSS JOIN bond_exchange.principals AS buyer
   WHERE sale_offer.uuid_id = $1
     AND buyer.uuid_id = $2
     AND sale_offer.seller_uuid <> buyer.uuid_id
@@ -46,22 +46,22 @@ JOIN bond_exchange.sale_offer_canonical_terms AS canonical
 JOIN bond_exchange.bonds AS bond
   ON bond.uuid_id = sale_offer.bond_uuid`
 
+// The buyer is the authenticated principal, and `purchases_buyer_principal_fkey`
+// makes a buyer that is not a principal unrepresentable, so a failed insert can
+// only mean the caller's own offer or an offer that is no longer available.
 const classifyFailedBuyQuery = `
-SELECT
-  EXISTS (SELECT 1 FROM bond_exchange.users WHERE uuid_id = $1),
-  EXISTS (SELECT 1 FROM bond_exchange.sale_offers WHERE uuid_id = $2),
-  EXISTS (
-    SELECT 1
-    FROM bond_exchange.sale_offers AS offer
-    JOIN bond_exchange.sale_offer_canonical_terms AS canonical
-      ON canonical.sale_offer_uuid = offer.uuid_id
-    WHERE offer.uuid_id = $2
-      AND offer.seller_uuid = $1
-      AND NOT EXISTS (
-        SELECT 1 FROM bond_exchange.purchases AS purchase
-        WHERE purchase.sale_offer_uuid = offer.uuid_id
-      )
-  )`
+SELECT EXISTS (
+  SELECT 1
+  FROM bond_exchange.sale_offers AS offer
+  JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+    ON canonical.sale_offer_uuid = offer.uuid_id
+  WHERE offer.uuid_id = $2
+    AND offer.seller_uuid = $1
+    AND NOT EXISTS (
+      SELECT 1 FROM bond_exchange.purchases AS purchase
+      WHERE purchase.sale_offer_uuid = offer.uuid_id
+    )
+)`
 
 const purchaseByOfferQuery = `
 SELECT
@@ -343,12 +343,12 @@ func (store *Store) buyOnce(
 			ID: exchange.PurchaseID(purchaseID),
 			Offer: exchange.SaleOffer{
 				ID:         exchange.OfferID(offerIDValue),
-				SellerID:   exchange.UserID(sellerID),
+				SellerID:   exchange.PrincipalID(sellerID),
 				BondSeries: exchange.BondSeries(bondSeries),
 				Price:      price,
 				Currency:   exchange.CurrencyCode(currencyCode),
 			},
-			BuyerID:  exchange.UserID(buyerIDValue),
+			BuyerID:  exchange.PrincipalID(buyerIDValue),
 			BoughtAt: boughtAt,
 		}
 		if err := recordOperationSuccess(ctx, tx, claimID, string(offerID)); err != nil {
@@ -363,22 +363,18 @@ func (store *Store) buyOnce(
 		return exchange.Purchase{}, classifyBuyError(err)
 	}
 
-	var buyerExists, offerExists, selfTrade bool
+	var selfTrade bool
 	if classifyErr := tx.QueryRow(
 		ctx,
 		classifyFailedBuyQuery,
 		string(operation.Principal.ID),
 		string(offerID),
-	).Scan(&buyerExists, &offerExists, &selfTrade); classifyErr != nil {
+	).Scan(&selfTrade); classifyErr != nil {
 		return exchange.Purchase{}, classifyErr
 	}
-	switch {
-	case !buyerExists:
-		err = exchange.ErrBuyerNotFound
-	case selfTrade:
+	err = exchange.ErrOfferUnavailable
+	if selfTrade {
 		err = exchange.ErrSelfTradeProhibited
-	default:
-		err = exchange.ErrOfferUnavailable
 	}
 	code, _ := safeOperationErrorCode(err)
 	if recordErr := recordOperationRejection(ctx, tx, claimID, code); recordErr != nil {
@@ -640,6 +636,10 @@ WHERE claim.principal_uuid = $1
 	return *resourceID, nil
 }
 
+// `buyer_not_found` is retained in both directions although no current path
+// produces it: `purchases_buyer_principal_fkey` makes a buyer that is not a
+// principal unrepresentable, but `operation_results` is append-only, so a row
+// written before ADR-0034 must still replay as the error it recorded.
 func safeOperationErrorCode(err error) (string, bool) {
 	switch {
 	case errors.Is(err, exchange.ErrBuyerNotFound):
@@ -779,7 +779,11 @@ func classifyCreateSaleOfferError(err error) error {
 	switch databaseError.ConstraintName {
 	case "sale_offers_pkey":
 		return exchange.ErrOfferAlreadyExists
-	case "sale_offers_seller_uuid_fkey":
+	// Both names are accepted for the rolling window in which the expand
+	// migration has run but the contract migration has not: the seller column
+	// carries a foreign key to `users` and one to `principals` at the same
+	// time, and either may name the violation.
+	case "sale_offers_seller_principal_fkey", "sale_offers_seller_uuid_fkey":
 		return exchange.ErrSellerNotFound
 	case "sale_offers_bond_uuid_fkey":
 		return exchange.ErrBondNotFound

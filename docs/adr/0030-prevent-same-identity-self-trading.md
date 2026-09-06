@@ -58,8 +58,11 @@ relationship data and remain outside this decision.
 - Existing non-self purchases, exclusive contention, immutable facts, and the
   meaning of `Buy` as a binding reservation are unchanged.
 - F-002 remains open because this rule addresses only same-identity
-  self-trading. F-023 remains material because the schema does not enforce the
-  principal-to-user relationship or represent beneficial ownership.
+  self-trading, and because distinct principals can still share a beneficial
+  owner. [ADR-0034](0034-make-the-principal-the-sole-identity.md) later made
+  the principal the sole identity, so the UUIDs this rule compares are the only
+  identity the schema has; that removes the ambiguity about which identity is
+  compared without giving the rule any reach over affiliation.
 
 ## Alternatives considered
 
