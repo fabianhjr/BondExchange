@@ -108,4 +108,117 @@ if [[ "$publish_status" != 400 ]]; then
 fi
 jq -e '.error == "no event publishers are configured"' "$test_root/publish.json" >/dev/null
 
+# Everything above reached the application through the in-process REST gateway.
+# The checks below drive the native gRPC listener so the second transport is
+# exercised end to end rather than assumed equivalent.
+grpc_call() {
+  local token="$1" method="$2" body="$3"
+  shift 3
+  grpcurl -plaintext \
+    -protoset "$project_root/api/descriptors/bondexchange.protoset" \
+    -H "Authorization: Bearer $token" \
+    "$@" \
+    -d "$body" \
+    "$grpc_address" \
+    "bondexchange.v1.BondExchangeService/$method"
+}
+
+grpc_series_token="$(issue_token demo-buyer bond-series.list - '{}')"
+grpc_call "$grpc_series_token" ListActiveBondSeries '{}' >"$test_root/grpc-series.json"
+jq -e '.bondSeries == ["DEMO2026", "DEMO2027"]' "$test_root/grpc-series.json" >/dev/null
+
+# ListActiveOffers is a server stream. grpcurl prints one JSON document per
+# message, so the terminal completion frame is the last document.
+grpc_offers_token="$(issue_token demo-buyer offers.list - '{"bond":"DEMO2027"}')"
+grpc_call "$grpc_offers_token" ListActiveOffers '{"bond":"DEMO2027"}' \
+  >"$test_root/grpc-offers.json"
+jq -se '
+  ([.[] | select(.offer) | .offer.id] == ["01991a20-0000-7000-8000-000000000103"])
+  and (.[-1].complete.offerCount == "1")
+' "$test_root/grpc-offers.json" >/dev/null
+
+# A mutation over gRPC uses the same assertion, nonce, and durable idempotency
+# scope as the REST path. DEMO2027 is untouched by the REST journey above.
+grpc_buy_key="00000000-0000-4000-8000-000000000014"
+grpc_buy_request='{"sale_offer_id":"01991a20-0000-7000-8000-000000000103"}'
+grpc_buy_token="$(issue_token demo-buyer purchases.buy "$grpc_buy_key" "$grpc_buy_request")"
+grpc_call "$grpc_buy_token" Buy "$grpc_buy_request" \
+  -H "Idempotency-Key: $grpc_buy_key" >"$test_root/grpc-buy.json"
+jq -e '.offer.id == "01991a20-0000-7000-8000-000000000103" and .offer.currencyCode == "MXN"' \
+  "$test_root/grpc-buy.json" >/dev/null
+
+# The reservation is visible to the other transport, which is the point of
+# sharing PostgreSQL rather than process state.
+curl --fail --silent \
+  --header "Authorization: Bearer $(issue_token demo-buyer bond-series.list - '{}')" \
+  "$base_url/active-bond-series" >"$test_root/series-after-grpc-buy.json"
+jq -e '.bond_series == ["DEMO2026"]' "$test_root/series-after-grpc-buy.json" >/dev/null
+
+# Request admission is shared across transports. ADR-0028 requires gRPC to
+# report ResourceExhausted with a google.rpc.RetryInfo detail, which is the
+# native counterpart of the REST Retry-After header.
+psql "$BOND_EXCHANGE_TEST_DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
+  --set principal_uuid='01991a20-0000-7000-8000-000000000003' <<'SQL'
+INSERT INTO bond_exchange.principal_rate_limits
+  (principal_uuid, window_started_at, request_count)
+VALUES (
+  :'principal_uuid',
+  date_trunc('minute', statement_timestamp()),
+  100
+)
+ON CONFLICT (principal_uuid) DO UPDATE
+SET window_started_at = EXCLUDED.window_started_at,
+    request_count = EXCLUDED.request_count,
+    updated_at = statement_timestamp();
+SQL
+grpc_limited_token="$(issue_token demo-rate-limited bond-series.list - '{}')"
+if grpc_call "$grpc_limited_token" ListActiveBondSeries '{}' \
+  >"$test_root/grpc-rate-limit.out" 2>"$test_root/grpc-rate-limit.err"; then
+  echo "rate-limited gRPC request unexpectedly succeeded" >&2
+  exit 1
+fi
+if ! grep -q 'Code: ResourceExhausted' "$test_root/grpc-rate-limit.err"; then
+  echo "rate-limited gRPC request did not report ResourceExhausted" >&2
+  cat "$test_root/grpc-rate-limit.err" >&2
+  exit 1
+fi
+if ! grep -q 'google.rpc.RetryInfo' "$test_root/grpc-rate-limit.err"; then
+  echo "rate-limited gRPC request did not carry a RetryInfo detail" >&2
+  cat "$test_root/grpc-rate-limit.err" >&2
+  exit 1
+fi
+
+# An unauthorized principal is rejected on gRPC exactly as it is on REST, and
+# the message names neither the principal nor the missing permission.
+grpc_denied_token="$(issue_token demo-unauthorized bond-series.list - '{}')"
+if grpc_call "$grpc_denied_token" ListActiveBondSeries '{}' \
+  >"$test_root/grpc-denied.out" 2>"$test_root/grpc-denied.err"; then
+  echo "unauthorized gRPC request unexpectedly succeeded" >&2
+  exit 1
+fi
+if ! grep -q 'Code: PermissionDenied' "$test_root/grpc-denied.err"; then
+  echo "unauthorized gRPC request did not report PermissionDenied" >&2
+  cat "$test_root/grpc-denied.err" >&2
+  exit 1
+fi
+if ! grep -q 'Message: operation not permitted' "$test_root/grpc-denied.err"; then
+  echo "unauthorized gRPC request did not use the generic authorization message" >&2
+  cat "$test_root/grpc-denied.err" >&2
+  exit 1
+fi
+
+# An assertion bound to a different request is refused on gRPC as well, so the
+# request digest is enforced by the adapter rather than by the REST gateway.
+grpc_tampered_token="$(issue_token demo-buyer offers.list - '{"bond":"DEMO2026"}')"
+if grpc_call "$grpc_tampered_token" ListActiveOffers '{"bond":"DEMO2027"}' \
+  >"$test_root/grpc-tampered.out" 2>"$test_root/grpc-tampered.err"; then
+  echo "gRPC request with a mismatched assertion digest unexpectedly succeeded" >&2
+  exit 1
+fi
+if ! grep -q 'Code: Unauthenticated' "$test_root/grpc-tampered.err"; then
+  echo "mismatched gRPC assertion digest did not report Unauthenticated" >&2
+  cat "$test_root/grpc-tampered.err" >&2
+  exit 1
+fi
+
 echo "Demo smoke check passed"

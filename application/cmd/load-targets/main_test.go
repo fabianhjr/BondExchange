@@ -73,6 +73,56 @@ func TestGenerateReadAndContendedTargets(t *testing.T) {
 	}
 }
 
+func TestGenerateRejectedTrafficTargets(t *testing.T) {
+	directory := t.TempDir()
+	if err := demoauth.Initialize(directory); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(directory, "private.jwk")
+	now := time.Date(2026, time.September, 4, 12, 0, 0, 0, time.UTC)
+
+	var denied bytes.Buffer
+	if err := run([]string{key, "http://localhost:8080", "denied", "1", "denied", "1"}, &denied, now); err != nil {
+		t.Fatal(err)
+	}
+	var deniedTarget target
+	if err := json.Unmarshal([]byte(strings.TrimSpace(denied.String())), &deniedTarget); err != nil {
+		t.Fatal(err)
+	}
+	if deniedTarget.Method != "GET" || deniedTarget.URL != "http://localhost:8080/active-bond-series" {
+		t.Fatalf("denied target = %#v", deniedTarget)
+	}
+	if len(deniedTarget.Header["Authorization"]) != 1 || deniedTarget.Body != "" ||
+		len(deniedTarget.Header["Idempotency-Key"]) != 0 {
+		t.Fatalf("denied target is not an authenticated read: %#v", deniedTarget)
+	}
+
+	// The invalid-assertion target must request the same URL a correct listing
+	// requests, so the server rejects it for its binding rather than for its
+	// route. Its assertion is issued to an unseeded subject and bound to
+	// DEMO2027, and is refused before principal resolution or admission.
+	var invalid, valid bytes.Buffer
+	if err := run([]string{key, "http://localhost:8080", "invalid-assertion", "1", "invalid", "1"}, &invalid, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{key, "http://localhost:8080", "list-offers", "1", "list-offers", "1"}, &valid, now); err != nil {
+		t.Fatal(err)
+	}
+	var invalidTarget, validTarget target
+	if err := json.Unmarshal([]byte(strings.TrimSpace(invalid.String())), &invalidTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(valid.String())), &validTarget); err != nil {
+		t.Fatal(err)
+	}
+	if invalidTarget.URL != validTarget.URL {
+		t.Fatalf("invalid-assertion target requests %q, want %q", invalidTarget.URL, validTarget.URL)
+	}
+	if invalidTarget.Header["Authorization"][0] == validTarget.Header["Authorization"][0] {
+		t.Fatal("invalid-assertion target reused the correctly bound assertion")
+	}
+}
+
 func TestRejectInvalidArguments(t *testing.T) {
 	for _, arguments := range [][]string{
 		{},

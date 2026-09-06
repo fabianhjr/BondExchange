@@ -30,8 +30,10 @@ to change the respective listener addresses.
 
 The seed provides:
 
-- users `demo-seller`, `demo-buyer`, and the dedicated `demo-rate-limited`
-  verification principal;
+- users `demo-seller`, `demo-buyer`, the dedicated `demo-rate-limited`
+  verification principal, and the `demo-unauthorized` and `demo-suspended`
+  principals that make a `403` and a suspension-driven `401` reachable against
+  the running server;
 - bonds `DEMO2026` and `DEMO2027`; and
 - three active offers.
 

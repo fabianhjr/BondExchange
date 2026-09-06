@@ -164,7 +164,14 @@ production-readiness decision.
   make an exact retry return the prior result and reject changed input. Focused
   negative, integration, race, coverage, mutation, and TLC checks exercise the
   boundary. The full-server REST journey also retries a buy with a freshly
-  signed assertion and verifies identity minimization; structured security logs
+  signed assertion and verifies identity minimization. A readable REST scenario
+  (`tests/integration/http/authentication-failures.hurl`) drives the composed
+  server through a missing, malformed, foreign-signed, wrong-operation, and
+  digest-mismatched assertion, a suspended and an unauthorized principal, and
+  every nonce and JSON-envelope rejection, so the composition is verified to
+  install the control rather than only the packages that implement it. The demo
+  smoke check repeats the digest-mismatch, authorization, and admission
+  rejections over native gRPC. Structured security logs
   record safe decision metadata and correlate it with application-owned REST,
   gRPC, authentication, and database spans. Bounded operation, authentication,
   and idempotency-decision metrics exclude audit and request identifiers and
@@ -625,10 +632,16 @@ production-readiness decision.
   of a provenance use. The provenance quote reference is unique. Operation
   claims bind the deterministic request digest and exact retries recover one
   result. Unit and integration tests cover requirements, UUID shape, replay,
-  provenance, and quote reuse.
-- **Action:** Add clock-boundary and cross-principal integration cases if quote
-  TTL becomes configurable at runtime; monitor rejected acceptance without
-  logging financial request contents.
+  provenance, and quote reuse. A readable REST scenario
+  (`tests/integration/http/offer-intake-failures.hurl`) additionally drives the
+  composed server through a missing quote, a quote on an MXN submission, a
+  malformed quote identity, a changed amount, another principal's quote, a
+  reused quote, and a conflicting reuse of a spent nonce.
+- **Action:** Add clock-boundary cases if quote TTL becomes configurable at
+  runtime; monitor rejected acceptance without logging financial request
+  contents. Scores are unchanged: the end-to-end scenario confirms the composed
+  boundary but adds no control the serializable acceptance check did not
+  already provide.
 - **Traceability:** [ADR-0009](adr/0009-bind-federated-authorization-to-idempotent-operations.md)
   and [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md).
 
@@ -712,7 +725,12 @@ production-readiness decision.
   and coordination failure fails closed. PostgreSQL integration tests race 140
   attempts through separate pools and require exactly 100 admissions, prove
   independent principals and next-window reset, and transport tests verify
-  application work is skipped plus gRPC/REST retry contracts. A bounded
+  application work is skipped plus gRPC/REST retry contracts. The REST
+  integration test preloads a dedicated principal's window and verifies the
+  `429` and bounded `Retry-After` end to end; the demo smoke check verifies the
+  gRPC `ResourceExhausted` and `google.rpc.RetryInfo` counterpart. The generated
+  workload adds `denied` and `invalid-assertion` phases that record the cost of
+  requests refused after and before admission respectively. A bounded
   decision counter, admission-duration histogram, and protected security log
   expose rejection, error, and coordination-latency outcomes, but no production
   backend, threshold, representative contention measurement, or contention SLO

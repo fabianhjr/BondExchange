@@ -97,6 +97,7 @@ let
       pkgs.curl
       pkgs.grpcurl
       pkgs.jq
+      pkgs.postgresql_18
     ];
     text = builtins.readFile ./nix/demo-smoke-scenario.sh;
   };

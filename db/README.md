@@ -370,3 +370,19 @@ migration it loads `demo/seed.sql`, which is deliberately separate from the
 production schema history. Demo facts are discarded when the process stops; the
 seed is never applied to an external database. To migrate a persistent or
 production-like database, set `DATABASE_URL` explicitly and run `dbmate up`.
+
+The seed provisions five principals, three of which exist so an authorization
+outcome is reachable from the running server rather than only from the Go
+integration tests:
+
+| Principal | Roles | Reaches |
+| --- | --- | --- |
+| `demo-seller` | `trader` | Quoting, creating, and the self-trade rejection. |
+| `demo-buyer` | `trader`, `operator` | Buying, listing, health, and event recovery. |
+| `demo-rate-limited` | `trader` | Per-principal admission, by preloading its window. |
+| `demo-unauthorized` | none | `PermissionDenied`: it resolves and holds no permission. |
+| `demo-suspended` | `trader`, then suspended | `Unauthenticated`: an appended suspension removes every permission through `effective_principal_permissions`, and a suspended principal does not resolve at all. |
+
+`demo-suspended` keeps its role grant on purpose. Suspension and revocation are
+separate append-only facts, and the seed exercises the suspension branch of the
+permission view rather than simulating it with a revocation.

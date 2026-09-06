@@ -6,6 +6,7 @@ base_url="$BOND_EXCHANGE_TEST_BASE_URL"
 private_key="$BOND_EXCHANGE_TEST_PRIVATE_JWK"
 demo_auth="$BOND_EXCHANGE_TEST_DEMO_AUTH"
 test_root="$BOND_EXCHANGE_TEST_RUNTIME_ROOT"
+scenarios="$project_root/tests/integration/http"
 
 issue_token() {
   "$demo_auth" token "$private_key" "$1" "$2" "$3" "$4"
@@ -13,28 +14,26 @@ issue_token() {
 
 series_token="$(issue_token demo-buyer bond-series.list - '{}')"
 offers_token="$(issue_token demo-buyer offers.list - '{"bond":"DEMO2026"}')"
+
+# The seller prices a USD submission against the pinned SF43718 observation.
+# Hurl owns the exchange and its assertions; the runner only needs the
+# generated quote ID so it can bind the acceptance assertion to it.
 quote_key='00000000-0000-4000-8000-000000000009'
 quote_request='{"bond_series":"demo2026","price":"97.125","currency_code":"USD"}'
 quote_token="$(issue_token demo-seller offers.quote "$quote_key" "$quote_request")"
-quote_status="$(curl --silent --output "$test_root/quote.json" --write-out '%{http_code}' \
-  --header 'Content-Type: application/json' \
-  --header "Authorization: Bearer $quote_token" \
-  --header "Idempotency-Key: $quote_key" \
-  --data "$quote_request" \
-  "$base_url/sale-offer-quotes")"
-if [[ "$quote_status" != 201 ]]; then
-  echo "quote sale offer returned HTTP $quote_status" >&2
+quote_retry_token="$(issue_token demo-seller offers.quote "$quote_key" "$quote_request")"
+
+hurl --jobs 1 --output "$test_root/quote.json" \
+  --variable "base_url=$base_url" \
+  --secret "quote_token=$quote_token" \
+  --secret "quote_retry_token=$quote_retry_token" \
+  "$scenarios/sale-offer-quote.hurl"
+quote_id="$(jq --raw-output '.quote_id' "$test_root/quote.json")"
+if [[ ! "$quote_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+  echo "quote did not return a canonical UUIDv7 quote ID" >&2
   exit 1
 fi
-quote_id="$(jq --raw-output '.quote_id' "$test_root/quote.json")"
-jq --exit-status '
-  .submitted_price == "97.125"
-  and .submitted_currency_code == "USD"
-  and .mxn_price == "1651.125"
-  and .currency_code == "MXN"
-  and .rate == "17"
-  and .rate_series == "SF43718"
-' "$test_root/quote.json" >/dev/null
+
 create_key='00000000-0000-4000-8000-000000000001'
 create_request="{\"bond_series\":\"demo2026\",\"price\":\"97.125\",\"currency_code\":\"USD\",\"conversion_quote_id\":\"$quote_id\"}"
 create_token="$(issue_token demo-seller offers.create "$create_key" "$create_request")"
@@ -43,7 +42,7 @@ hurl --jobs 1 --output "$test_root/create.json" \
   --variable "base_url=$base_url" \
   --variable "quote_id=$quote_id" \
   --secret "create_token=$create_token" \
-  "$project_root/tests/integration/http/sale-offer-create.hurl"
+  "$scenarios/sale-offer-create.hurl"
 offer_id="$(jq --raw-output '.offer.id' "$test_root/create.json")"
 if [[ ! "$offer_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
   echo "create did not return a canonical UUIDv7 offer ID" >&2
@@ -74,7 +73,7 @@ hurl --test --jobs 1 --no-output \
   --secret "second_buy_token=$second_buy_token" \
   --secret "self_buy_token=$self_buy_token" \
   --secret "self_buy_retry_token=$self_buy_retry_token" \
-  "$project_root/tests/integration/http/sale-offer-lifecycle.hurl"
+  "$scenarios/sale-offer-lifecycle.hurl"
 
 curl --fail --silent \
   --header "Authorization: Bearer $offers_token" \
@@ -84,6 +83,35 @@ jq --seq --slurp --exit-status '
   ([.[] | select(.offer) | .offer.id] == ["01991a20-0000-7000-8000-000000000101", "01991a20-0000-7000-8000-000000000102"])
   and (.[-1].complete.offer_count == "2")
 ' "$test_root/final-offers.json-seq" >/dev/null
+
+# A second ephemeral issuer produces a structurally valid assertion whose
+# signature the server cannot verify. Its key ID matches, so the failure is a
+# signature failure rather than an unknown-key failure.
+"$demo_auth" init "$test_root/foreign-auth"
+foreign_key="$test_root/foreign-auth/private.jwk"
+foreign_key_token="$("$demo_auth" token "$foreign_key" demo-buyer bond-series.list - '{}')"
+
+wrong_operation_token="$(issue_token demo-buyer offers.list - '{"bond":"DEMO2026"}')"
+tampered_request_token="$(issue_token demo-buyer offers.list - '{"bond":"DEMO2027"}')"
+suspended_token="$(issue_token demo-suspended bond-series.list - '{}')"
+unauthorized_token="$(issue_token demo-unauthorized bond-series.list - '{}')"
+unauthorized_buy_request='{"sale_offer_id":"01991a20-0000-7000-8000-000000000101"}'
+unauthorized_buy_token="$(issue_token demo-unauthorized purchases.buy \
+  '00000000-0000-4000-8000-0000000000a2' "$unauthorized_buy_request")"
+missing_nonce_token="$(issue_token demo-buyer purchases.buy \
+  '00000000-0000-4000-8000-0000000000a1' "$unauthorized_buy_request")"
+
+hurl --test --jobs 1 --no-output \
+  --variable "base_url=$base_url" \
+  --secret "series_token=$series_token" \
+  --secret "foreign_key_token=$foreign_key_token" \
+  --secret "wrong_operation_token=$wrong_operation_token" \
+  --secret "tampered_request_token=$tampered_request_token" \
+  --secret "suspended_token=$suspended_token" \
+  --secret "unauthorized_token=$unauthorized_token" \
+  --secret "unauthorized_buy_token=$unauthorized_buy_token" \
+  --secret "missing_nonce_token=$missing_nonce_token" \
+  "$scenarios/authentication-failures.hurl"
 
 rate_limit_token="$(issue_token demo-rate-limited bond-series.list - '{}')"
 psql "$BOND_EXCHANGE_TEST_DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
@@ -125,5 +153,57 @@ curl --fail --silent \
   --header "Authorization: Bearer $rate_limit_token" \
   "$base_url/active-bond-series" >"$test_root/rate-limit-reset.json"
 jq --exit-status '.bond_series | type == "array"' "$test_root/rate-limit-reset.json" >/dev/null
+
+# Quote misuse runs last and against DEMO2027, so the DEMO2026 book asserted
+# above is final. The runner only arranges the fixture quote; every documented
+# exchange lives in the scenario file.
+intake_quote_key='00000000-0000-4000-8000-0000000000b1'
+intake_quote_request='{"bond_series":"DEMO2027","price":"10.00","currency_code":"USD"}'
+intake_quote_token="$(issue_token demo-seller offers.quote "$intake_quote_key" "$intake_quote_request")"
+intake_quote_status="$(curl --silent --output "$test_root/intake-quote.json" --write-out '%{http_code}' \
+  --header 'Content-Type: application/json' \
+  --header "Authorization: Bearer $intake_quote_token" \
+  --header "Idempotency-Key: $intake_quote_key" \
+  --data "$intake_quote_request" \
+  "$base_url/sale-offer-quotes")"
+if [[ "$intake_quote_status" != 201 ]]; then
+  echo "offer-intake fixture quote returned HTTP $intake_quote_status" >&2
+  exit 1
+fi
+intake_quote_id="$(jq --raw-output '.quote_id' "$test_root/intake-quote.json")"
+
+accepted_request="{\"bond_series\":\"DEMO2027\",\"price\":\"10.00\",\"currency_code\":\"USD\",\"conversion_quote_id\":\"$intake_quote_id\"}"
+usd_without_quote_token="$(issue_token demo-seller offers.create \
+  '00000000-0000-4000-8000-0000000000b2' '{"bond_series":"DEMO2027","price":"10.00","currency_code":"USD"}')"
+mxn_with_quote_token="$(issue_token demo-seller offers.create \
+  '00000000-0000-4000-8000-0000000000b3' \
+  "{\"bond_series\":\"DEMO2027\",\"price\":\"10.00\",\"currency_code\":\"MXN\",\"conversion_quote_id\":\"$intake_quote_id\"}")"
+invalid_quote_token="$(issue_token demo-seller offers.create \
+  '00000000-0000-4000-8000-0000000000b4' \
+  '{"bond_series":"DEMO2027","price":"10.00","currency_code":"USD","conversion_quote_id":"not-a-uuid"}')"
+changed_price_token="$(issue_token demo-seller offers.create \
+  '00000000-0000-4000-8000-0000000000b5' \
+  "{\"bond_series\":\"DEMO2027\",\"price\":\"11.00\",\"currency_code\":\"USD\",\"conversion_quote_id\":\"$intake_quote_id\"}")"
+other_principal_token="$(issue_token demo-buyer offers.create \
+  '00000000-0000-4000-8000-0000000000b6' "$accepted_request")"
+accept_token="$(issue_token demo-seller offers.create \
+  '00000000-0000-4000-8000-0000000000b7' "$accepted_request")"
+reuse_token="$(issue_token demo-seller offers.create \
+  '00000000-0000-4000-8000-0000000000b8' "$accepted_request")"
+conflict_token="$(issue_token demo-seller offers.create \
+  '00000000-0000-4000-8000-0000000000b7' '{"bond_series":"DEMO2027","price":"12.00","currency_code":"MXN"}')"
+
+hurl --test --jobs 1 --no-output \
+  --variable "base_url=$base_url" \
+  --variable "quote_id=$intake_quote_id" \
+  --secret "usd_without_quote_token=$usd_without_quote_token" \
+  --secret "mxn_with_quote_token=$mxn_with_quote_token" \
+  --secret "invalid_quote_token=$invalid_quote_token" \
+  --secret "changed_price_token=$changed_price_token" \
+  --secret "other_principal_token=$other_principal_token" \
+  --secret "accept_token=$accept_token" \
+  --secret "reuse_token=$reuse_token" \
+  --secret "conflict_token=$conflict_token" \
+  "$scenarios/offer-intake-failures.hurl"
 
 echo "HTTP integration test passed"

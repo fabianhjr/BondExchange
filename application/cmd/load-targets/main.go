@@ -109,6 +109,22 @@ func makeTarget(privateKey, baseURL, scenario string, offerIDs []string, index, 
 		path = "/active-bond-series"
 		operation = exchange.OperationListBondSeries
 		requestJSON = `{}`
+	case "denied":
+		// An authenticated principal that holds no role. The request is
+		// resolved and admitted before authorization rejects it, so this
+		// measures the cost of work the service performs and then discards.
+		path = "/active-bond-series"
+		subject = fmt.Sprintf("load-denied-%d", ((index-1)%principalCount)+1)
+		operation = exchange.OperationListBondSeries
+		requestJSON = `{}`
+	case "invalid-assertion":
+		// The assertion is well formed and correctly signed but bound to a
+		// different canonical request, so it is refused during authentication.
+		// Nothing reaches principal resolution or request admission.
+		path = "/active-offers?bond=DEMO2026"
+		subject = fmt.Sprintf("load-invalid-%d", ((index-1)%principalCount)+1)
+		operation = exchange.OperationListActiveOffers
+		requestJSON = `{"bond":"DEMO2027"}`
 	default:
 		return target{}, fmt.Errorf("unsupported SCENARIO %q", scenario)
 	}
