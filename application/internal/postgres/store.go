@@ -23,7 +23,9 @@ WITH inserted_purchase AS (
   JOIN bond_exchange.sale_offer_canonical_terms AS canonical
     ON canonical.sale_offer_uuid = sale_offer.uuid_id
   CROSS JOIN bond_exchange.users AS buyer
-  WHERE sale_offer.uuid_id = $1 AND buyer.uuid_id = $2
+  WHERE sale_offer.uuid_id = $1
+    AND buyer.uuid_id = $2
+    AND sale_offer.seller_uuid <> buyer.uuid_id
   ON CONFLICT (sale_offer_uuid) DO NOTHING
   RETURNING uuid_id, sale_offer_uuid, buyer_uuid, bought_at
 )
@@ -47,7 +49,19 @@ JOIN bond_exchange.bonds AS bond
 const classifyFailedBuyQuery = `
 SELECT
   EXISTS (SELECT 1 FROM bond_exchange.users WHERE uuid_id = $1),
-  EXISTS (SELECT 1 FROM bond_exchange.sale_offers WHERE uuid_id = $2)`
+  EXISTS (SELECT 1 FROM bond_exchange.sale_offers WHERE uuid_id = $2),
+  EXISTS (
+    SELECT 1
+    FROM bond_exchange.sale_offers AS offer
+    JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+      ON canonical.sale_offer_uuid = offer.uuid_id
+    WHERE offer.uuid_id = $2
+      AND offer.seller_uuid = $1
+      AND NOT EXISTS (
+        SELECT 1 FROM bond_exchange.purchases AS purchase
+        WHERE purchase.sale_offer_uuid = offer.uuid_id
+      )
+  )`
 
 const purchaseByOfferQuery = `
 SELECT
@@ -108,6 +122,7 @@ JOIN bond_exchange.sale_offer_canonical_terms AS canonical
   ON canonical.sale_offer_uuid = offer.uuid_id
 JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
 WHERE bond.series = $1
+  AND offer.seller_uuid <> $2
   AND NOT EXISTS (
     SELECT 1 FROM bond_exchange.purchases AS purchase
     WHERE purchase.sale_offer_uuid = offer.uuid_id
@@ -124,6 +139,7 @@ WHERE NOT EXISTS (
   SELECT 1 FROM bond_exchange.purchases AS purchase
   WHERE purchase.sale_offer_uuid = offer.uuid_id
 )
+  AND offer.seller_uuid <> $1
 ORDER BY bond.series`
 
 type Store struct {
@@ -344,21 +360,24 @@ func (store *Store) buyOnce(
 		return purchase, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return exchange.Purchase{}, err
+		return exchange.Purchase{}, classifyBuyError(err)
 	}
 
-	var buyerExists, offerExists bool
+	var buyerExists, offerExists, selfTrade bool
 	if classifyErr := tx.QueryRow(
 		ctx,
 		classifyFailedBuyQuery,
 		string(operation.Principal.ID),
 		string(offerID),
-	).Scan(&buyerExists, &offerExists); classifyErr != nil {
+	).Scan(&buyerExists, &offerExists, &selfTrade); classifyErr != nil {
 		return exchange.Purchase{}, classifyErr
 	}
-	if !buyerExists {
+	switch {
+	case !buyerExists:
 		err = exchange.ErrBuyerNotFound
-	} else {
+	case selfTrade:
+		err = exchange.ErrSelfTradeProhibited
+	default:
 		err = exchange.ErrOfferUnavailable
 	}
 	code, _ := safeOperationErrorCode(err)
@@ -389,6 +408,7 @@ func (store *Store) StreamActiveOffers(
 		ctx,
 		activeOffersQuery,
 		string(bondSeries),
+		string(access.Principal.ID),
 	)
 	if err != nil {
 		return err
@@ -436,7 +456,7 @@ func (store *Store) ActiveBondSeries(
 	if err := authorize(ctx, tx, access, exchange.PermissionListBondSeries); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, activeBondSeriesQuery)
+	rows, err := tx.Query(ctx, activeBondSeriesQuery, string(access.Principal.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -626,6 +646,8 @@ func safeOperationErrorCode(err error) (string, bool) {
 		return "buyer_not_found", true
 	case errors.Is(err, exchange.ErrOfferUnavailable):
 		return "offer_unavailable", true
+	case errors.Is(err, exchange.ErrSelfTradeProhibited):
+		return "self_trade_prohibited", true
 	case errors.Is(err, exchange.ErrOfferAlreadyExists):
 		return "offer_already_exists", true
 	case errors.Is(err, exchange.ErrSellerNotFound):
@@ -645,6 +667,8 @@ func operationErrorFromCode(code string) error {
 		return exchange.ErrBuyerNotFound
 	case "offer_unavailable":
 		return exchange.ErrOfferUnavailable
+	case "self_trade_prohibited":
+		return exchange.ErrSelfTradeProhibited
 	case "offer_already_exists":
 		return exchange.ErrOfferAlreadyExists
 	case "seller_not_found":
@@ -656,6 +680,14 @@ func operationErrorFromCode(code string) error {
 	default:
 		return errors.New("invalid stored operation error code")
 	}
+}
+
+func classifyBuyError(err error) error {
+	var databaseError *pgconn.PgError
+	if errors.As(err, &databaseError) && databaseError.ConstraintName == "purchases_buyer_not_seller" {
+		return exchange.ErrSelfTradeProhibited
+	}
+	return err
 }
 
 func isRetryableTransactionError(err error) bool {

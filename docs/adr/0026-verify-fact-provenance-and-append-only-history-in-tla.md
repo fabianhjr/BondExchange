@@ -1,5 +1,8 @@
 # ADR-0026: Verify fact provenance and append-only history in TLA+
 
+ADR-0030 later derives a buyer-specific tradable subset of the active book and
+adds the `NoSelfPurchases` invariant without adding marketplace state.
+
 - Status: Accepted
 - Date: 2026-09-05
 

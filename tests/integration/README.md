@@ -19,7 +19,9 @@ seller-bound `SF43718` USD-to-MXN quote. The first Hurl scenario accepts it with
 a UUIDv4 idempotency nonce, verifies only canonical MXN terms are returned, and
 captures the PostgreSQL-generated offer UUIDv7. The second
 discovers and lists seeded offers, observes the created offer in the active
-book, buys it, demonstrates an idempotent retry, and shows that a new buy can
+book from the buyer's tradable view, verifies the seller cannot discover or
+reserve its own offer, replays that durable rejection, buys from the separate
+buyer, demonstrates a successful idempotent retry, and shows that a new buy can
 no longer acquire it. The REST offer list is
 an RFC 7464 JSON Text Sequence, so the runner also parses every frame with
 `jq --seq` and verifies ordering and the terminal count.
@@ -56,8 +58,8 @@ creates unique authenticated targets for these scenarios:
 | Scenario | Required result |
 | --- | --- |
 | Create | Every independently idempotent MXN request returns `201` with a distinct UUIDv7. |
-| List offers | Every request consumes the populated JSON-seq book and returns `200`. |
-| List series | Every discovery request returns `200`. |
+| List offers | Every request consumes the caller's populated tradable JSON-seq book and returns `200`. |
+| List series | Every discovery request returns `200` with the caller's tradable series. |
 | Buy | The runner discovers every generated UUIDv7 and buys each offer once with `201`. |
 | Contended buy | Exactly one request returns `201`; every other request returns `404`. |
 

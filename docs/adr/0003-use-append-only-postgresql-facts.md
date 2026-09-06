@@ -7,6 +7,10 @@ ADR-0017 amends the physical identity mapping to UUIDv7 primary keys and a
 separate unique purchase `sale_offer_uuid`. The append-only and PostgreSQL
 concurrency decisions remain accepted.
 
+ADR-0030 further restricts inserts and application reads: a buyer cannot equal
+the referenced offer's seller, and discovery excludes the principal's own
+offers. The global append-only projection remains unchanged.
+
 ## Context
 
 The Go server must be safe when several instances handle attempts to buy the

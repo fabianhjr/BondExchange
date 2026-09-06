@@ -64,6 +64,11 @@ new operation and retain that nonce with the exact request for retries.
 PostgreSQL generates resource UUIDv7 values; create clients must use the
 returned ID rather than supplying one.
 
+The offer book is a tradable view for the authenticated principal. The demo
+seller therefore does not see the three offers attributed to `demo-seller`, and
+an attempt to buy one directly is rejected even when its UUID is known. The
+separate `demo-buyer` principal sees and can reserve those offers.
+
 ## Value formats
 
 Bond-series input is canonicalized to uppercase at the service boundary. Its

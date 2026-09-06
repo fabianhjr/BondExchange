@@ -43,6 +43,7 @@ one is missing from this table.
 | 20260905000000 | [`constrain_currency_codes.sql`](migrations/20260905000000_constrain_currency_codes.sql) | The canonical currency-code constraint, added `NOT VALID`. |
 | 20260905010000 | [`validate_currency_codes.sql`](migrations/20260905010000_validate_currency_codes.sql) | Validation of that constraint against retained history. |
 | 20260905020000 | [`add_principal_rate_limits.sql`](migrations/20260905020000_add_principal_rate_limits.sql) | Shared authenticated request admission. |
+| 20260906000000 | [`prevent_self_trading.sql`](migrations/20260906000000_prevent_self_trading.sql) | Same-identity self-trade prevention. |
 
 ## Identity and keys
 
@@ -106,13 +107,22 @@ offer one winner even when they come from different server instances. The losing
 requests are reported as an unavailable offer, while the original offer row
 remains as history.
 
+The `purchases_reject_self_trade` trigger compares each new purchase's buyer to
+the referenced offer's seller and raises the named
+`purchases_buyer_not_seller` check violation when they match. The activating
+migration verifies the retained history first; it does not rewrite append-only
+facts. The Go adapter classifies the same rule before insertion and records
+`self_trade_prohibited` as the durable idempotent result.
+
 The current adapter joins `sale_offer_canonical_terms` directly and excludes
-every offer that has a matching purchase. The compatibility
-`bond_exchange.active_offers` view retains its prior shape for an expand-first
-rolling deployment. The API requires a bond series and returns all canonical
-active offers for it in ID order; the `sale_offers_bond_uuid_uuid_id_idx` index
-supports the relationship join. A separate distinct query derives the sorted
-list of bond series represented in the view.
+every offer that has a matching purchase or belongs to the authenticated
+principal. The compatibility `bond_exchange.active_offers` view retains its
+prior shape for an expand-first rolling deployment and remains a global,
+unparameterized projection. The API requires a bond series and returns all
+canonical offers tradable by that principal in ID order; the
+`sale_offers_bond_uuid_uuid_id_idx` index supports the relationship join. A
+separate distinct query derives the sorted list of bond series having at least
+one offer tradable by that principal.
 
 The unique offer constraint supports the anti-join and enforces single-sale
 concurrency. Purchase history by buyer is supported by

@@ -34,7 +34,8 @@ const (
 //
 // BondExchangeService exposes the bond-sale application over gRPC and REST.
 type BondExchangeServiceClient interface {
-	// Buy places a binding order or reservation for one currently active sale offer.
+	// Buy places a binding order or reservation for one currently tradable sale offer.
+	// A principal cannot buy a sale offer attributed to the same internal identity.
 	// Settlement, payment, custody, and ownership transfer are outside this API.
 	Buy(ctx context.Context, in *BuyRequest, opts ...grpc.CallOption) (*BuyResponse, error)
 	// QuoteSaleOffer creates an expiring USD-to-MXN FIX quote for explicit seller acceptance.
@@ -145,7 +146,8 @@ func (c *bondExchangeServiceClient) PublishPendingEvents(ctx context.Context, in
 //
 // BondExchangeService exposes the bond-sale application over gRPC and REST.
 type BondExchangeServiceServer interface {
-	// Buy places a binding order or reservation for one currently active sale offer.
+	// Buy places a binding order or reservation for one currently tradable sale offer.
+	// A principal cannot buy a sale offer attributed to the same internal identity.
 	// Settlement, payment, custody, and ownership transfer are outside this API.
 	Buy(context.Context, *BuyRequest) (*BuyResponse, error)
 	// QuoteSaleOffer creates an expiring USD-to-MXN FIX quote for explicit seller acceptance.

@@ -29,6 +29,7 @@ var (
 	ErrBondNotFound        = errors.New("bond series does not exist")
 	ErrOfferAlreadyExists  = errors.New("sale-offer ID already exists")
 	ErrOfferUnavailable    = errors.New("sale offer does not exist or has already been bought")
+	ErrSelfTradeProhibited = errors.New("a buyer cannot reserve their own sale offer")
 )
 
 type UserID string

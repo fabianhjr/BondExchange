@@ -160,6 +160,9 @@ func (server *Server) Buy(ctx context.Context, request *bondexchangev1.BuyReques
 		request.GetSaleOfferId(),
 	)
 	if err != nil {
+		if errors.Is(err, exchange.ErrSelfTradeProhibited) {
+			telemetry.RecordSelfTradeRejection(ctx)
+		}
 		logSecurityOperation(ctx, exchange.OperationBuy, &authenticated.AccessContext, err)
 		return nil, transportError(err)
 	}
@@ -443,7 +446,8 @@ func transportError(err error) error {
 		errors.Is(err, offerintake.ErrInvalidConversionQuote):
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, offerintake.ErrConversionQuoteRequired),
-		errors.Is(err, offerintake.ErrConversionQuoteUnavailable):
+		errors.Is(err, offerintake.ErrConversionQuoteUnavailable),
+		errors.Is(err, exchange.ErrSelfTradeProhibited):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, offerintake.ErrExchangeRateUnavailable):
 		return status.Error(codes.Unavailable, err.Error())

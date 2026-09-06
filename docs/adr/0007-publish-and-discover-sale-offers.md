@@ -1,5 +1,9 @@
 # ADR-0007: Publish and discover sale offers through the API
 
+ADR-0030 later narrows discovery from the global active book to the offers and
+series tradable by the authenticated principal, excluding that principal's own
+offers without changing the wire shape.
+
 - Status: Accepted
 - Date: 2026-09-03
 

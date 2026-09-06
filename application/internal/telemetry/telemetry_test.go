@@ -59,6 +59,7 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 	RecordDatabaseRetry(ctx, "purchases.buy", "serialization_failure")
 	RecordIdempotency(ctx, "purchases.buy", "replayed")
 	RecordRateLimit(ctx, "purchases.buy", "rejected", 5*time.Millisecond)
+	RecordSelfTradeRejection(ctx)
 
 	ended := spanRecorder.Ended()
 	if len(ended) != 3 {
@@ -92,6 +93,7 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 		"bondexchange.event.publisher.configured",
 		"bondexchange.event.stage.count",
 		"bondexchange.idempotency.result",
+		"bondexchange.market_integrity.rejection.count",
 		"bondexchange.operation.count",
 		"bondexchange.operation.duration",
 		"bondexchange.rate.cache.result",
@@ -118,6 +120,7 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 		"bondexchange.event.publisher.configured":        {"Configured integration-event publishers", "{publisher}"},
 		"bondexchange.event.stage.count":                 {"Integration-event processing stage results", "{result}"},
 		"bondexchange.idempotency.result":                {"Durable mutation idempotency outcomes", "{result}"},
+		"bondexchange.market_integrity.rejection.count":  {"Market-integrity control rejections", "{rejection}"},
 		"bondexchange.operation.count":                   {"Completed application operations", "{operation}"},
 		"bondexchange.operation.duration":                {"Application operation duration", "s"},
 		"bondexchange.rate.cache.result":                 {"Exchange-rate cache resolution outcomes", "{result}"},
@@ -148,6 +151,7 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 		"bondexchange.event.delivery.count":              1,
 		"bondexchange.event.stage.count":                 1,
 		"bondexchange.idempotency.result":                1,
+		"bondexchange.market_integrity.rejection.count":  1,
 		"bondexchange.operation.count":                   2,
 		"bondexchange.rate.cache.result":                 1,
 		"bondexchange.rate.fetch.attempt.count":          1,
@@ -181,6 +185,7 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 		"fetch.kind":             true,
 		"stage":                  true,
 		"reason":                 true,
+		"control":                true,
 	}
 	assertBounded := func(set attribute.Set) {
 		t.Helper()
@@ -190,6 +195,9 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 			}
 			if strings.Contains(item.Value.String(), "00000000-0000-4000") {
 				t.Fatalf("identifier leaked through metric attribute %q", item.Key)
+			}
+			if item.Key == "control" && item.Value.AsString() != "self_trade" {
+				t.Fatalf("unbounded market-integrity control %q", item.Value.AsString())
 			}
 		}
 	}

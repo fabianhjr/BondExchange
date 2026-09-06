@@ -43,6 +43,7 @@ BuyNext ==
           ClaimBuy(buyer, client, key, requestDigest, offerId)
   \/ \E pending \in inFlightBuys : CommitBuy(pending)
   \/ \E pending \in inFlightBuys : RejectBuy(pending)
+  \/ \E pending \in inFlightBuys : RejectSelfBuy(pending)
 
 RetryNext ==
   \E scope \in ClaimScopes, requestDigest \in RequestDigests :
@@ -102,6 +103,7 @@ FairSpec == MarketplaceSpec /\ Fairness
 
 THEOREM MarketplaceSpec => []TypeOK
 THEOREM MarketplaceSpec => []AtMostOnePurchasePerOffer
+THEOREM MarketplaceSpec => []NoSelfPurchases
 THEOREM MarketplaceSpec => []EveryFactHasASucceededOperation
 THEOREM MarketplaceSpec => FactsAreAppendOnly
 THEOREM AuthorizationSpec => []EffectivePermissionsMatchAuthorizationFacts

@@ -60,6 +60,11 @@ EveryPurchasedOfferWasPublished ==
 AllPublishedOffersAreMXN ==
   \A offer \in publishedOffers : offer.currency = MXN
 
+NoSelfPurchases ==
+  \A purchase \in purchases :
+    \A offer \in publishedOffers :
+      purchase.offer = offer.id => purchase.buyer # offer.seller
+
 (***************************************************************************)
 (* Provenance                                                              *)
 (*                                                                         *)
