@@ -58,6 +58,14 @@ mutation execute in one database transaction. Operation claims are scoped by
 principal, client, operation, and UUIDv4 idempotency nonce; a successful exact retry
 returns the original result, while reuse for another request is rejected.
 
+Every successfully authenticated request is then admitted against one mutable
+PostgreSQL row keyed by the internal principal UUID. REST and gRPC, all
+operations, and all asserted client IDs share a fixed database-clock UTC-minute
+allowance of 100; idempotent retries count and streams consume one admission at
+start. Exhaustion returns a bounded retry delay. Coordination failure fails
+closed, while requests that do not establish an authenticated principal remain
+the responsibility of deployment ingress controls.
+
 Sale-offer and purchase responses deliberately omit seller and buyer
 identifiers. The database retains those immutable identifiers for restricted
 audit. This prioritizes auditability over erasure while avoiding disclosure
@@ -82,7 +90,9 @@ one event per offer and a terminal count event. REST uses RFC 7464 JSON Text
 Sequences (`application/json-seq`), using the same event schema. There is no
 implicit truncation or pagination. A small generated workload exercises
 populated REST listings and records response size and latency, but it is not a
-rate-limit control or production capacity claim.
+production capacity claim. The authenticated fixed-window limit does not bound
+stream duration, concurrent streams, result cardinality, or traffic rejected
+before a principal is established.
 
 Input controls include typed protobuf decoding, unknown-field rejection,
 duplicate-key rejection at every JSON object depth, a single top-level JSON
@@ -151,7 +161,7 @@ credentials, and dynamic resource identifiers.
 | AD-6 | REST and gRPC are internal and both enforce the same application controls. | Internal status does not justify bypassing authentication; network reachability is still a pending deployment control. |
 | AD-7 | Complete offer books use streaming semantics and a stable database snapshot. | Slow readers retain a database connection and snapshot; per-principal concurrency limits remain pending. |
 | AD-8 | Both mutations are idempotent using a durable operation scope and request digest. | Operation records grow append-only and need deployment-owned capacity/retention monitoring. |
-| AD-9 | Application resource ceilings are local; mesh/sidecar rate limiting and service identity are pending. | A mesh can centralize policy but creates another parser and authorization boundary that must be assessed end to end. |
+| AD-9 | Most application resource ceilings are local; mesh/sidecar ingress controls and service identity remain pending. | A mesh can centralize policy but creates another parser and authorization boundary that must be assessed end to end. |
 | AD-10 | Domain, RBAC, and operation facts are append-only; response minimization protects user identity. | Audit records cannot satisfy erasure semantics without a future legal and architectural decision. |
 | AD-11 | The application owns OpenTelemetry trace/metric instrumentation and OTLP lifecycle; JSON security logs correlate with active spans. | Collector routing, protected storage, access, alerting, retention, and production sampling remain deployment concerns. |
 | AD-12 | Expected domain failures stay detailed unless detail would enable identity or credential enumeration. | Authentication and authorization failures are generic; unexpected failures never expose database, token, or stack details. |
@@ -160,6 +170,7 @@ credentials, and dynamic resource identifiers.
 | AD-15 | Banxico SIE responses and exact exchange-rate revisions are durable; PostgreSQL leases and cooldowns coordinate on-demand fetches. | Durable provenance grows over time, stale latest values are possible during refresh failures, and a crash before import commit can cause a repeated upstream request. |
 | AD-16 | PostgreSQL 18 generates and enforces UUIDv7 table identities; UUIDv4 is reserved for idempotency, assertion, and lease nonces. Non-derivable pre-UUID values are isolated in a restricted append-only archive. | UUIDv7 reveals approximate creation time; archive access, capacity, retention, and erasure require deployment policy. |
 | AD-17 | A separate intake layer turns an explicitly accepted `SF43718` USD quote into immutable MXN core terms and retains USD only as provenance. | USD intake depends on rate policy and availability; legacy non-MXN offers require seller disposition and old binaries must be drained before activation. |
+| AD-18 | PostgreSQL coordinates a 100-request fixed UTC-minute allowance per authenticated principal across transports, operations, clients, and instances. | The fixed window permits a boundary burst, adds a shared-database write, and cannot control unauthenticated, concurrent, or connection-level traffic. |
 
 ## Pending non-code and deployment decisions
 
@@ -170,7 +181,8 @@ loopback by default:
 - TLS versions, certificates, HTTPS behavior, workload/service identity,
   ingress trust, trusted forwarding headers, and REST/gRPC network exposure;
 - whether a mesh/sidecar owns mTLS, service-to-service authorization,
-  per-principal rate limits, connection limits, and anti-automation controls;
+  unauthenticated and connection limits, complementary rolling/burst controls,
+  and broader anti-automation controls;
 - identity-provider assurance, human MFA, automated workload credentials,
   account recovery, factor lifecycle, and authorization-server policy;
 - secret injection and rotation for `DATABASE_URL`, verification keys, and any
@@ -193,10 +205,11 @@ Go module inventory, runs `govulncheck`, and exercises the security-focused Go
 tests. It runs inside the disposable migrated-PostgreSQL harness and refuses to
 start without it, because the persistence tests it names would otherwise skip
 and report success without verifying authorization, idempotency, or schema
-constraints. `integration:test` verifies a freshly signed idempotent retry and
-response identity minimization through the complete REST server, while
+constraints. `integration:test` verifies a freshly signed idempotent retry,
+response identity minimization, per-principal REST `429`, `Retry-After`, and
+next-window reset through the complete REST server, while
 `integration:load-smoke` verifies authenticated status distributions under a
-small generated workload. The Go quality gate also runs pinned, curated source
+small generated multi-principal workload. The Go quality gate also runs pinned, curated source
 analysis including `gosec`, dangerous-Unicode checks, context propagation,
 error handling, and resource-lifecycle checks. These tasks are part of
 `devenv test` and the Go quality workflow, which run the same gates through the

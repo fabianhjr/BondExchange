@@ -65,6 +65,14 @@ resolves the federated identity and derives permissions from append-only RBAC
 grants and revocations. Buyer and seller identifiers come only from that
 authenticated principal and are omitted from API responses.
 
+After authentication and before authorization or application work,
+PostgreSQL also admits at most 100 requests per internal principal in each
+database-clock UTC minute. Every operation and client ID shares that
+allowance; an idempotent retry counts, and a stream counts once when it starts.
+Exhaustion returns gRPC `ResourceExhausted` with retry detail or REST `429`
+with `Retry-After`. Invalid assertions never establish a principal and remain
+subject to deployment-owned ingress controls.
+
 [`api/proto/bondexchange/v1/bond_exchange.proto`](api/proto/bondexchange/v1/bond_exchange.proto)
 is the transport contract. Buf generates Go messages, gRPC server/client
 bindings, the REST gateway, and the checked-in
@@ -101,8 +109,9 @@ loads the fixtures in `db/demo/seed.sql`, starts both server transports, and
 starts a loopback OpenTelemetry Collector that prints a basic trace and metric
 representation to its process log.
 Stopping `devenv up` also stops PostgreSQL and removes the demo database. Each
-new demo therefore starts from the same known state with users `demo-seller`
-and `demo-buyer`, bonds `DEMO2026` and `DEMO2027`, and three active offers.
+new demo therefore starts from the same known state with users `demo-seller`,
+`demo-buyer`, and the dedicated `demo-rate-limited` verification principal,
+bonds `DEMO2026` and `DEMO2027`, and three active offers.
 
 The REST server listens on `127.0.0.1:8080` and the gRPC server listens on
 `127.0.0.1:9090` by default. Set `BOND_EXCHANGE_ADDRESS` and
@@ -305,9 +314,12 @@ property that depends on it vacuously true. See the
 scenarios.
 It covers a USD-to-MXN quote and acceptance, active-series and active-offer
 listings, sale-offer creation, buying,
-idempotent retry, and removal from the active book. `integration:load-smoke`
-uses generated request-bound assertions to exercise distinct creates and buys,
-both listings, and a contended buy with exactly one winner.
+idempotent retry, removal from the active book, and a deterministic
+single-principal `429` plus next-window reset. `integration:load-smoke` uses
+generated request-bound assertions and a disposable principal pool to exercise
+distinct creates and buys, both listings, and a contended buy with exactly one
+winner without turning the capacity scenario into a single-principal limit
+test.
 
 For a larger local run, set the request count, rate per second, and maximum
 workers. The count must be divisible by the rate:
@@ -320,8 +332,10 @@ BOND_EXCHANGE_LOAD_WORKERS=40 \
 ```
 
 Each resulting load phase is limited to 90 seconds so its short-lived demo
-assertions remain valid. The manual task defaults to 1,000 operations per main
-phase; the correctness-gated smoke profile uses 120.
+assertions remain valid. The runner provisions enough disposable sellers and
+buyers that no principal receives more than 100 requests across its phases.
+The manual task defaults to 1,000 operations per main phase; the
+correctness-gated smoke profile uses 120.
 
 Vegeta reports are written under `.artifacts/integration-load/`. They are
 repeatable local baselines rather than production service objectives; the

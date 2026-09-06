@@ -1,7 +1,7 @@
 # Failure mode and effects analysis
 
 This system-level failure mode and effects analysis (FMEA) covers the Bond
-Exchange domain, API, authentication and authorization, PostgreSQL persistence,
+Exchange domain, API, authentication, request admission and authorization, PostgreSQL persistence,
 integration-event delivery, Banxico SIE ingestion, runtime and telemetry
 composition, and verification workflow. It evaluates the repository as
 implemented on 2026-09-05. It does not assert that the disposable demo is
@@ -67,6 +67,7 @@ production-readiness decision.
 | FM-019 | A quote is accepted by the wrong seller, for changed terms, after expiry, or more than once. | 8 | 2 | 2 | 32 | Monitored | Intake/data | Controlled |
 | FM-020 | Legacy non-MXN offers are hidden by the new binary or still served by an old binary during rollout. | 8 | 5 | 4 | 160 | Medium | Release/product | Open disposition |
 | FM-021 | Telemetry is silently lost, unsafe, misleading, or unavailable during an incident. | 8 | 5 | 7 | 280 | High | Platform/operations | Open deployment control |
+| FM-022 | Per-principal request admission is bypassed, falsely rejects traffic, or creates database contention. | 7 | 3 | 5 | 105 | Medium | API/data/operations | Application-controlled; monitoring open |
 
 ## Detailed analysis
 
@@ -242,11 +243,15 @@ production-readiness decision.
   transport-specific failure.
 - **Causes:** Active-offer listing streams every match without a count bound,
   while active-series discovery collects all results into one unary response.
-  There is no per-principal concurrency or rate limit.
+  There is no per-principal concurrency or result-cardinality limit. The
+  authenticated request-rate limit does not bound the duration or resource
+  cost of an admitted read.
 - **Current controls and detection:** Streaming applies backpressure and closes
   rows and transactions on cancellation; server input/message sizes, HTTP
-  timeouts, gRPC concurrent streams, and the pool are bounded. Those ceilings
-  limit individual resources but do not guarantee fair or complete service. A
+  timeouts, gRPC concurrent streams, and the pool are bounded. PostgreSQL also
+  admits at most 100 requests per authenticated principal in each fixed UTC
+  minute across instances. Those ceilings limit individual resources but do
+  not guarantee fair or complete service. A
   generated REST workload records latency, errors, and status distributions for
   populated offer books, but has no production threshold. Standard HTTP/gRPC
   metrics, pgx pool metrics, and a bounded emitted-offer histogram expose
@@ -279,7 +284,8 @@ production-readiness decision.
   database and external provider account.
 - **Causes:** The repository intentionally ships only loopback plaintext
   listeners and no production package; multiple ASVS controls depend on an
-  unspecified hosting and external-identity architecture.
+  unspecified hosting and external-identity architecture. Application request
+  admission starts only after a valid principal is established.
 - **Current controls and detection:** The default binds to loopback, application
   authentication always runs, inputs are bounded, errors are minimized, and
   the README states required boundaries. Application-owned OTLP traces and
@@ -287,7 +293,8 @@ production-readiness decision.
   tests cover the development boundary. These controls neither build nor
   verify protected production telemetry or another production boundary.
 - **Action:** Keep production use blocked until owners define and test TLS,
-  workload identity, ingress trust, rate limits, secret delivery/rotation,
+  workload identity, ingress trust, unauthenticated and connection-level
+  limits, secret delivery/rotation,
   least-privilege database roles, backups, availability, and protected
   telemetry. Record material decisions in ADRs and replace affected pending
   ASVS dispositions with deployable evidence.
@@ -651,6 +658,40 @@ production-readiness decision.
 - **Traceability:** [ADR-0025](adr/0025-own-application-opentelemetry-instrumentation.md),
   [observability contract](observability.md), and
   [F-011](../FRICTIONS.md#f-011--the-production-deployment-boundary-is-unspecified-p1).
+
+### FM-022 — Incorrect or contended per-principal request admission
+
+- **Function and failure:** Authenticated request admission allows more than
+  100 requests for one principal in a database-clock UTC minute, rejects a
+  request that remains within the allowance, or serializes enough work on its
+  coordination row to degrade database service.
+- **Effects:** One authenticated principal can consume disproportionate
+  capacity; legitimate reads, mutations, probes, or recovery operations can be
+  denied; or admission contention can delay otherwise independent traffic.
+- **Causes:** A non-atomic counter, process-local state, an incorrect principal
+  key, database clock or window-boundary assumptions, SQL/schema drift, pool or
+  database failure, or a hot principal repeatedly contending on one row. The
+  deliberate fixed-window design can admit traffic immediately before and
+  after a boundary and does not limit unauthenticated traffic or concurrency.
+- **Current controls and detection:** JWT validation and principal resolution
+  precede one shared RPC-adapter check. A unique PostgreSQL principal key and
+  atomic database-time upsert coordinate stateless instances; a constraint
+  caps stored counts at 100; rejected attempts do not increment the counter;
+  and coordination failure fails closed. PostgreSQL integration tests race 140
+  attempts through separate pools and require exactly 100 admissions, prove
+  independent principals and next-window reset, and transport tests verify
+  application work is skipped plus gRPC/REST retry contracts. A bounded
+  decision metric and protected security log expose rejection and error
+  outcomes, but no production backend, threshold, or contention SLO exists.
+- **Action:** Measure admission-query and row-lock latency under representative
+  multi-principal and hot-principal workloads; alert on coordination errors,
+  unexpected rejection rates, pool saturation, and lock waits; retain
+  deployment ingress controls; and adopt a rolling-window design in a new ADR
+  if the documented boundary burst is unacceptable.
+- **Traceability:** [ADR-0028](adr/0028-coordinate-per-principal-request-rate-limits-in-postgresql.md),
+  [F-006](../FRICTIONS.md#f-006--read-apis-have-unbounded-resource-use-p1),
+  [F-011](../FRICTIONS.md#f-011--the-production-deployment-boundary-is-unspecified-p1),
+  and [observability contract](observability.md).
 
 ## Maintenance and review procedure
 

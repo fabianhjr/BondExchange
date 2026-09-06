@@ -16,6 +16,7 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
+	"github.com/fabianhjr/BondExchange/application/internal/ratelimit"
 	"github.com/fabianhjr/BondExchange/application/internal/rpcapi"
 	"github.com/shopspring/decimal"
 	"go.opentelemetry.io/otel"
@@ -192,6 +193,32 @@ func (authenticatorStub) Authenticate(_ context.Context, operation string, _ []b
 		result.IdempotencyKey = "idempotency-key-1"
 	}
 	return result, nil
+}
+
+type rateLimiterStub struct{ err error }
+
+func (stub rateLimiterStub) AdmitRequest(context.Context, exchange.UserID) error { return stub.err }
+
+func TestRateLimitResponsesCarryRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	limiter := rateLimiterStub{err: &ratelimit.ExceededError{RetryAfter: 1500 * time.Millisecond}}
+	for _, test := range []struct {
+		name   string
+		method string
+		target string
+	}{
+		{name: "gateway unary", method: http.MethodGet, target: "/active-bond-series"},
+		{name: "custom stream", method: http.MethodGet, target: "/active-offers?bond=BND"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := newHandlerWithLimiter(t, &applicationStub{}, healthStub{}, limiter)
+			response := performRequest(handler, test.method, test.target, "")
+			if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") != "2" {
+				t.Fatalf("rate-limit response = %d, Retry-After %q, body %s", response.Code, response.Header().Get("Retry-After"), response.Body.String())
+			}
+		})
+	}
 }
 
 type failingResponseWriter struct {
@@ -640,7 +667,12 @@ func TestRequestBodyLimitsAndMediaType(t *testing.T) {
 
 func newHandler(t *testing.T, application *applicationStub, health healthStub) http.Handler {
 	t.Helper()
-	handler, err := NewHandler(rpcapi.NewServer(application, health, authenticatorStub{}))
+	return newHandlerWithLimiter(t, application, health, rateLimiterStub{})
+}
+
+func newHandlerWithLimiter(t *testing.T, application *applicationStub, health healthStub, limiter rateLimiterStub) http.Handler {
+	t.Helper()
+	handler, err := NewHandler(rpcapi.NewServer(application, health, authenticatorStub{}, limiter))
 	if err != nil {
 		t.Fatal(err)
 	}

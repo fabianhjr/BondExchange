@@ -26,6 +26,35 @@ if (( count / rate > 90 )); then
   exit 64
 fi
 
+seller_principals="$(((count + 100) / 100))"
+buyer_principals="$(((4 * count + 99) / 100))"
+psql "$BOND_EXCHANGE_TEST_DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
+  --set seller_count="$seller_principals" --set buyer_count="$buyer_principals" <<'SQL'
+BEGIN;
+CREATE TEMP TABLE load_principals (
+  uuid_id uuid PRIMARY KEY,
+  subject text NOT NULL UNIQUE
+) ON COMMIT DROP;
+INSERT INTO load_principals (uuid_id, subject)
+SELECT uuidv7(), 'load-seller-' || index
+FROM generate_series(1, :seller_count) AS index
+UNION ALL
+SELECT uuidv7(), 'load-buyer-' || index
+FROM generate_series(1, :buyer_count) AS index;
+INSERT INTO bond_exchange.users (uuid_id)
+SELECT uuid_id FROM load_principals;
+INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
+SELECT uuid_id, 'https://demo-issuer.invalid', subject, 'automated'
+FROM load_principals;
+INSERT INTO bond_exchange.principal_role_grants
+  (principal_uuid, role_uuid, reason)
+SELECT principal.uuid_id, role.uuid_id, 'Disposable load-test access.'
+FROM load_principals AS principal
+CROSS JOIN bond_exchange.roles AS role
+WHERE role.code = 'trader';
+COMMIT;
+SQL
+
 report_attack() {
   local name="$1"
   vegeta report -type=json "$artifact_root/$name.bin" >"$artifact_root/$name.json"
@@ -38,6 +67,10 @@ run_attack() {
   local request_count="$2"
   local prefix="$3"
   local name="$4"
+  local principal_count="$buyer_principals"
+  if [[ "$scenario" == create ]]; then
+    principal_count="$seller_principals"
+  fi
   local attack_duration="$duration"
   local attack_rate="$rate"
   local generated_count="$request_count"
@@ -47,7 +80,7 @@ run_attack() {
     generated_count=1
   fi
   set +o pipefail
-  "$load_targets" "$private_key" "$base_url" "$scenario" "$generated_count" "$prefix" \
+  "$load_targets" "$private_key" "$base_url" "$scenario" "$generated_count" "$prefix" "$principal_count" \
     | vegeta attack \
       -format=json \
       -lazy \

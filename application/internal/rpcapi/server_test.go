@@ -14,8 +14,10 @@ import (
 	"github.com/fabianhjr/BondExchange/application/internal/eventing"
 	"github.com/fabianhjr/BondExchange/application/internal/exchange"
 	"github.com/fabianhjr/BondExchange/application/internal/offerintake"
+	"github.com/fabianhjr/BondExchange/application/internal/ratelimit"
 	"github.com/shopspring/decimal"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -139,6 +141,10 @@ func (stub authenticatorStub) Authenticate(_ context.Context, operation string, 
 	return result, nil
 }
 
+type rateLimiterStub struct{ err error }
+
+func (stub rateLimiterStub) AdmitRequest(context.Context, exchange.UserID) error { return stub.err }
+
 type listStreamStub struct {
 	grpc.ServerStream
 	//nolint:containedctx // The gRPC stream test double must return its configured request context.
@@ -155,7 +161,7 @@ func (stream *listStreamStub) Send(*bondexchangev1.ListActiveOffersResponse) err
 }
 
 func testServer(application Application, health HealthChecker) *Server {
-	return NewServer(application, health, authenticatorStub{})
+	return NewServer(application, health, authenticatorStub{}, rateLimiterStub{})
 }
 
 func TestGRPCServer(t *testing.T) {
@@ -376,7 +382,7 @@ func TestGRPCErrors(t *testing.T) {
 
 func TestGRPCNilAuthenticatorStreamFailuresAndTraceLogging(t *testing.T) {
 	t.Parallel()
-	server := NewServer(&applicationStub{}, healthStub{}, nil)
+	server := NewServer(&applicationStub{}, healthStub{}, nil, rateLimiterStub{})
 	if _, err := server.Buy(context.Background(), &bondexchangev1.BuyRequest{}); status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("nil authenticator error = %v", err)
 	}
@@ -404,7 +410,7 @@ func TestGRPCNilAuthenticatorStreamFailuresAndTraceLogging(t *testing.T) {
 
 func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
 	t.Parallel()
-	client := newClient(t, NewServer(&applicationStub{}, healthStub{}, authenticatorStub{err: exchange.ErrUnauthenticated}))
+	client := newClient(t, NewServer(&applicationStub{}, healthStub{}, authenticatorStub{err: exchange.ErrUnauthenticated}, rateLimiterStub{}))
 	assertUnauthenticated := func(err error) {
 		t.Helper()
 		if status.Code(err) != codes.Unauthenticated || status.Convert(err).Message() != "authentication required" {
@@ -428,6 +434,39 @@ func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
 	assertUnauthenticated(err)
 	_, err = client.PublishPendingEvents(context.Background(), &bondexchangev1.PublishPendingEventsRequest{})
 	assertUnauthenticated(err)
+}
+
+func TestGRPCRateLimitIsSharedAdmissionBeforeApplication(t *testing.T) {
+	t.Parallel()
+
+	application := &applicationStub{}
+	client := newClient(t, NewServer(
+		application,
+		healthStub{},
+		authenticatorStub{},
+		rateLimiterStub{err: &ratelimit.ExceededError{RetryAfter: 23 * time.Second}},
+	))
+	_, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{SaleOfferId: "offer-1"})
+	if status.Code(err) != codes.ResourceExhausted || status.Convert(err).Message() != ratelimit.ErrExceeded.Error() {
+		t.Fatalf("rate-limit error = %v", err)
+	}
+	details := status.Convert(err).Details()
+	if len(details) != 1 {
+		t.Fatalf("rate-limit details = %#v", details)
+	}
+	retry, ok := details[0].(*errdetails.RetryInfo)
+	if !ok || retry.GetRetryDelay().AsDuration() != 23*time.Second {
+		t.Fatalf("retry detail = %#v", details[0])
+	}
+	if application.buyOffer != "" {
+		t.Fatalf("rate-limited request reached application with offer %q", application.buyOffer)
+	}
+
+	client = newClient(t, NewServer(application, healthStub{}, authenticatorStub{}, nil))
+	_, err = client.ListActiveBondSeries(context.Background(), &bondexchangev1.ListActiveBondSeriesRequest{})
+	if status.Code(err) != codes.Unavailable || status.Convert(err).Message() != "request admission unavailable" {
+		t.Fatalf("nil limiter error = %v", err)
+	}
 }
 
 func TestAuthenticateRejectsUnmarshalableCanonicalRequest(t *testing.T) {

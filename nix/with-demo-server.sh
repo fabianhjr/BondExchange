@@ -105,5 +105,6 @@ export BOND_EXCHANGE_TEST_PRIVATE_JWK="$private_key"
 export BOND_EXCHANGE_TEST_DEMO_AUTH="$test_root/demo-auth"
 export BOND_EXCHANGE_TEST_LOAD_TARGETS="$test_root/load-targets"
 export BOND_EXCHANGE_TEST_RUNTIME_ROOT="$test_root"
+export BOND_EXCHANGE_TEST_DATABASE_URL="postgresql:///bond_exchange_demo?host=$asserted_runtime_root/socket&user=postgres"
 
 "$@"

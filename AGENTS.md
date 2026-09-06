@@ -113,7 +113,7 @@
 | --- | --- |
 | Repository root | Project guidance, contributor documentation, the security policy, and the devenv configuration. |
 | `api/` | Proto3 API source, generated Swagger contract, and versioned descriptor set. |
-| `application/` | Go module containing the stateless server, demo-only assertion issuer, generated Go transport bindings, domain logic, authentication, application-owned OpenTelemetry instrumentation, Banxico SIE exchange-rate ingestion and caching, integration-event delivery orchestration, REST/gRPC adapters, PostgreSQL adapter, and Go quality configuration. |
+| `application/` | Go module containing the stateless server, demo-only assertion issuer, generated Go transport bindings, domain logic, authentication, PostgreSQL-coordinated per-principal request admission, application-owned OpenTelemetry instrumentation, Banxico SIE exchange-rate ingestion and caching, integration-event delivery orchestration, REST/gRPC adapters, PostgreSQL adapter, and Go quality configuration. |
 | `db/` | Versioned database schema, disposable demo fixtures, and persistence documentation. |
 | `nix/` | Nix-packaged PostgreSQL lifecycle, demo, and development verification helpers. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |

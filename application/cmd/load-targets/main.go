@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const usage = "usage: load-targets PRIVATE_JWK BASE_URL SCENARIO COUNT PREFIX"
+const usage = "usage: load-targets PRIVATE_JWK BASE_URL SCENARIO COUNT PREFIX PRINCIPAL_COUNT"
 
 type target struct {
 	Method string              `json:"method"`
@@ -36,10 +36,10 @@ func main() {
 }
 
 func run(arguments []string, output io.Writer, now time.Time) error {
-	if len(arguments) != 5 {
+	if len(arguments) != 6 {
 		return errors.New(usage)
 	}
-	privateKey, baseURL, scenario, countText, prefix := arguments[0], arguments[1], arguments[2], arguments[3], arguments[4]
+	privateKey, baseURL, scenario, countText, prefix, principalCountText := arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]
 	parsedBaseURL, err := url.Parse(baseURL)
 	if err != nil || parsedBaseURL.Scheme != "http" || parsedBaseURL.Host == "" || parsedBaseURL.Path != "" {
 		return errors.New("BASE_URL must be an HTTP origin without a path")
@@ -51,6 +51,10 @@ func run(arguments []string, output io.Writer, now time.Time) error {
 	if prefix == "" || len(prefix) > 4096 || strings.ContainsAny(prefix, "\r\n") {
 		return errors.New("PREFIX must be a nonempty label, UUIDv7, or @-prefixed offer-ID file")
 	}
+	principalCount, err := strconv.Atoi(principalCountText)
+	if err != nil || principalCount < 1 || principalCount > 1_000_000 {
+		return errors.New("PRINCIPAL_COUNT must be an integer from 1 through 1000000")
+	}
 	offerIDs, err := loadOfferIDs(scenario, prefix, count)
 	if err != nil {
 		return err
@@ -58,7 +62,7 @@ func run(arguments []string, output io.Writer, now time.Time) error {
 
 	encoder := json.NewEncoder(output)
 	for index := 1; index <= count; index++ {
-		generated, err := makeTarget(privateKey, strings.TrimSuffix(baseURL, "/"), scenario, offerIDs, index, now)
+		generated, err := makeTarget(privateKey, strings.TrimSuffix(baseURL, "/"), scenario, offerIDs, index, principalCount, now)
 		if err != nil {
 			return err
 		}
@@ -69,11 +73,11 @@ func run(arguments []string, output io.Writer, now time.Time) error {
 	return nil
 }
 
-func makeTarget(privateKey, baseURL, scenario string, offerIDs []string, index int, now time.Time) (target, error) {
+func makeTarget(privateKey, baseURL, scenario string, offerIDs []string, index, principalCount int, now time.Time) (target, error) {
 	var requestJSON string
 	method := "GET"
 	var path string
-	subject := "demo-buyer"
+	subject := fmt.Sprintf("load-buyer-%d", ((index-1)%principalCount)+1)
 	var operation string
 	idempotencyKey := "-"
 
@@ -81,7 +85,7 @@ func makeTarget(privateKey, baseURL, scenario string, offerIDs []string, index i
 	case "create":
 		method = "POST"
 		path = "/sale-offers"
-		subject = "demo-seller"
+		subject = fmt.Sprintf("load-seller-%d", ((index-1)%principalCount)+1)
 		operation = exchange.OperationCreateSaleOffer
 		idempotencyKey = uuid.NewString()
 		requestJSON = `{"bond_series":"DEMO2026","price":"101.25","currency_code":"MXN"}`

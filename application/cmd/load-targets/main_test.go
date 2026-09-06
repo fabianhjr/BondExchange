@@ -19,7 +19,7 @@ func TestGenerateCreateTargets(t *testing.T) {
 	}
 	var output bytes.Buffer
 	if err := run([]string{
-		filepath.Join(directory, "private.jwk"), "http://127.0.0.1:18080", "create", "2", "load-offer",
+		filepath.Join(directory, "private.jwk"), "http://127.0.0.1:18080", "create", "2", "load-offer", "2",
 	}, &output, time.Date(2026, time.September, 4, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +46,9 @@ func TestGenerateCreateTargets(t *testing.T) {
 		first.Header["Idempotency-Key"][0] == second.Header["Idempotency-Key"][0] {
 		t.Fatalf("targets are not independently authenticated: first=%#v second=%#v", first, second)
 	}
+	if first.Header["Authorization"][0] == second.Header["Authorization"][0] {
+		t.Fatal("targets for distinct principals reused an assertion")
+	}
 }
 
 func TestGenerateReadAndContendedTargets(t *testing.T) {
@@ -61,7 +64,7 @@ func TestGenerateReadAndContendedTargets(t *testing.T) {
 		if scenario == "buy" || scenario == "contended-buy" {
 			input = "019535d9-3df7-79fb-b466-fa907fa17f9e"
 		}
-		if err := run([]string{key, "http://localhost:8080", scenario, "1", input}, &output, now); err != nil {
+		if err := run([]string{key, "http://localhost:8080", scenario, "1", input, "1"}, &output, now); err != nil {
 			t.Fatalf("%s: %v", scenario, err)
 		}
 		if !strings.Contains(output.String(), `"Authorization"`) {
@@ -76,8 +79,10 @@ func TestRejectInvalidArguments(t *testing.T) {
 		{"key", "https://localhost", "create", "1", "prefix"},
 		{"key", "http://localhost/path", "create", "1", "prefix"},
 		{"key", "http://localhost", "create", "0", "prefix"},
-		{"key", "http://localhost", "unknown", "1", "prefix"},
-		{"key", "http://localhost", "create", "1", strings.Repeat("x", 4097)},
+		{"key", "http://localhost", "unknown", "1", "prefix", "1"},
+		{"key", "http://localhost", "create", "1", strings.Repeat("x", 4097), "1"},
+		{"key", "http://localhost", "create", "1", "prefix", "0"},
+		{"key", "http://localhost", "create", "1", "prefix", "1000001"},
 	} {
 		if err := run(arguments, &bytes.Buffer{}, time.Now()); err == nil {
 			t.Fatalf("run(%q) unexpectedly succeeded", arguments)

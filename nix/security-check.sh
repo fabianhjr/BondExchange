@@ -18,4 +18,4 @@ bond-exchange-asvs-source-check
 bond-exchange-asvs-profile-check
 (cd application && go list -m -json all) >.artifacts/go-modules.json
 (cd application && govulncheck ./...)
-(cd application && go test ./internal/authn ./internal/httpapi ./internal/postgres ./internal/rpcapi)
+(cd application && go test ./internal/authn ./internal/httpapi ./internal/postgres ./internal/ratelimit ./internal/rpcapi)

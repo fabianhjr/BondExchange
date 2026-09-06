@@ -116,6 +116,7 @@ let
       pkgs.curl
       pkgs.hurl
       pkgs.jq
+      pkgs.postgresql_18
     ];
     text = builtins.readFile ./nix/integration-test.sh;
   };
@@ -137,6 +138,7 @@ let
       pkgs.coreutils
       pkgs.curl
       pkgs.jq
+      pkgs.postgresql_18
       pkgs.vegeta
     ];
     text = builtins.readFile ./nix/integration-load.sh;

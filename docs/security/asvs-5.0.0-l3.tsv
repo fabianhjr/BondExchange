@@ -41,8 +41,8 @@
 2.3.3	2	verified	application/internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
 2.3.4	2	verified	application/internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
 2.3.5	3	verified	application/internal/exchange/service.go	Application control is implemented and linked to tests and design evidence for section 2.3.
-2.4.1	2	pending-deployment	docs/security/ASVS.md	Per-principal anti-automation and rate limits are reserved for the mesh or sidecar decision.
-2.4.2	3	pending-deployment	docs/security/ASVS.md	Per-principal anti-automation and rate limits are reserved for the mesh or sidecar decision.
+2.4.1	2	pending-deployment	docs/security/ASVS.md	The application enforces 100 authenticated requests per principal per fixed UTC minute; ingress and broader anti-automation controls remain deployment-owned.
+2.4.2	3	pending-deployment	docs/security/ASVS.md	PostgreSQL coordinates the authenticated per-principal limit across instances; rolling burst, unauthenticated, and connection controls remain deployment-owned.
 3.1.1	3	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
 3.2.1	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
 3.2.2	1	not-applicable	-	No web frontend, file handling, application session, or WebRTC functionality.
