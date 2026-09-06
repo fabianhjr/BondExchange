@@ -13,6 +13,11 @@ configurable integration load task passed for this review, so there is no known
 failing quality gate; the items below are gaps that the current gates either
 accept or do not cover.
 
+F-025 through F-030 were added by a source review on 2026-09-06 that read the
+implementation without re-running the gates. Each cites the code it describes;
+none has been reproduced by an executed test, which is itself part of what
+those entries report.
+
 ## Product and domain
 
 ### F-001 — Buying stops at an immutable reservation (P1)
@@ -170,6 +175,90 @@ accept or do not cover.
   ADRs, a production artifact is built, and affected ASVS dispositions have
   deployable evidence.
 
+### F-025 — The request-digest binding has no interoperable specification (P1)
+
+- **Evidence:** `internal/rpcapi/server.go` and `cmd/internal/demoauth/demoauth.go`
+  each compute the binding as the SHA-256 of
+  `proto.MarshalOptions{Deterministic: true}.Marshal(request)`. Upstream
+  protobuf-go documents that deterministic marshaling is not canonical form and
+  is not stable across builds or library versions.
+  [`README.md`](README.md), [`docs/security/ASVS.md`](docs/security/ASVS.md),
+  and ADR-0009 all cite the "deterministic protobuf request digest" as a
+  control, but [`api/README.md`](api/README.md) never specifies the byte
+  encoding an issuer must reproduce. The only issuer today is the demo helper,
+  built from this module against the same generated bindings.
+- **Impact:** The federated-issuer premise cannot be implemented by a third
+  party, because no specification exists to build against. A protobuf-go
+  upgrade could also change the digest input for every operation at once, and
+  no gate compares the encoding against a fixed expectation. This is the
+  request/assertion binding drift named as a cause under FM-004.
+- **Complete when:** A versioned canonical encoding for `request_sha256` is
+  specified in the API contract, a second independent implementation verifies
+  it in continuous integration, and ADR-0009 records its compatibility policy —
+  or the digest is taken over an encoding that already has a published
+  canonical form.
+
+### F-026 — Cold exchange-rate resolution polls PostgreSQL without a bound (P2)
+
+- **Evidence:** `internal/exchangerates/service.go` polls every
+  `Config.PollEvery`, defaulting to 25 milliseconds, with no attempt or
+  deadline cap in `Latest`, `resolve`, or `resolveForced`. `QuoteSaleOffer`
+  reaches it through `internal/offerintake/service.go`. Each iteration issues a
+  `States` read and a `Claim` write transaction;
+  `internal/postgres/exchange_rates.go` requires
+  `next_attempt_at <= transaction_timestamp()` to claim, and `Fail` pushes that
+  forward by `RetryAfter`, one minute by default, or by a provider-supplied
+  retry time. A stored observation short-circuits the loop, because `Latest`
+  returns it marked stale and offer intake rejects a stale observation, so only
+  a genuinely cold cache reaches the poll.
+- **Impact:** After a cold start or a provider outage, every concurrent quote
+  request polls at roughly forty iterations per second for the whole backoff
+  window, adding write transactions to the database at the moment upstream
+  recovery matters. With no server-side deadline (F-027) the loop ends only
+  when the client disconnects. Relates to FM-012 and FM-017.
+- **Complete when:** Resolution returns promptly when a work unit is in
+  backoff, or caps its attempts and backs the poll off, and a test covers
+  concurrent callers against a cold cache whose leaseholder has failed.
+
+### F-027 — No operation has a server-side deadline (P2)
+
+- **Evidence:** `internal/serverruntime/serverruntime.go` sets `ReadTimeout`,
+  `ReadHeaderTimeout`, `IdleTimeout`, and `ShutdownTimeout`, but no
+  `WriteTimeout` — deliberately, for the RFC 7464 stream — and no
+  handler-level context deadline. The gRPC server admits 128 concurrent streams
+  against a 20-connection pool. Per-principal admission bounds request starts
+  in each fixed UTC minute; ADR-0028 states that it is not a concurrency or
+  duration limit.
+- **Impact:** A slow reader, a stalled upstream Banxico SIE call, or the F-026
+  poll runs until its client disconnects while holding a pooled connection.
+  F-006 records this for the read APIs; the same gap applies to mutations and
+  to the USD intake path, which is the service's most dependency-heavy
+  operation. Relates to FM-007.
+- **Complete when:** Every operation carries a bounded server-side deadline
+  appropriate to its transport, exhaustion maps to a documented status on both
+  REST and gRPC, and tests cover the deadline for a stream, a mutation, and an
+  upstream dependency call.
+
+### F-029 — A quote-reuse race is reported as an internal error (P3)
+
+- **Evidence:** `sale_offer_submissions.conversion_quote_uuid` is `UNIQUE`, so
+  single use of a conversion quote is enforced at storage and not only by the
+  `NOT EXISTS` check in `internal/postgres/offer_intake.go`.
+  `classifyCreateSaleOfferError` in `internal/postgres/store.go` maps only
+  `sale_offers_pkey`, `sale_offers_seller_uuid_fkey`, and
+  `sale_offers_bond_uuid_fkey`, so the quote-reuse violation falls through to
+  the default branch and becomes an internal error. Serializable isolation
+  usually converts the race into a retryable serialization failure first, so
+  the path is rare and no domain fact is written. The `sale_offers_pkey` case
+  is separately unreachable now that PostgreSQL generates the key.
+- **Impact:** A client-caused precondition failure is reported to the caller
+  and counted in `bondexchange.operation.count` as a server fault, which is the
+  signal an operator would alert on. Relates to FM-019.
+- **Complete when:** The constraint is classified as the same durable
+  conversion-quote rejection the read path already records, the unreachable
+  primary-key case is removed, and a test exercises the constraint directly
+  rather than only the `NOT EXISTS` path.
+
 ## Verification and contributor workflow
 
 ### F-015 — The default contributor path can silently reduce test coverage (P3)
@@ -306,3 +395,44 @@ accept or do not cover.
   reachable — or an ADR records which of these belong to the test suite rather
   than the specification, and the FMEA credits the controls that actually cover
   them.
+
+### F-028 — The USD intake path has no concurrency or load evidence (P3)
+
+- **Evidence:** `tests/integration/http/sale-offer-quote.hurl` and
+  `offer-intake-failures.hurl` now cover quotation, replay, and every documented
+  misuse functionally, and the generated workload gained `denied` and
+  `invalid-assertion` phases that measure rejected traffic at both depths. The
+  workload in `application/cmd/load-targets/main.go` still emits only MXN
+  creates, distinct buys, a contended buy, and both listings, so
+  `nix/integration-load.sh` has no quote phase. `QuoteSaleOffer` is the most
+  expensive operation in the service: principal resolution, admission, quote
+  replay, rate resolution, and a serializable claim across three or four
+  transactions plus one possible upstream request, against a 20-connection
+  pool.
+- **Impact:** The cost of the newest operation is unmeasured, so pool sizing,
+  the cold-cache behavior in F-026, and contention on a single-use quote are
+  unverified under concurrency. The correctness-gated load profile can stay
+  green while the path it does not cover is the one most likely to saturate.
+  Relates to FM-014 and FM-017.
+- **Complete when:** The generated workload includes a USD quote-and-accept
+  scenario, including contention on one quote, and its report is retained
+  alongside the existing profiles.
+
+### F-030 — The mutation gate's operator set is not recorded (P3)
+
+- **Evidence:** `application/.gremlins.yaml` disables `invert-logical`,
+  `invert-assignments`, `invert-bitwise`, `invert-bwassign`,
+  `invert-loopctrl`, and `remove-self-assignments`. ADR-0013 records that the
+  `mutant-coverage` threshold stays disabled and weighs enabling it as an
+  alternative, but says nothing about which mutation operators run.
+  `invert-logical` mutates `&&` and `||`, which is the shape of the guard
+  chains in `internal/authn/authenticator.go` and of the nine-clause
+  observation check in `internal/offerintake/service.go`.
+- **Impact:** The 95 percent efficacy figure is measured over a reduced
+  operator set, and the operator most relevant to this repository's
+  authentication and rate-validation logic is not among those measured. The
+  gate is credited as detection evidence under FM-014 without that
+  qualification.
+- **Complete when:** `invert-logical` is enabled and the threshold still holds,
+  or ADR-0013 records the excluded operators and the reason with the same
+  reasoning it already applies to `mutant-coverage`.

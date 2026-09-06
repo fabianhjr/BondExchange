@@ -4,13 +4,22 @@ INSERT INTO bond_exchange.users (uuid_id)
 VALUES
   ('01991a20-0000-7000-8000-000000000001'),
   ('01991a20-0000-7000-8000-000000000002'),
-  ('01991a20-0000-7000-8000-000000000003');
+  ('01991a20-0000-7000-8000-000000000003'),
+  ('01991a20-0000-7000-8000-000000000004'),
+  ('01991a20-0000-7000-8000-000000000005');
 
+-- `demo-unauthorized` and `demo-suspended` exist so the authorization and
+-- suspension branches of `effective_principal_permissions` are reachable from
+-- the running server, not only from the PostgreSQL integration tests. They
+-- fail at different boundaries: an unauthorized principal resolves and is
+-- denied, while a suspended principal does not resolve at all.
 INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
 VALUES
   ('01991a20-0000-7000-8000-000000000001', 'https://demo-issuer.invalid', 'demo-seller', 'human'),
   ('01991a20-0000-7000-8000-000000000002', 'https://demo-issuer.invalid', 'demo-buyer', 'human'),
-  ('01991a20-0000-7000-8000-000000000003', 'https://demo-issuer.invalid', 'demo-rate-limited', 'automated');
+  ('01991a20-0000-7000-8000-000000000003', 'https://demo-issuer.invalid', 'demo-rate-limited', 'automated'),
+  ('01991a20-0000-7000-8000-000000000004', 'https://demo-issuer.invalid', 'demo-unauthorized', 'human'),
+  ('01991a20-0000-7000-8000-000000000005', 'https://demo-issuer.invalid', 'demo-suspended', 'human');
 
 INSERT INTO bond_exchange.principal_role_grants
   (principal_uuid, role_uuid, reason)
@@ -19,10 +28,21 @@ FROM (VALUES
   ('01991a20-0000-7000-8000-000000000001'::uuid, 'trader', 'Disposable demo access.'),
   ('01991a20-0000-7000-8000-000000000002'::uuid, 'trader', 'Disposable demo access.'),
   ('01991a20-0000-7000-8000-000000000002'::uuid, 'operator', 'Disposable demo health access.'),
-  ('01991a20-0000-7000-8000-000000000003'::uuid, 'trader', 'Disposable rate-limit test access.')
+  ('01991a20-0000-7000-8000-000000000003'::uuid, 'trader', 'Disposable rate-limit test access.'),
+  ('01991a20-0000-7000-8000-000000000005'::uuid, 'trader', 'Access granted before the demo suspension.')
 ) AS seed(principal_uuid, role_code, reason)
 JOIN bond_exchange.principals AS principal ON principal.uuid_id = seed.principal_uuid
 JOIN bond_exchange.roles AS role ON role.code = seed.role_code;
+
+-- Suspension is an appended fact, not a revoked grant. `demo-suspended` keeps
+-- its trader grant and still loses every permission through the view.
+INSERT INTO bond_exchange.principal_suspensions
+  (principal_uuid, suspended_by_uuid, reason)
+VALUES (
+  '01991a20-0000-7000-8000-000000000005',
+  '01991a20-0000-7000-8000-000000000002',
+  'Disposable demo suspension.'
+);
 
 INSERT INTO bond_exchange.bonds (series, uuid_id)
 VALUES

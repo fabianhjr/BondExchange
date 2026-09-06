@@ -28,19 +28,28 @@ fi
 
 seller_principals="$(((count + 100) / 100))"
 buyer_principals="$(((4 * count + 99) / 100))"
+# Denied traffic is admitted before it is refused, so it consumes each
+# principal's per-minute allowance. Sizing for at most 50 requests each keeps
+# the phase measuring authorization cost rather than the rate limiter.
+denied_principals="$(((count + 49) / 50))"
 psql "$BOND_EXCHANGE_TEST_DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
-  --set seller_count="$seller_principals" --set buyer_count="$buyer_principals" <<'SQL'
+  --set seller_count="$seller_principals" --set buyer_count="$buyer_principals" \
+  --set denied_count="$denied_principals" <<'SQL'
 BEGIN;
 CREATE TEMP TABLE load_principals (
   uuid_id uuid PRIMARY KEY,
-  subject text NOT NULL UNIQUE
+  subject text NOT NULL UNIQUE,
+  granted boolean NOT NULL
 ) ON COMMIT DROP;
-INSERT INTO load_principals (uuid_id, subject)
-SELECT uuidv7(), 'load-seller-' || index
+INSERT INTO load_principals (uuid_id, subject, granted)
+SELECT uuidv7(), 'load-seller-' || index, true
 FROM generate_series(1, :seller_count) AS index
 UNION ALL
-SELECT uuidv7(), 'load-buyer-' || index
-FROM generate_series(1, :buyer_count) AS index;
+SELECT uuidv7(), 'load-buyer-' || index, true
+FROM generate_series(1, :buyer_count) AS index
+UNION ALL
+SELECT uuidv7(), 'load-denied-' || index, false
+FROM generate_series(1, :denied_count) AS index;
 INSERT INTO bond_exchange.users (uuid_id)
 SELECT uuid_id FROM load_principals;
 INSERT INTO bond_exchange.principals (uuid_id, issuer, subject, client_class)
@@ -51,7 +60,7 @@ INSERT INTO bond_exchange.principal_role_grants
 SELECT principal.uuid_id, role.uuid_id, 'Disposable load-test access.'
 FROM load_principals AS principal
 CROSS JOIN bond_exchange.roles AS role
-WHERE role.code = 'trader';
+WHERE role.code = 'trader' AND principal.granted;
 COMMIT;
 SQL
 
@@ -68,9 +77,10 @@ run_attack() {
   local prefix="$3"
   local name="$4"
   local principal_count="$buyer_principals"
-  if [[ "$scenario" == create ]]; then
-    principal_count="$seller_principals"
-  fi
+  case "$scenario" in
+    create) principal_count="$seller_principals" ;;
+    denied) principal_count="$denied_principals" ;;
+  esac
   local attack_duration="$duration"
   local attack_rate="$rate"
   local generated_count="$request_count"
@@ -108,6 +118,24 @@ require_status() {
       .requests == $request_count
       and ((.status_codes[$status] // 0) == $request_count)
       and (.errors | length == 0)
+    ' "$artifact_root/$name.json" >/dev/null
+}
+
+# Vegeta records every non-2xx response in its error set, so a phase that is
+# meant to be refused asserts the reason instead of an empty set. Requiring the
+# exact reason keeps the phase from passing on some other rejection.
+require_rejected_status() {
+  local name="$1"
+  local request_count="$2"
+  local status="$3"
+  local reason="$4"
+  jq --exit-status \
+    --argjson request_count "$request_count" \
+    --arg status "$status" \
+    --arg reason "$reason" '
+      .requests == $request_count
+      and ((.status_codes[$status] // 0) == $request_count)
+      and (.errors == [$reason])
     ' "$artifact_root/$name.json" >/dev/null
 }
 
@@ -162,6 +190,17 @@ jq --exit-status \
     and ((.status_codes["201"] // 0) == 1)
     and ((.status_codes["404"] // 0) == ($request_count - 1))
   ' "$artifact_root/contended-buy.json" >/dev/null
+
+# Rejected traffic is not free. These two phases measure the two depths a
+# request can be refused at, so the cost of work the service performs and then
+# discards is recorded next to the cost of work it completes.
+echo "Sending $count authorized-but-forbidden reads"
+run_attack denied "$count" denied denied
+require_rejected_status denied "$count" 403 "403 Forbidden"
+
+echo "Sending $count requests whose assertion is bound to another request"
+run_attack invalid-assertion "$count" invalid-assertion invalid-assertion
+require_rejected_status invalid-assertion "$count" 401 "401 Unauthorized"
 
 curl --fail --silent \
   --header "Authorization: Bearer $offers_token" \
