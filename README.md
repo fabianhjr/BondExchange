@@ -18,11 +18,10 @@ Install [Nix](https://nixos.org/download/) and devenv:
 nix profile add nixpkgs#devenv
 ```
 
-Clone with submodules, or initialize them afterwards:
+Clone the repository:
 
 ```console
-git clone --recurse-submodules https://github.com/fabianhjr/BondExchange.git
-git submodule update --init --depth 1 third_party/asvs
+git clone https://github.com/fabianhjr/BondExchange.git
 ```
 
 Start a complete disposable demo environment:
@@ -33,8 +32,9 @@ devenv up
 
 `devenv.lock` pins Go, PostgreSQL, dbmate, TLA+, golangci-lint, Gremlins, and
 the other development tools; they do not need to be installed globally.
-`third_party/asvs` pins the OWASP ASVS source that the security profile is
-verified against, and `devenv test` and `security:check` fail without it.
+`third_party/asvs` contains the small, licensed snapshot of the pinned OWASP
+ASVS source that the security profile is verified against. It is included in a
+normal clone; `devenv test` and `security:check` verify its integrity.
 
 The demo brings up a temporary PostgreSQL cluster, both server transports, and a
 loopback OpenTelemetry Collector. [`docs/demo.md`](docs/demo.md) walks through
@@ -155,8 +155,8 @@ Proto3 declaration, TLA+ property, and task name that the
 [guarantee register](docs/guarantees.md) cites as evidence, so a guarantee
 cannot outlive what enforces it
 ([ADR-0032](docs/adr/0032-publish-a-verified-guarantee-register.md)).
-`security:check` verifies the ASVS profile against the pinned
-`third_party/asvs` source rather than a contributor-local copy.
+`security:check` verifies the ASVS profile against the pinned, checksummed
+`third_party/asvs` source snapshot rather than a contributor-local copy.
 
 Coverage and mutation efficacy both measure `application/internal/`; the thin
 entrypoint under `application/cmd/` is compiled and statically analyzed but

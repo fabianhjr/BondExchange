@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-09-04
+- Amendment: The ASVS submodule portion is superseded by
+  [ADR-0035](0035-vendor-the-minimal-asvs-baseline.md); the documentation-graph
+  decision remains accepted.
 
 ## Context
 
@@ -72,7 +75,7 @@ the registers by anchor, so the link checks still cover their navigable claims.
 - Verifying the baseline requires roughly 160 MB of upstream checkout for the
   332 KB actually read, because the ASVS repository retains every prior version
   of the standard. `security:check` and therefore `devenv test` fail without it.
-  F-020 records this cost and its completion conditions.
+  The friction register recorded this cost and its completion conditions.
 - The anchor checker implements GitHub's slug algorithm rather than reusing it.
   A future upstream change to that algorithm would make the checker wrong in
   either direction; the rule is simple enough that this is an acceptable risk

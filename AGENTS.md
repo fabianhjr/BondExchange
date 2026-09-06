@@ -138,9 +138,11 @@
   scheduled long-running run, must still have a named automatic caller and be
   recorded as an intentional omission in the README.
 - Pin an external source that verification reads, and check the pin. External
-  standards and specifications belong in `third_party/` as submodules recorded
-  at a specific commit, never as a contributor-local path or an unreproducible
-  checksum.
+  standards and specifications belong in `third_party/` as either submodules
+  recorded at a specific commit or minimal vendored snapshots. A vendored
+  snapshot must preserve the upstream license, record its source tag, commit,
+  and extraction scope, and verify an integrity manifest in the test gate.
+  Never depend on a contributor-local path or an undocumented checksum.
 
 ## Project map
 
@@ -158,5 +160,5 @@
 | `docs/adr/` | Architecture decision records and their index. |
 | `docs/security/` | ASVS application profile, requirement dispositions, and continuous-compliance evidence. |
 | `tests/integration/` | Executable REST interaction documentation and generated load-test scenarios. |
-| `third_party/` | Pinned upstream sources that verification reads but this repository does not own. |
+| `third_party/` | Pinned, licensed upstream source snapshots that verification reads but this repository does not own. |
 | `.github/` | Continuous integration workflows and the code-owner assignments. |

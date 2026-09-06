@@ -17,7 +17,6 @@ on:
       - "devenv.nix"
       - "devenv.yaml"
       - "devenv.lock"
-      - ".gitmodules"
       - "third_party/**"
   push:
     branches:
@@ -37,7 +36,6 @@ on:
       - "devenv.nix"
       - "devenv.yaml"
       - "devenv.lock"
-      - ".gitmodules"
       - "third_party/**"
   workflow_dispatch:
 
@@ -55,12 +53,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # `security:check` verifies the ASVS profile against the pinned upstream
-      # source in the third_party/asvs submodule.
+      # `security:check` verifies the ASVS profile against the pinned vendored
+      # source under third_party/asvs.
       - name: Check out repository
         uses: actions/checkout@v7
-        with:
-          submodules: true
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31

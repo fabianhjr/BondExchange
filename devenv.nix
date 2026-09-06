@@ -231,7 +231,6 @@ let
       pkgs.coreutils
       pkgs.diffutils
       pkgs.gawk
-      pkgs.git
       pkgs.gnugrep
     ];
     text = builtins.readFile ./nix/asvs-source-check.sh;

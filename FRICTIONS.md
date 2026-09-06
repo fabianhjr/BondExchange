@@ -304,37 +304,25 @@ those entries report.
   recovery runbook are deployed, or an ADR deliberately accepts database-only
   event retention and removes the outbound-delivery claim.
 
-### F-020 — Verifying the ASVS baseline requires a large upstream checkout (P3)
-
-- **Evidence:** [`docs/security/ASVS.md`](docs/security/ASVS.md) is verified
-  against the `third_party/asvs` submodule, pinned to OWASP/ASVS
-  `v5.0.0_release`. Only `5.0/en` is read, but the checkout is roughly 160 MB
-  because the upstream repository retains every prior standard version and its
-  images. `.gitmodules` marks the submodule shallow, which bounds history but
-  not working-tree size. `security:check`, and therefore `devenv test` and the
-  Go quality workflow, fail without it.
-- **Impact:** Cloning, continuous integration, and a first `devenv test` each
-  pay for content the assessment never reads, and a contributor who skips
-  `git submodule update --init` sees a failing gate before writing any code.
-- **Complete when:** The pinned requirement text is obtained without the
-  unrelated history — through submodule sparse-checkout, an upstream
-  machine-readable requirement artifact, or a reviewed vendored extract with an
-  automated provenance check — or the cost is measured and accepted in an ADR.
-
 ### F-021 — The repository has no license (P2)
 
 - **Evidence:** There is no `LICENSE` file at the repository root and no
   copyright statement in the READMEs, so the default is exclusive copyright.
-  The repository now also references OWASP ASVS, which upstream licenses under
-  Creative Commons Attribution-ShareAlike 4.0 International, as a submodule.
+  The repository redistributes an unmodified OWASP ASVS source snapshot under
+  `third_party/asvs`; its [`SOURCE.md`](third_party/asvs/SOURCE.md) records the
+  upstream authorship, release, extraction scope, and lack of modifications,
+  and its [`LICENSE.md`](third_party/asvs/LICENSE.md) preserves the Creative
+  Commons Attribution-ShareAlike 4.0 International terms. Those terms cover the
+  vendored ASVS material, not this repository's own work.
 - **Impact:** No one can reuse, fork, or contribute to this repository with
-  legal confidence, and the relationship between this work and the terms of the
-  referenced standard is unstated. [`SECURITY.md`](SECURITY.md) and
-  [`.github/CODEOWNERS`](.github/CODEOWNERS) name a responsible maintainer but
-  cannot supply terms of use.
+  legal confidence for the project-owned material. The third-party boundary is
+  now explicit, but [`SECURITY.md`](SECURITY.md) and
+  [`.github/CODEOWNERS`](.github/CODEOWNERS) can name a responsible maintainer
+  only; they cannot supply terms of use for the rest of the repository.
 - **Complete when:** The owner selects a license, adds it at the repository
-  root, states how it relates to the separately licensed ASVS source, and
-  records the choice where contributors will find it.
+  root, explicitly excludes or explains its relationship to the separately
+  licensed ASVS snapshot, and records the choice where contributors will find
+  it.
 
 ### F-022 — Marketplace and authorization behavior are model-checked separately (P3)
 
