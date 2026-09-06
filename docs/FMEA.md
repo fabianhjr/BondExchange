@@ -338,7 +338,7 @@ production-readiness decision.
   on the published, tested procedure; severity is unchanged because a mistaken
   rotation still affects every authenticated operation.
 - **Traceability:** [ADR-0024](adr/0024-define-probe-and-key-rotation-contracts.md)
-  and [authentication configuration](../README.md#run-locally).
+  and [key rotation](operations.md#assertion-verification-keys).
 
 ### FM-010 — Committed event remains undelivered
 
@@ -412,7 +412,7 @@ production-readiness decision.
   latest FIX.
 - **Traceability:** [ADR-0014](adr/0014-persist-and-coordinate-banxico-sie-exchange-rates.md)
   [ADR-0019](adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md), and
-  [rate behavior](../README.md#banxico-sie-exchange-rates).
+  [rate behavior](exchange-rates.md).
 
 ### FM-013 — Banxico SIE token disclosure
 
@@ -509,7 +509,7 @@ production-readiness decision.
   contract; detection is unchanged because the repository cannot observe how an
   orchestrator is configured.
 - **Traceability:** [ADR-0024](adr/0024-define-probe-and-key-rotation-contracts.md)
-  and [runtime endpoints](../README.md#run-locally).
+  and [health probes](operations.md#health-probes).
 
 ### FM-016 — Lossy or incompatible database migration
 
