@@ -41,6 +41,11 @@ provision PostgreSQL, validate generated artifacts, and run the other project
 quality gates. Generated bindings must be changed through the root
 `api:generate` task, not edited directly.
 
+`go:check` verifies `gofmt` and runs the pinned golangci-lint standard set plus
+the curated correctness, security, context, resource-lifecycle, logging, test,
+and dependency-direction checks in `.golangci.yml`. A suppression must identify
+one or more specific linters and explain why the flagged construct is safe.
+
 `cmd/server` requires `BANXICO_SIE_TOKEN` because USD quotation is part of the
 composed API. The token remains owned by the SIE adapter, which is its only
 consumer and validates its format; `internal/serverruntime` reads it alongside

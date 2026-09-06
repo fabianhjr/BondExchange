@@ -11,8 +11,8 @@
   that is not implemented or verified.
 - Treat TLA+ modules, TLC configurations, Nix/devenv configuration, and GitHub
   Actions workflows as implementation for this rule. Treat root and scoped
-  READMEs, `FRICTIONS.md`, `docs/FMEA.md`, the security profile, and ADRs as
-  documentation.
+  READMEs, the guides under `docs/`, `FRICTIONS.md`, `docs/FMEA.md`, the
+  security profile, and ADRs as documentation.
 - Include both implementation impact and documentation impact when planning a
   change. If one side needs no edit, still verify that it remains accurate.
 - Record architecture-level decisions or changes in `docs/adr/`.
@@ -117,6 +117,7 @@
 | `db/` | Versioned database schema, disposable demo fixtures, and persistence documentation. |
 | `nix/` | Nix-packaged PostgreSQL lifecycle, demo, and development verification helpers. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |
+| `docs/` | Operator and contributor guides: local demo, deployment operations, Banxico SIE exchange rates, and observability. |
 | `docs/FMEA.md` | System-level failure mode, effects, controls, residual-risk, and follow-up analysis. |
 | `docs/adr/` | Architecture decision records and their index. |
 | `docs/security/` | ASVS application profile, requirement dispositions, and continuous-compliance evidence. |
