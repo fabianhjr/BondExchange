@@ -135,7 +135,8 @@ facts must be provisioned separately before publishing or buying sale offers.
 | `go:check` | `gofmt` and the curated golangci-lint set pass. |
 | `go:test` | Go tests pass with the race detector and real PostgreSQL. |
 | `go:coverage` | Statement coverage is at least 95%. |
-| `go:mutation` | Mutation-test efficacy is at least 95%. |
+| `go:mutation-harness` | The mutation gate can report both surviving and killed mutants. |
+| `go:mutation` | Mutation-test efficacy on changed lines is at least 95%. |
 | `security:check` | ASVS evidence matches the pinned source; Go modules and vulnerabilities are scanned. |
 
 Run one with `devenv tasks run <task>`.
@@ -159,8 +160,42 @@ cannot outlive what enforces it
 
 Coverage and mutation efficacy both measure `application/internal/`; the thin
 entrypoint under `application/cmd/` is compiled and statically analyzed but
-excluded from those scores. Every database-dependent task creates its own
-migrated PostgreSQL cluster on a private Unix socket and removes it afterwards,
+excluded from those scores.
+
+Mutation testing runs every operator Gremlins supports, at two cadences.
+`go:mutation` scores only the lines a branch changed, measured against its
+merge base, because a whole-module run tests each mutant against the complete
+suite one at a time and takes hours. `go:mutation-full` scores the whole module
+at a 90 percent threshold; the
+[scheduled mutation workflow](.github/workflows/scheduled-mutation.yml) is its
+only automatic caller, weekly and only when `application/` or `db/` changed.
+Set `BOND_EXCHANGE_MUTATION_DIFF_REF` to choose what `go:mutation` compares
+against; it defaults to `main`.
+
+Gremlins reads a mutant's verdict from the exit status of its test command, so
+a configuration that fails before reaching a test scores every mutant as
+killed, and a diff whose paths do not match scores nothing at all. Both are
+silent. `go:mutation-harness` runs the real configuration through the real
+wrapper, in both modes, against a throwaway repository with one mutation that
+must survive and one that must be killed, and blocks the mutation gates when
+either verdict is missing
+([ADR-0031](docs/adr/0031-enable-every-mutant-operator-and-verify-the-harness.md)).
+
+Each run is bounded as a whole — 20 minutes for `go:mutation`, 240 for
+`go:mutation-full`, both overridable through `BOND_EXCHANGE_MUTATION_TIMEOUT` —
+because Gremlins bounds each mutant but not the run. A mutant that hangs the
+suite is counted as killed, since a program that stops terminating has been
+detected, and the run fails if more than 30 percent of tested mutants reach
+that state, because a score built mostly on timeouts is not a measurement.
+
+Both mutation gates first run the unmutated suite twice against one database
+and stop if the second run fails. Gremlins runs the suite once per mutant and
+reads any failure as a killed mutant, so a test that depends on rows an earlier
+run left behind would score every mutant after the first without the mutation
+having anything to do with it.
+
+Every database-dependent task creates its own migrated
+PostgreSQL cluster on a private Unix socket and removes it afterwards,
 so repeated and parallel invocations stay independent. A raw `go test` from
 `application/` outside these tasks may skip the PostgreSQL integration package
 when `BOND_EXCHANGE_TEST_DATABASE_URL` is unset; those tests fail instead of
@@ -173,7 +208,8 @@ content-addressed in `api/buf.lock`; update that lock intentionally with
 `devenv tasks run api:update-deps`.
 
 `sie:record` is intentionally omitted from the verification graph because it
-requires a real credential and external network access. Reports and the
+requires a real credential and external network access, and `go:mutation-full`
+because a whole-module run takes hours. Reports and the
 golangci-lint cache are written to `.artifacts/`.
 
 `devenv test` reaches every gate through exactly two aggregate tasks: `dev:ci`,

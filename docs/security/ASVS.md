@@ -224,7 +224,13 @@ error handling, and resource-lifecycle checks. These tasks are part of
 itself to the test entry point without joining one, so security evidence cannot
 be produced locally while being absent from CI. API generation, race tests,
 PostgreSQL integration, coverage, mutation, and TLC checks remain independent
-evidence layers. `observability:check` separately validates the loopback
+evidence layers. The mutation gates run every mutant operator Gremlins
+supports: `go:mutation` scores the lines each change touched, and a scheduled
+weekly `go:mutation-full` scores the whole module. `go:mutation-harness` proves
+that configuration can still report both a surviving and a killed mutant, so
+mutation efficacy is measured evidence rather than a by-product of a test
+command that never ran or a diff that matched nothing
+([ADR-0031](../adr/0031-enable-every-mutant-operator-and-verify-the-harness.md)). `observability:check` separately validates the loopback
 collector, OTLP export and flush, REST/gRPC propagation, bounded metric and
 route attributes, trace/log correlation, and the Banxico propagation boundary;
 its JSON report is retained by continuous integration.

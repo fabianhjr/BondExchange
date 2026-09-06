@@ -46,6 +46,7 @@ Alternatives considered sections.
 - [ADR-0028: Coordinate per-principal request rate limits in PostgreSQL](0028-coordinate-per-principal-request-rate-limits-in-postgresql.md)
 - [ADR-0029: Use policy-aligned operational metrics](0029-use-policy-aligned-operational-metrics.md)
 - [ADR-0030: Prevent same-identity self-trading](0030-prevent-same-identity-self-trading.md)
+- [ADR-0031: Enable every mutant operator, split the mutation cadence, and verify the harness](0031-enable-every-mutant-operator-and-verify-the-harness.md)
 - [ADR-0032: Publish a verified guarantee register](0032-publish-a-verified-guarantee-register.md)
 - [ADR-0033: Retire legacy identifier evidence and transition tooling](0033-retire-legacy-identifier-evidence-and-transition-tooling.md)
 - [ADR-0034: Make the principal the sole identity](0034-make-the-principal-the-sole-identity.md)

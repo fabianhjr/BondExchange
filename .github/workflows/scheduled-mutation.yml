@@ -1,0 +1,128 @@
+name: Scheduled mutation run
+
+# The Go quality workflow scores mutation efficacy only on the lines a change
+# touched, because a whole-module run takes hours. Diff mode never re-tests a
+# line an earlier change introduced, so a mutant that a later refactor stops
+# killing would stay invisible until something happened to touch its line
+# again. This workflow closes that gap on a weekly cadence.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-mutation-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  # A scheduled run on an unchanged repository would re-measure the same
+  # sources for hours and report the same number. A manual run always
+  # proceeds, so a maintainer can still ask for the measurement.
+  changes:
+    name: Decide whether the module changed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual run: measuring regardless of recent changes."
+            exit 0
+          fi
+          # The schedule is weekly, so a commit within the last seven days is
+          # exactly a change this run has not measured yet.
+          if [ -z "$(git log --since='7 days ago' --format=%H -- application db)" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No change to application/ or db/ in the last seven days; skipping."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Change detected in the last seven days; measuring."
+          fi
+
+  mutation:
+    name: Whole-module mutation efficacy (minimum 90%)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    # A whole-module run tests every covered mutant against the complete test
+    # suite, one at a time. Measured at roughly three hours on a developer
+    # machine; the ceiling leaves room for a slower hosted runner.
+    timeout-minutes: 330
+
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure devenv binary cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+
+      - name: Run whole-module mutation gate
+        env:
+          CI: "true"
+        run: devenv tasks run go:mutation-full
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-mutation-report-full
+          path: .artifacts/mutation-report-full.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # A weekly failure needs a durable signal rather than an email nobody
+      # reads. One tracking issue is reused so a persistent regression does not
+      # open a new issue every week.
+      - name: Report failure to the maintainer
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: Scheduled mutation run failed
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="The scheduled whole-module mutation run failed on $(date -u +%Y-%m-%d).
+
+          Run: $RUN_URL
+
+          The run report lists every surviving mutant. A mutant that survives
+          on a line no recent change touched is a test the diff-mode gate in
+          the Go quality workflow cannot reach."
+          existing="$(
+            gh issue list --state open --search "$TITLE in:title" --json number,title \
+              --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty"
+          )"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi

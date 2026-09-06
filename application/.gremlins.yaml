@@ -2,17 +2,35 @@ silent: false
 unleash:
   integration: true
   dry-run: false
-  output: "../.artifacts/mutation-report.json"
   workers: 1
-  test-cpu: 1
-  timeout-coefficient: 3
+  # `test-cpu` must stay 0. Gremlins 0.6.0 builds this flag as the single
+  # argument "-cpu N" instead of two, so `go test` reads it as a test-binary
+  # flag, drops "./..." from package selection, and fails with "no Go files"
+  # before running anything. Gremlins scores that exit status 1 as KILLED, so
+  # every mutant is reported killed and efficacy is a vacuous 100 percent.
+  # `workers: 1` already serializes mutation runs.
+  test-cpu: 0
+  # Each mutant run gets `timeout-coefficient` times the elapsed time of the
+  # coverage run, which is measured with a warm build cache and does not
+  # include recompiling the mutated package. A timed-out mutant is excluded
+  # from the efficacy denominator, so a budget that is too small quietly
+  # shrinks what the gate measures. Keep enough headroom that only a
+  # non-terminating mutant times out.
+  timeout-coefficient: 20
   exclude-files:
     - "^cmd/"
     - "^gen/"
+  # The thresholds live in `nix/go-mutation.sh`, which enforces 95 percent on
+  # the lines a change touched and 90 percent on a whole-module run. Gremlins
+  # cannot express two thresholds, and it fails a run with no tested mutants,
+  # which is the normal result for a change that touches no mutable line.
+  # Leaving these at 0 keeps a bare `gremlins unleash` from reporting a verdict
+  # that no gate would agree with.
   threshold:
-    efficacy: 95
+    efficacy: 0
     mutant-coverage: 0
 
+# Every mutant type Gremlins 0.6.0 supports is enabled.
 mutants:
   arithmetic-base:
     enabled: true
@@ -23,16 +41,16 @@ mutants:
   increment-decrement:
     enabled: true
   invert-assignments:
-    enabled: false
+    enabled: true
   invert-bitwise:
-    enabled: false
+    enabled: true
   invert-bwassign:
-    enabled: false
+    enabled: true
   invert-negatives:
     enabled: true
   invert-logical:
-    enabled: false
+    enabled: true
   invert-loopctrl:
-    enabled: false
+    enabled: true
   remove-self-assignments:
-    enabled: false
+    enabled: true

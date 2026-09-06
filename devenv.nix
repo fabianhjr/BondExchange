@@ -196,16 +196,27 @@ let
     name = "bond-exchange-go-mutation";
     runtimeInputs = [
       pkgs.coreutils
+      pkgs.git
+      pkgs.gnugrep
       pkgs.go
       pkgs.stdenv.cc
       gremlins
     ];
-    text = ''
-      project_root="''${DEVENV_ROOT:-$PWD}"
-      cd "$project_root/application"
-      mkdir -p "$project_root/.artifacts"
-      gremlins unleash
-    '';
+    text = builtins.readFile ./nix/go-mutation.sh;
+  };
+
+  mutationHarnessCheck = pkgs.writeShellApplication {
+    name = "bond-exchange-mutation-harness-check";
+    runtimeInputs = [
+      pkgs.bash
+      pkgs.coreutils
+      pkgs.git
+      pkgs.gnugrep
+      pkgs.go
+      pkgs.stdenv.cc
+      gremlins
+    ];
+    text = builtins.readFile ./nix/mutation-harness-check.sh;
   };
 
   asvsProfileCheck = pkgs.writeShellApplication {
@@ -433,14 +444,34 @@ in
     after = [ "go:test" ];
   };
 
+  tasks."go:mutation-harness" = {
+    description = "Prove the mutation gate can report both surviving and killed mutants";
+    exec = "BOND_EXCHANGE_MUTATION_GATE=${goMutation}/bin/bond-exchange-go-mutation ${mutationHarnessCheck}/bin/bond-exchange-mutation-harness-check";
+  };
+
+  # Diff mode keeps this gate inside a pull request's time budget by mutating
+  # only the lines a branch changed. `go:mutation-full` covers the rest of the
+  # module on a schedule, because diff mode never re-tests a line an earlier
+  # change introduced.
   tasks."go:mutation" = {
-    description = "Require at least 95% mutation-test efficacy";
+    description = "Require at least 95% mutation-test efficacy on changed lines";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${goMutation}/bin/bond-exchange-go-mutation";
     after = [
       "demo:smoke"
       "go:coverage"
+      "go:mutation-harness"
     ];
     before = [ "devenv:enterTest" ];
+  };
+
+  # Deliberately outside the `devenv test` graph: a whole-module run takes
+  # hours, so the scheduled mutation workflow is its only automatic caller.
+  tasks."go:mutation-full" = {
+    description = "Require at least 90% mutation-test efficacy across the whole module";
+    exec = "BOND_EXCHANGE_MUTATION_MODE=full ${postgresHarness}/bin/bond-exchange-with-postgres ${goMutation}/bin/bond-exchange-go-mutation";
+    after = [
+      "go:mutation-harness"
+    ];
   };
 
   tasks."security:check" = {

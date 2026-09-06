@@ -691,7 +691,16 @@ func TestMutationIdempotencyReplaysResultAndRejectsKeyReuse(t *testing.T) {
 		SellerID: seller, BondSeries: bond,
 		Price: decimal.RequireFromString("101.25"), Currency: "MXN",
 	}
-	operation := mutation(seller, exchange.OperationCreateSaleOffer, "stable-idempotency-key", "request-a")
+	// The nonce is derived from this label, and the counts below match on the
+	// nonce alone rather than on the principal that claimed it. A fixed label
+	// would therefore count the claims of every earlier run against the same
+	// database, and the mutation gate runs this suite once per mutant.
+	operation := mutation(
+		seller,
+		exchange.OperationCreateSaleOffer,
+		"stable-idempotency-key-"+uniqueHex(t, 8),
+		"request-a",
+	)
 
 	first, err := store.CreateSaleOffer(context.Background(), operation, offer)
 	if err != nil {
@@ -948,8 +957,29 @@ WHERE destination_id = 'test'
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Attempted == 0 || summary.Delivered != summary.Attempted || summary.Failed != 0 || summary.Remaining != 0 {
+	if summary.Attempted == 0 || summary.Delivered == 0 {
 		t.Fatalf("recovery summary = %#v", summary)
+	}
+	// The scan covers every event this destination has not delivered, so on a
+	// database that other tests and earlier runs have written to, the totals
+	// above describe their rows as well as this one's. The claim under test is
+	// about this delivery: recovery retried the attempt that failed, and it
+	// succeeded. The mutation gate runs this suite once per mutant against one
+	// database, so an assertion over the whole destination would pass once and
+	// then fail for reasons that have nothing to do with the mutation.
+	var retried bool
+	if err := pool.QueryRow(context.Background(), `
+SELECT delivered_at IS NOT NULL AND attempt_count > $3
+FROM bond_exchange.integration_event_deliveries
+WHERE destination_id = 'test'
+  AND event_uuid = (
+    SELECT uuid_id FROM bond_exchange.integration_events
+    WHERE table_name = $1 AND source_uuid = $2
+  )`, ref.TableName, ref.ID, attempts).Scan(&retried); err != nil {
+		t.Fatal(err)
+	}
+	if !retried {
+		t.Fatal("recovery did not retry and deliver the failed delivery")
 	}
 }
 

@@ -73,6 +73,13 @@ fail instead of skipping whenever `CI` is set.
 - A contributor adding a gate must choose an aggregate. That is a deliberate
   friction: the choice is exactly the one that was previously made implicitly
   and wrongly.
+- One task deliberately joins neither aggregate.
+  [ADR-0031](0031-enable-every-mutant-operator-and-verify-the-harness.md) adds
+  `go:mutation-full`, a whole-module mutation run that takes hours and is
+  driven by a scheduled workflow rather than by `devenv test`. It is outside
+  the equivalence this record enforces for the same reason `sie:record` is:
+  running it on every change is not the intent. `dev:check` still rejects it
+  from `devenv:enterTest`, so it cannot become a local-only gate.
 
 ## Alternatives considered
 
