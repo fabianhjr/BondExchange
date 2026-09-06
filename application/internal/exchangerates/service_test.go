@@ -69,7 +69,7 @@ func (store *memoryStore) States(_ context.Context, units []WorkUnit) (map[strin
 	return states, nil
 }
 
-func (store *memoryStore) Claim(_ context.Context, units []WorkUnit, token string, _ time.Duration, force bool) ([]WorkUnit, error) {
+func (store *memoryStore) Claim(_ context.Context, units []WorkUnit, nonce string, _ time.Duration, force bool) ([]WorkUnit, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	claimed := make([]WorkUnit, 0, len(units))
@@ -78,7 +78,7 @@ func (store *memoryStore) Claim(_ context.Context, units []WorkUnit, token strin
 		if (!force && state.ready) || state.lease != "" {
 			continue
 		}
-		state.lease = token
+		state.lease = nonce
 		store.units[unit.Key] = state
 		claimed = append(claimed, unit)
 	}
@@ -87,7 +87,7 @@ func (store *memoryStore) Claim(_ context.Context, units []WorkUnit, token strin
 
 func (store *memoryStore) Complete(
 	_ context.Context,
-	token string,
+	nonce string,
 	units []WorkUnit,
 	_ FetchRequest,
 	result FetchResult,
@@ -98,7 +98,7 @@ func (store *memoryStore) Complete(
 	series := make(map[SeriesID]Series, len(units))
 	for _, unit := range units {
 		state := store.units[unit.Key]
-		if state.lease != token {
+		if state.lease != nonce {
 			return errors.New("lost lease")
 		}
 		state.ready = true
@@ -121,13 +121,13 @@ func (store *memoryStore) Complete(
 	return nil
 }
 
-func (store *memoryStore) Fail(_ context.Context, token string, units []WorkUnit, _ string, _ time.Duration) error {
+func (store *memoryStore) Fail(_ context.Context, nonce string, units []WorkUnit, _ string, _ time.Duration) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	store.failures++
 	for _, unit := range units {
 		state := store.units[unit.Key]
-		if state.lease != token {
+		if state.lease != nonce {
 			return errors.New("lost lease")
 		}
 		state.lease = ""
@@ -533,25 +533,25 @@ func (store *failingStore) States(ctx context.Context, units []WorkUnit) (map[st
 	return store.Store.States(ctx, units)
 }
 
-func (store *failingStore) Claim(ctx context.Context, units []WorkUnit, token string, lease time.Duration, force bool) ([]WorkUnit, error) {
+func (store *failingStore) Claim(ctx context.Context, units []WorkUnit, nonce string, lease time.Duration, force bool) ([]WorkUnit, error) {
 	if store.claimErr != nil {
 		return nil, store.claimErr
 	}
-	return store.Store.Claim(ctx, units, token, lease, force)
+	return store.Store.Claim(ctx, units, nonce, lease, force)
 }
 
-func (store *failingStore) Complete(ctx context.Context, token string, units []WorkUnit, request FetchRequest, result FetchResult, fresh time.Duration) error {
+func (store *failingStore) Complete(ctx context.Context, nonce string, units []WorkUnit, request FetchRequest, result FetchResult, fresh time.Duration) error {
 	if store.completeErr != nil {
 		return store.completeErr
 	}
-	return store.Store.Complete(ctx, token, units, request, result, fresh)
+	return store.Store.Complete(ctx, nonce, units, request, result, fresh)
 }
 
-func (store *failingStore) Fail(ctx context.Context, token string, units []WorkUnit, errorClass string, retry time.Duration) error {
+func (store *failingStore) Fail(ctx context.Context, nonce string, units []WorkUnit, errorClass string, retry time.Duration) error {
 	if store.failErr != nil {
 		return store.failErr
 	}
-	return store.Store.Fail(ctx, token, units, errorClass, retry)
+	return store.Store.Fail(ctx, nonce, units, errorClass, retry)
 }
 
 func (store *failingStore) LatestObservations(ctx context.Context, series []Series) ([]Observation, error) {

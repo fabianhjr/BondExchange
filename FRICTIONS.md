@@ -110,6 +110,8 @@ those entries report.
 - **Evidence:** Operation claims/results, RBAC facts, domain facts, Banxico SIE
   response imports and exchange-rate revisions, minimal integration-event
   references, and per-destination delivery records grow without deletion.
+  ADR-0033 removed expired pre-UUID identifier evidence, but it did not define
+  a lifecycle for these retained records.
   [`docs/security/ASVS.md`](docs/security/ASVS.md) leaves
   capacity, retention, protected backups, immutable log storage, and erasure
   semantics to future deployment and legal decisions.

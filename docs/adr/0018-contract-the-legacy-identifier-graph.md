@@ -1,10 +1,14 @@
 # ADR-0018: Contract the legacy identifier graph
 
-- Status: Accepted
+- Status: Accepted; archive-retention decision superseded by ADR-0033
 - Date: 2026-09-04
 
 The transition described below is complete: the application uses the
 canonical views and the `_v2` aliases have been removed.
+
+ADR-0033 later retired the legacy identifier archive after its accepted
+retention period elapsed. The archival decision below describes the required
+intermediate migration state, not the current schema.
 
 ## Context
 
@@ -52,14 +56,14 @@ is disaster recovery rather than routine release rollback.
 
 - Operational writes and joins have one identifier graph and no synchronization
   trigger overhead.
-- Distinct historical values remain available under restricted, append-only
-  audit storage.
+- Distinct historical values remained available under restricted, append-only
+  audit storage until ADR-0033 accepted their retirement.
 - The original pre-UUID application cannot run after contraction; retiring it
   is an explicit release gate.
 - Contract migrations require exclusive table locks and production-sized
   rehearsal even when most column removal is catalog-only.
-- The archive remains subject to the unresolved retention, capacity, access,
-  and erasure policy tracked by F-005.
+- During its retention period, the archive was subject to the capacity, access,
+  and erasure concerns tracked by F-005.
 - Domain behavior and TLA+ invariants do not change.
 
 ## Alternatives considered

@@ -126,7 +126,6 @@ must be provisioned separately before publishing or buying sale offers.
 | `docs:check` | Documentation links, anchors, indexes, register identifiers, and guarantee citations resolve. |
 | `spec:check` | Every TLC instance model-checks and every action is reachable. |
 | `db:migrate` | The full migration history applies to a fresh database. |
-| `db:uuid-contract-history` | Pre-UUID values were archived losslessly. |
 | `db:canonical-mxn-readiness` | Every active offer has consistent accepted MXN terms. |
 | `postgres:lifecycle-check` | Temporary PostgreSQL clusters isolate and clean up. |
 | `demo:smoke` | The disposable demo starts and serves. |

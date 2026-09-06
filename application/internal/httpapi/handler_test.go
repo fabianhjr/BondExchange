@@ -29,6 +29,15 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+const (
+	testPrincipalID      = exchange.UserID("01991a20-0000-7000-8000-000000000001")
+	testSellerID         = exchange.UserID("01991a20-0000-7000-8000-000000000002")
+	testBuyerID          = exchange.UserID("01991a20-0000-7000-8000-000000000003")
+	testOfferID          = exchange.OfferID("01991a20-0000-7000-8000-000000000101")
+	testOtherOfferID     = exchange.OfferID("01991a20-0000-7000-8000-000000000102")
+	testIdempotencyNonce = "41db1265-8bc1-4ab3-992f-885799a4af1d"
+)
+
 type applicationStub struct {
 	purchase       exchange.Purchase
 	buyErr         error
@@ -227,11 +236,11 @@ type authenticatorStub struct{}
 
 func (authenticatorStub) Authenticate(_ context.Context, operation string, _ []byte, idempotent bool) (authn.Result, error) {
 	result := authn.Result{AccessContext: exchange.AccessContext{
-		Principal: exchange.Principal{ID: "principal-1", ClientID: "client-1"},
+		Principal: exchange.Principal{ID: testPrincipalID, ClientID: "client-1"},
 		Operation: operation,
 	}}
 	if idempotent {
-		result.IdempotencyKey = "idempotency-key-1"
+		result.IdempotencyKey = testIdempotencyNonce
 	}
 	return result, nil
 }
@@ -281,23 +290,23 @@ func TestBuyHandler(t *testing.T) {
 
 	purchase := exchange.Purchase{
 		Offer: exchange.SaleOffer{
-			ID:         "offer-1",
-			SellerID:   "seller-1",
+			ID:         testOfferID,
+			SellerID:   testSellerID,
 			BondSeries: "BND1",
 			Price:      decimal.RequireFromString("100.25"),
 			Currency:   "USD",
 		},
-		BuyerID:  "buyer-1",
+		BuyerID:  testBuyerID,
 		BoughtAt: time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC),
 	}
 	application := &applicationStub{purchase: purchase}
 	handler := newHandler(t, application, healthStub{})
 
-	response := performRequest(handler, http.MethodPost, "/buys", `{"sale_offer_id":"offer-1"}`)
+	response := performRequest(handler, http.MethodPost, "/buys", `{"sale_offer_id":"`+string(testOfferID)+`"}`)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if application.buyOffer != "offer-1" {
+	if application.buyOffer != string(testOfferID) {
 		t.Fatalf("application received offer %q", application.buyOffer)
 	}
 	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
@@ -307,7 +316,7 @@ func TestBuyHandler(t *testing.T) {
 		t.Fatalf("Content-Type = %q", contentType)
 	}
 	for _, expected := range []string{
-		`"id":"offer-1"`,
+		`"id":"` + string(testOfferID) + `"`,
 		`"bond_series":"BND1"`,
 		`"price":"100.25"`,
 		`"currency_code":"USD"`,
@@ -328,11 +337,11 @@ func TestBuyHandler(t *testing.T) {
 		status int
 	}{
 		{name: "malformed", body: `{`, status: http.StatusBadRequest},
-		{name: "identity field rejected", body: `{"buyer_id":"buyer","sale_offer_id":"offer"}`, status: http.StatusBadRequest},
-		{name: "unknown field", body: `{"sale_offer_id":"offer","extra":true}`, status: http.StatusBadRequest},
-		{name: "duplicate field", body: `{"sale_offer_id":"offer-a","sale_offer_id":"offer-b"}`, status: http.StatusBadRequest},
-		{name: "nested duplicate field", body: `{"sale_offer_id":"offer","extra":{"a":1,"a":2}}`, status: http.StatusBadRequest},
-		{name: "two objects", body: `{"sale_offer_id":"offer"} {}`, status: http.StatusBadRequest},
+		{name: "identity field rejected", body: `{"buyer_id":"` + string(testBuyerID) + `","sale_offer_id":"` + string(testOfferID) + `"}`, status: http.StatusBadRequest},
+		{name: "unknown field", body: `{"sale_offer_id":"` + string(testOfferID) + `","extra":true}`, status: http.StatusBadRequest},
+		{name: "duplicate field", body: `{"sale_offer_id":"` + string(testOfferID) + `","sale_offer_id":"` + string(testOtherOfferID) + `"}`, status: http.StatusBadRequest},
+		{name: "nested duplicate field", body: `{"sale_offer_id":"` + string(testOfferID) + `","extra":{"a":1,"a":2}}`, status: http.StatusBadRequest},
+		{name: "two objects", body: `{"sale_offer_id":"` + string(testOfferID) + `"} {}`, status: http.StatusBadRequest},
 		{name: "invalid buyer", body: `{}`, err: exchange.ErrInvalidUserID, status: http.StatusBadRequest},
 		{name: "missing buyer", body: `{}`, err: exchange.ErrBuyerNotFound, status: http.StatusInternalServerError},
 		{name: "unavailable", body: `{}`, err: exchange.ErrOfferUnavailable, status: http.StatusNotFound},
@@ -357,7 +366,7 @@ func TestActiveOffersHandler(t *testing.T) {
 	t.Parallel()
 
 	application := &applicationStub{offers: []exchange.SaleOffer{{
-		ID:    "offer-2",
+		ID:    testOtherOfferID,
 		Price: decimal.RequireFromString("100.25"),
 	}}}
 	handler := newHandler(t, application, healthStub{})
@@ -368,7 +377,7 @@ func TestActiveOffersHandler(t *testing.T) {
 	if application.bond != "bnd" {
 		t.Fatalf("application received bond %q", application.bond)
 	}
-	if !strings.Contains(response.Body.String(), `"id":"offer-2"`) {
+	if !strings.Contains(response.Body.String(), `"id":"`+string(testOtherOfferID)+`"`) {
 		t.Fatalf("body = %s", response.Body.String())
 	}
 	if !strings.Contains(response.Body.String(), `"price":"100.25"`) {
@@ -430,8 +439,8 @@ func TestCreateSaleOfferHandler(t *testing.T) {
 	t.Parallel()
 
 	application := &applicationStub{created: exchange.SaleOffer{
-		ID:         "offer-2",
-		SellerID:   "seller-1",
+		ID:         testOtherOfferID,
+		SellerID:   testSellerID,
 		BondSeries: "BND1",
 		Price:      decimal.RequireFromString("99.75"),
 		Currency:   "MXN",
@@ -450,7 +459,7 @@ func TestCreateSaleOfferHandler(t *testing.T) {
 		application.createCurrency != "USD" {
 		t.Fatalf("application create input = %#v", application)
 	}
-	for _, expected := range []string{`"offer":{`, `"id":"offer-2"`, `"price":"99.75"`} {
+	for _, expected := range []string{`"offer":{`, `"id":"` + string(testOtherOfferID) + `"`, `"price":"99.75"`} {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("body %s does not contain %s", response.Body.String(), expected)
 		}
@@ -674,7 +683,7 @@ func TestRESTStreamInterfaceAndPanicRecovery(t *testing.T) {
 	}
 
 	handler := newHandler(t, &applicationStub{panicBuy: true}, healthStub{})
-	response := performRequest(handler, http.MethodPost, "/buys", `{"sale_offer_id":"offer-1"}`)
+	response := performRequest(handler, http.MethodPost, "/buys", `{"sale_offer_id":"`+string(testOfferID)+`"}`)
 	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "internal server error") {
 		t.Fatalf("panic response = %d, %s", response.Code, response.Body.String())
 	}
@@ -683,14 +692,14 @@ func TestRESTStreamInterfaceAndPanicRecovery(t *testing.T) {
 func TestRequestBodyLimitsAndMediaType(t *testing.T) {
 	t.Parallel()
 	handler := newHandler(t, &applicationStub{}, healthStub{})
-	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"`+string(testOfferID)+`"}`))
 	request.Header.Set("Content-Type", "text/plain")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("media type status = %d", response.Code)
 	}
-	request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"offer"}`))
+	request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/buys", strings.NewReader(`{"sale_offer_id":"`+string(testOfferID)+`"}`))
 	request.Header.Set("Content-Type", "application/jsonp")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -726,7 +735,7 @@ func performRequest(handler http.Handler, method string, target string, body str
 	request.Header.Set("Authorization", "Bearer test")
 	if method == http.MethodPost {
 		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("Idempotency-Key", "idempotency-key-1")
+		request.Header.Set("Idempotency-Key", testIdempotencyNonce)
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)

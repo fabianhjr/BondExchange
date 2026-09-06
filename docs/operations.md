@@ -37,7 +37,10 @@ validates its format. It is never logged or persisted.
 
 ## Running against an external database
 
-Apply migrations separately with `dbmate up`, then start only the server:
+Apply migrations separately with `dbmate up`, then start only the server. Before
+applying migration `20260906120000`, take and verify a restorable backup: that
+migration permanently removes the expired `legacy_identifier_archive`, and the
+backup is its only recovery path under ADR-0033.
 
 ```console
 DATABASE_URL=postgresql://user:password@localhost/bond_exchange \
@@ -50,7 +53,7 @@ BANXICO_SIE_TOKEN=replace-with-64-character-token \
 
 Users and bonds must already exist. The API has no method for creating them, so
 they are provisioned separately before publishing or buying sale offers. See
-[`db/README.md`](../db/README.md) for the schema and the readiness gates that
+[`db/README.md`](../db/README.md) for the schema and migration gates that
 must pass before a rolling release.
 
 ## Assertion verification keys

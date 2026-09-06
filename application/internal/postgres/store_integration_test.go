@@ -883,7 +883,7 @@ func TestIntegrationEventLeaseCoordinatesOverlappingAttempts(t *testing.T) {
 		t.Fatalf("overlapping claim = %t, %v", claimed, err)
 	}
 	if err := store.MarkEventFailed(ctx, "lease-test", ref, wrongLease, "publisher_error", time.Hour); err == nil {
-		t.Fatal("failure with wrong lease token succeeded")
+		t.Fatal("failure with wrong lease nonce succeeded")
 	}
 	if err := store.MarkEventFailed(ctx, "lease-test", ref, firstLease, "publisher_error", time.Hour); err != nil {
 		t.Fatal(err)
@@ -1297,8 +1297,7 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 
 	expected := map[string]bool{
 		"bonds": false, "integration_event_deliveries": false, "integration_events": false,
-		"legacy_identifier_archive": false,
-		"operation_claims":          false, "operation_results": false, "permissions": false,
+		"operation_claims": false, "operation_results": false, "permissions": false,
 		"principal_rate_limits": false, "principal_reinstatements": false, "principal_role_grants": false,
 		"principal_role_revocations": false, "principal_suspensions": false,
 		"principals": false, "purchases": false, "role_permission_grants": false,
@@ -1348,9 +1347,21 @@ func TestPostgreSQL18AndUUIDv7PrimaryKeys(t *testing.T) {
 	}
 }
 
-func TestLegacyIdentifierGraphIsContracted(t *testing.T) {
+func TestLegacyIdentifierArtifactsAreRetired(t *testing.T) {
 	pool := openTestPool(t)
 	ctx := context.Background()
+
+	var archiveTables int
+	if err := pool.QueryRow(ctx, `
+SELECT count(*)
+FROM information_schema.tables
+WHERE table_schema = 'bond_exchange'
+  AND table_name = 'legacy_identifier_archive'`).Scan(&archiveTables); err != nil {
+		t.Fatal(err)
+	}
+	if archiveTables != 0 {
+		t.Fatalf("retired legacy identifier archive remains")
+	}
 
 	var forbiddenColumns int
 	if err := pool.QueryRow(ctx, `

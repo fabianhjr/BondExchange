@@ -71,16 +71,16 @@ type Store interface {
 		ctx context.Context,
 		destinationID string,
 		ref SourceRef,
-		leaseToken string,
+		leaseNonce string,
 		leaseDuration time.Duration,
 		force bool,
 	) (attempt int, claimed bool, err error)
-	MarkEventDelivered(ctx context.Context, destinationID string, ref SourceRef, leaseToken string) error
+	MarkEventDelivered(ctx context.Context, destinationID string, ref SourceRef, leaseNonce string) error
 	MarkEventFailed(
 		ctx context.Context,
 		destinationID string,
 		ref SourceRef,
-		leaseToken string,
+		leaseNonce string,
 		errorClass string,
 		retryAfter time.Duration,
 	) error

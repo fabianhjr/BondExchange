@@ -17,7 +17,7 @@ clearly separated set of tables holds mutable operational coordination instead.
 - [Banxico SIE storage](#banxico-sie-storage)
 - [Privileges and append-only enforcement](#privileges-and-append-only-enforcement)
 - [Migration workflow](#migration-workflow)
-- [Rolling deployment and readiness gates](#rolling-deployment-and-readiness-gates)
+- [Migration and readiness gates](#migration-and-readiness-gates)
 - [Disposable lifecycles and the demo seed](#disposable-lifecycles-and-the-demo-seed)
 
 ## Schema history
@@ -44,6 +44,7 @@ one is missing from this table.
 | 20260905010000 | [`validate_currency_codes.sql`](migrations/20260905010000_validate_currency_codes.sql) | Validation of that constraint against retained history. |
 | 20260905020000 | [`add_principal_rate_limits.sql`](migrations/20260905020000_add_principal_rate_limits.sql) | Shared authenticated request admission. |
 | 20260906000000 | [`prevent_self_trading.sql`](migrations/20260906000000_prevent_self_trading.sql) | Same-identity self-trade prevention. |
+| 20260906120000 | [`retire_legacy_identifier_archive.sql`](migrations/20260906120000_retire_legacy_identifier_archive.sql) | Accepted retirement of expired pre-UUID identifier evidence. |
 
 ## Identity and keys
 
@@ -58,11 +59,10 @@ verifying archive coverage and a quiescent lease window. The current Go adapter
 uses only UUID relationships and the canonical unversioned views; the
 transitional `_v2` aliases have been removed.
 
-Non-derivable values needed for audit and reconciliation are copied into the
-append-only `legacy_identifier_archive` before contraction. It is keyed by
-UUIDv7 and maps an entity UUID to its historical caller-selected identifier,
-pre-UUID idempotency value, or SIE import sequence. It is not a supported
-runtime alias lookup and receives no mutable application access.
+The migration history copied non-derivable values into an append-only archive
+before contraction. ADR-0033 records that the accepted retention period later
+elapsed, and the current schema removes that archive with recovery available
+only from a verified pre-retirement backup.
 
 ## Monetary amounts
 
@@ -294,7 +294,9 @@ application. Use separate expand, backfill, and contract migrations: introduce
 compatible structures first, preserve source data during backfill, and contract
 only redundant compatibility structures after old application versions can no
 longer run. Preserve all unique data and prefer a corrective forward migration
-when a lossless rollback is not possible.
+when a lossless rollback is not possible. An architecture decision may authorize
+deletion only after an explicit retention and recovery decision; ADR-0033 is the
+current narrow exception and requires a verified pre-migration backup.
 
 Validate the full migration history in isolation with:
 
@@ -302,7 +304,7 @@ Validate the full migration history in isolation with:
 devenv tasks run db:migrate
 ```
 
-## Rolling deployment and readiness gates
+## Migration and readiness gates
 
 The UUID migrations call PostgreSQL 18 native functions and therefore cannot run
 on PostgreSQL 17. For an existing deployment, first take and verify a restorable
@@ -318,25 +320,10 @@ preparation release; a schema problem requires a corrective forward migration.
 Do not downgrade the data directory or use a non-destructive down section as a
 rollback mechanism.
 
-Before removing the rolling-compatibility graph, run:
-
-```console
-devenv tasks run db:uuid-contract-readiness
-```
-
-Against production, run `bond-exchange-uuid-contract-readiness` with an explicit
-`DATABASE_URL` during a quiescent lease window. The gate rejects any text/UUID
-relationship drift or active event-delivery/SIE lease and reports the historical
-aliases that require lossless archival.
-
-Lossless archival of the values that contraction removed is verified against a
-representative pre-UUID fixture by `db:uuid-contract-history`. That task is part
-of the `dev:ci` aggregate, so it runs in continuous integration and in
-`devenv test` rather than only on demand:
-
-```console
-devenv tasks run db:uuid-contract-history
-```
+The UUID compatibility graph and its one-time readiness and archival gates are
+retired. ADR-0033 requires a verified backup before applying the archive-
+retirement migration because that evidence cannot be reconstructed by a down
+migration.
 
 Before activating the MXN-only release against an existing database, run:
 
@@ -349,10 +336,8 @@ canonical terms, and any still-active legacy offer without seller-accepted MXN
 terms. It is part of `dev:ci`, so its behavior is exercised locally and in
 continuous integration against a disposable migrated database.
 
-Database checks cannot prove writer retirement. Release evidence must also show
-that pre-UUID binaries and direct-SQL writers are retired, their credentials are
-revoked, query logs no longer use compatibility columns or views, backup restore
-has been rehearsed, and sanctioned compatibility-view readers are drained.
+Database checks cannot prove reader retirement. Release evidence must also show
+that sanctioned canonical-MXN compatibility-view readers are drained.
 
 ## Disposable lifecycles and the demo seed
 

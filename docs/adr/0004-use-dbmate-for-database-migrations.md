@@ -35,8 +35,9 @@ with the previously deployed application version. Use separate
 expand/backfill/contract steps: add compatible structures first, backfill
 without destroying the source data, and contract only redundant compatibility
 structures after old application versions can no longer run. Preserve all
-unique data and prefer corrective forward migrations over destructive
-rollback.
+unique data unless a later accepted ADR authorizes deletion after an explicit
+retention and recovery decision, as ADR-0033 does for expired pre-UUID audit
+evidence. Prefer corrective forward migrations over destructive rollback.
 
 ## Consequences
 

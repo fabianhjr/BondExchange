@@ -118,8 +118,10 @@
   deployed application must continue to work after each migration. Use
   expand/backfill/contract steps, preserve all unique data, and contract only
   redundant compatibility structures after old application versions can no
-  longer run. Do not use down migrations to discard domain facts; prefer a
-  corrective forward migration.
+  longer run. An accepted ADR may authorize deletion only after an explicit
+  retention period and recovery decision; use a corrective forward migration
+  and require a verified backup. Do not use down migrations to discard domain
+  facts.
 - Use devenv tasks for project commands. Run focused checks while iterating and
   `devenv test` before handing off cross-cutting changes; do not weaken quality
   gates without documenting the decision.

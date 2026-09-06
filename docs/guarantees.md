@@ -413,19 +413,23 @@ migration, not by discarding facts.
 expand, backfill, and contract steps. The service never migrates at startup.
 
 **Not promised.** Compatibility is enforced by review and by readiness gates for
-specific cutovers, not by an automatic check of arbitrary migration pairs
+specific cutovers, not by an automatic check of arbitrary migration pairs.
+Explicitly accepted retention decisions may remove non-domain evidence after a
+verified backup; that recovery procedure is not exercised automatically
 ([FM-016](FMEA.md#fm-016--lossy-or-incompatible-database-migration)).
 
 **Enforced by.**
 
-- Verified by: `db:migrate`, `db:uuid-contract-history`, `db:canonical-mxn-readiness`, `docs:check`
+- Verified by: `db:migrate`, `db:canonical-mxn-readiness`, `go:test`, `docs:check`
 
-`db:migrate` applies the full history to a fresh database, the contract-history
-task proves pre-UUID values were archived losslessly before the live legacy
-graph was removed, and `docs:check` fails when a migration is missing from the
+`db:migrate` applies the full history to a fresh database, PostgreSQL integration
+tests verify the retained UUID schema and reject retired legacy artifacts, and
+`docs:check` fails when a migration is missing from the
 [schema history](../db/README.md#schema-history). See
 [ADR-0004](adr/0004-use-dbmate-for-database-migrations.md) and
-[ADR-0018](adr/0018-contract-the-legacy-identifier-graph.md).
+[ADR-0018](adr/0018-contract-the-legacy-identifier-graph.md). ADR-0033 records
+the accepted retirement of the pre-UUID evidence and its backup-only recovery
+path.
 
 ### G-014 — Integration event delivery is not guaranteed
 

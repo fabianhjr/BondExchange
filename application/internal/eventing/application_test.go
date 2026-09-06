@@ -28,7 +28,7 @@ func (fake *exchangeFake) QuoteSaleOffer(context.Context, exchange.AccessContext
 }
 
 func (*exchangeFake) StreamActiveOffers(_ context.Context, _ exchange.AccessContext, _ string, yield func(exchange.SaleOffer) error) error {
-	return yield(exchange.SaleOffer{ID: "offer"})
+	return yield(exchange.SaleOffer{ID: testOfferID})
 }
 
 func (*exchangeFake) ActiveBondSeries(context.Context, exchange.AccessContext) ([]exchange.BondSeries, error) {
@@ -44,23 +44,26 @@ func (fake authorizerFake) Authorize(context.Context, exchange.AccessContext, st
 func TestApplicationPublishesSuccessfulMutations(t *testing.T) {
 	t.Parallel()
 	store := newStoreFake(
-		testEvent(TablePurchases, "offer-1"),
-		testEvent(TableSaleOffers, "offer-2"),
+		testEvent(TablePurchases, testPurchaseID),
+		testEvent(TableSaleOffers, testOtherOfferID),
 	)
 	publisher := &publisherFake{}
 	dispatcher, _ := NewDispatcher(store, []Destination{{ID: "sink", Publisher: publisher}}, 0)
 	application := NewApplication(&exchangeFake{
-		purchase: exchange.Purchase{ID: "offer-1", Offer: exchange.SaleOffer{ID: "offer-1"}},
-		offer:    exchange.SaleOffer{ID: "offer-2"},
+		purchase: exchange.Purchase{
+			ID:    exchange.PurchaseID(testPurchaseID),
+			Offer: exchange.SaleOffer{ID: exchange.OfferID(testOfferID)},
+		},
+		offer: exchange.SaleOffer{ID: exchange.OfferID(testOtherOfferID)},
 	}, authorizerFake{}, dispatcher)
-	if _, err := application.QuoteSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "USD"); err != nil {
+	if _, err := application.QuoteSaleOffer(context.Background(), exchange.AccessContext{}, testMutationNonce, "BND", "1", "USD"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, "key", "offer-1"); err != nil {
+	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, testMutationNonce, testOfferID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "MXN", ""); err != nil {
+	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, testMutationNonce, "BND", "1", "MXN", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(publisher.events) != 2 {
@@ -85,10 +88,10 @@ func TestApplicationDoesNotPublishFailedMutation(t *testing.T) {
 	publisher := &publisherFake{}
 	dispatcher, _ := NewDispatcher(store, []Destination{{ID: "sink", Publisher: publisher}}, 0)
 	application := NewApplication(&exchangeFake{err: want}, authorizerFake{}, dispatcher)
-	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, "key", "offer"); !errors.Is(err, want) {
+	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, testMutationNonce, testOfferID); !errors.Is(err, want) {
 		t.Fatalf("Buy() error = %v", err)
 	}
-	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, "key", "BND", "1", "MXN", ""); !errors.Is(err, want) {
+	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, testMutationNonce, "BND", "1", "MXN", ""); !errors.Is(err, want) {
 		t.Fatalf("CreateSaleOffer() error = %v", err)
 	}
 	if len(publisher.events) != 0 {
@@ -98,12 +101,12 @@ func TestApplicationDoesNotPublishFailedMutation(t *testing.T) {
 
 func TestApplicationAuthorizesManualDrain(t *testing.T) {
 	t.Parallel()
-	event := testEvent(TableSaleOffers, "offer")
+	event := testEvent(TableSaleOffers, testOfferID)
 	store := newStoreFake(event)
 	dispatcher, _ := NewDispatcher(store, []Destination{{ID: "sink", Publisher: &publisherFake{}}}, 0)
 	application := NewApplication(&exchangeFake{}, authorizerFake{}, dispatcher)
 	access := exchange.AccessContext{
-		Principal: exchange.Principal{ID: "operator"},
+		Principal: exchange.Principal{ID: testPrincipalID},
 		Operation: exchange.OperationPublishPendingEvents,
 	}
 	summary, err := application.PublishPendingEvents(context.Background(), access, "sink")

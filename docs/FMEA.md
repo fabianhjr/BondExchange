@@ -263,8 +263,9 @@ production-readiness decision.
 - **Effects:** Mutations fail, reads and recovery slow down, audit availability
   is lost, and legal retention or erasure obligations cannot be demonstrated.
 - **Causes:** The repository defines no capacity, retention, partitioning,
-  protected-backup, or erasure policy. The restricted legacy-identifier
-  archive preserves migration evidence but is not a lifecycle policy.
+  protected-backup, or erasure policy for the retained facts. ADR-0033 retired
+  expired pre-UUID identifier evidence, but that bounded decision does not
+  establish a lifecycle for the remaining records.
 - **Current controls and detection:** Purpose-built indexes exist for current
   queries and the schema preserves provenance. Native pgx pool metrics and
   query spans expose per-instance pressure when OTLP is configured. No
@@ -556,32 +557,34 @@ production-readiness decision.
   the previously deployed application fail during a rolling release.
 - **Effects:** Irrecoverable transaction/audit loss, service outage, or mixed-
   version corruption across instances.
-- **Causes:** Rewriting an applied migration, destructive contraction, new
-  required privileges or columns without expansion, unsafe backfill, or use of
-  a destructive down migration. The PostgreSQL 18 UUID transition additionally
-  depends on a correctly sequenced major-version upgrade and a synchronized
-  legacy/UUID relationship graph during its compatibility period and then on a
-  complete immutable archive before contraction.
+- **Causes:** Rewriting an applied migration, unapproved destructive
+  contraction, new required privileges or columns without expansion, unsafe
+  backfill, or use of a destructive down migration. A retention-authorized
+  deletion can still destroy the wrong data or run without its required
+  recovery evidence.
 - **Current controls and detection:** Repository guidance requires timestamped
   dbmate migrations, lossless backward-compatible expand/backfill/contract
   changes, corrective roll-forward, and separately owned migrations. Fresh
   isolated PostgreSQL 18 database and lifecycle checks exercise the full
-  history; schema tests verify the server major version and all 25 UUID primary
-  keys. A dedicated historical-data fixture verifies archival before the
-  contract migration and now runs in continuous integration through the `dev:ci`
-  aggregate rather than only in the local test gate; schema tests reject
-  reviewed legacy columns and sync machinery and transitional views, while
-  append-only triggers prevent ordinary fact mutation. These checks do not
-  simulate every production dataset, PostgreSQL major upgrade, direct writer,
-  or mixed-version rollout.
+  history; schema tests verify the server major version and all 24 retained
+  UUID primary keys and reject the retired archive, reviewed legacy columns,
+  synchronization machinery, and transitional views. ADR-0033 requires an
+  accepted retention decision and verified backup for its narrow deletion.
+  Append-only triggers prevent ordinary fact mutation. These checks do not
+  simulate every production dataset, PostgreSQL major upgrade, backup restore,
+  direct writer, or mixed-version rollout. The 10/2/4 score remains unchanged:
+  retiring the historical fixture narrows evidence for a property that is no
+  longer required, while the full-history and final-schema checks retain the
+  same pre-release detection level for the supported schema.
 - **Action:** Preserve the guardrails; for every schema change, test the prior
-  application against the expanded schema and representative existing data,
-  document rollout/rollback-forward steps, verify archive coverage and a
-  quiescent lease window, and require PostgreSQL upgrade plus backup/restore
-  evidence before production execution.
+  application against the expanded schema and representative existing data and
+  document rollout/rollback-forward steps. For an explicitly retention-
+  authorized deletion, verify its exact target and backup recovery evidence
+  before production execution.
 - **Traceability:** [ADR-0004](adr/0004-use-dbmate-for-database-migrations.md),
   [ADR-0017](adr/0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md),
   [ADR-0018](adr/0018-contract-the-legacy-identifier-graph.md),
+  [ADR-0033](adr/0033-retire-legacy-identifier-evidence-and-transition-tooling.md),
   [database migration policy](../db/README.md),
   [repository guardrails](../AGENTS.md#architectural-guardrails), and
   [G-013](guarantees.md#g-013--migrations-roll-forward-and-stay-compatible-with-the-deployed-application).

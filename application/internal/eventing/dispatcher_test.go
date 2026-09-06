@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+const (
+	testPrincipalID   = "01991a20-0000-7000-8000-000000000001"
+	testOfferID       = "01991a20-0000-7000-8000-000000000101"
+	testOtherOfferID  = "01991a20-0000-7000-8000-000000000102"
+	testPurchaseID    = "01991a20-0000-7000-8000-000000000201"
+	testMutationNonce = "41db1265-8bc1-4ab3-992f-885799a4af1d"
+)
+
 type deliveryKey struct {
 	destination string
 	ref         SourceRef
@@ -199,7 +207,7 @@ func testEvent(table, id string) Envelope {
 
 func TestDispatcherPublishesAndDoesNotRedeliver(t *testing.T) {
 	t.Parallel()
-	event := testEvent(TableSaleOffers, "offer-1")
+	event := testEvent(TableSaleOffers, testOfferID)
 	store := newStoreFake(event)
 	first := &publisherFake{}
 	second := &publisherFake{}
@@ -223,8 +231,8 @@ func TestDispatcherPublishesAndDoesNotRedeliver(t *testing.T) {
 func TestDispatcherLeavesFailuresPendingAndManualDrainRetriesOnce(t *testing.T) {
 	t.Parallel()
 	events := []Envelope{
-		testEvent(TablePurchases, "offer-1"),
-		testEvent(TableSaleOffers, "offer-2"),
+		testEvent(TablePurchases, testPurchaseID),
+		testEvent(TableSaleOffers, testOtherOfferID),
 	}
 	store := newStoreFake(events...)
 	publisher := &publisherFake{err: errors.New("unavailable")}
@@ -245,7 +253,7 @@ func TestDispatcherLeavesFailuresPendingAndManualDrainRetriesOnce(t *testing.T) 
 
 func TestDispatcherContinuesAfterFailureAndHandlesPublisherPanic(t *testing.T) {
 	t.Parallel()
-	event := testEvent(TableSaleOffers, "offer-1")
+	event := testEvent(TableSaleOffers, testOfferID)
 	store := newStoreFake(event)
 	publisher := &publisherFake{panic: true}
 	dispatcher, err := NewDispatcher(store, []Destination{{ID: "sink", Publisher: publisher}}, time.Second)
@@ -284,7 +292,7 @@ func TestDispatcherConfigurationAndStoreErrors(t *testing.T) {
 		t.Fatalf("unknown destination error = %v", err)
 	}
 
-	store := newStoreFake(testEvent(TableSaleOffers, "offer"))
+	store := newStoreFake(testEvent(TableSaleOffers, testOfferID))
 	store.pendingErr = errors.New("database unavailable")
 	dispatcher, _ = NewDispatcher(store, []Destination{{ID: "sink", Publisher: &publisherFake{}}}, 0)
 	if _, err := dispatcher.PublishPending(context.Background(), "sink"); err == nil {
@@ -301,7 +309,7 @@ func TestDispatcherConfigurationAndStoreErrors(t *testing.T) {
 
 func TestDispatcherHandlesClaimLoadPublishAndMarkFailures(t *testing.T) {
 	t.Parallel()
-	event := testEvent(TableSaleOffers, "offer")
+	event := testEvent(TableSaleOffers, testOfferID)
 	ref := event.Source
 
 	store := newStoreFake(event)
@@ -382,7 +390,7 @@ func TestDispatcherDrainsAFullBatch(t *testing.T) {
 
 func TestRetryDelayIsBounded(t *testing.T) {
 	t.Parallel()
-	ref := SourceRef{TableName: TableSaleOffers, ID: "offer"}
+	ref := SourceRef{TableName: TableSaleOffers, ID: testOfferID}
 	first := retryDelay(0, ref)
 	last := retryDelay(100, ref)
 	if first < 750*time.Millisecond || first > 1250*time.Millisecond {
@@ -406,8 +414,8 @@ func TestRetryDelayIsBounded(t *testing.T) {
 func TestDispatcherAbortsOnClaimEventError(t *testing.T) {
 	t.Parallel()
 	events := []Envelope{
-		testEvent(TablePurchases, "offer-1"),
-		testEvent(TableSaleOffers, "offer-2"),
+		testEvent(TablePurchases, testPurchaseID),
+		testEvent(TableSaleOffers, testOtherOfferID),
 	}
 	store := newStoreFake(events...)
 	store.claimErr = errors.New("claim error")
@@ -431,8 +439,8 @@ func TestDispatcherAbortsOnClaimEventError(t *testing.T) {
 func TestDispatcherHandlesLoadEventErrorAsPostClaimFailure(t *testing.T) {
 	t.Parallel()
 	events := []Envelope{
-		testEvent(TablePurchases, "offer-1"),
-		testEvent(TableSaleOffers, "offer-2"),
+		testEvent(TablePurchases, testPurchaseID),
+		testEvent(TableSaleOffers, testOtherOfferID),
 	}
 	store := newStoreFake(events...)
 	store.loadErr = errors.New("load error")
@@ -470,7 +478,7 @@ func (s *storeWithLoadDeadlineCheck) LoadEvent(ctx context.Context, ref SourceRe
 
 func TestDispatcherLoadEventHasTimeout(t *testing.T) {
 	t.Parallel()
-	event := testEvent(TableSaleOffers, "offer-1")
+	event := testEvent(TableSaleOffers, testOfferID)
 	fakeStore := newStoreFake(event)
 	store := &storeWithLoadDeadlineCheck{
 		storeFake: fakeStore,
