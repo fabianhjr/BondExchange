@@ -46,3 +46,4 @@ Alternatives considered sections.
 - [ADR-0028: Coordinate per-principal request rate limits in PostgreSQL](0028-coordinate-per-principal-request-rate-limits-in-postgresql.md)
 - [ADR-0029: Use policy-aligned operational metrics](0029-use-policy-aligned-operational-metrics.md)
 - [ADR-0030: Prevent same-identity self-trading](0030-prevent-same-identity-self-trading.md)
+- [ADR-0032: Publish a verified guarantee register](0032-publish-a-verified-guarantee-register.md)

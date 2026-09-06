@@ -6,6 +6,11 @@ documented REST errors. It uses `google.api.http` annotations to generate the
 REST gateway and gRPC-Gateway OpenAPI annotations to make the Swagger response
 codes and schemas match the running service.
 
+This document describes the wire contract. For what a response *means* — what a
+successful `Buy` guarantees when several buyers race for one offer, what a retry
+of an idempotency nonce returns, and where each promise stops — see the
+[guarantee register](../docs/guarantees.md).
+
 - [Endpoints](#endpoints)
 - [Request requirements](#request-requirements)
 - [Rate limiting](#rate-limiting)

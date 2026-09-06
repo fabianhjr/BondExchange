@@ -11,11 +11,37 @@
   that is not implemented or verified.
 - Treat TLA+ modules, TLC configurations, Nix/devenv configuration, and GitHub
   Actions workflows as implementation for this rule. Treat root and scoped
-  READMEs, the guides under `docs/`, `FRICTIONS.md`, `docs/FMEA.md`, the
-  security profile, and ADRs as documentation.
+  READMEs, the guides under `docs/`, `FRICTIONS.md`, `docs/FMEA.md`,
+  `docs/guarantees.md`, the security profile, and ADRs as documentation.
 - Include both implementation impact and documentation impact when planning a
   change. If one side needs no edit, still verify that it remains accurate.
 - Record architecture-level decisions or changes in `docs/adr/`.
+
+## Maintain the guarantee register
+
+- Treat `docs/guarantees.md` as the living register of the properties the system
+  currently holds, written for both an API consumer and a reviewer. It states
+  what holds; `FRICTIONS.md` states what is missing, and `docs/FMEA.md` states
+  how it fails.
+- Review the register whenever work is planned or completed. Update it in the
+  same change when work adds, strengthens, weakens, bounds, or removes a
+  guarantee, or renames anything a guarantee cites; include guarantee impact in
+  plans alongside implementation, documentation, friction, and FMEA impact.
+- Admit a guarantee only when it is enforced in code or schema and verified by a
+  task in the test gate. A property the service does not yet hold belongs in
+  `FRICTIONS.md` or an ADR, never here.
+- Give every entry a stable, sequential `G-` identifier and all five sections:
+  the promise, the adverse condition it survives, what a caller observes, where
+  it stops, and its enforcement and verification citations. The boundary section
+  is mandatory and links to the friction or failure mode that tracks the gap.
+- Cite evidence by exact name, under the kind that owns it. `docs:check`
+  resolves every PostgreSQL object, Go identifier, Proto3 declaration, TLA+
+  property, and task name, and rejects a TLA+ property that no TLC configuration
+  checks. Do not weaken a citation to make a check pass; correct or withdraw the
+  guarantee instead.
+- Do not reuse an identifier. Withdraw an entry when its property no longer
+  holds, and remove every reference to it in the same change
+  ([ADR-0032](docs/adr/0032-publish-a-verified-guarantee-register.md)).
 
 ## Maintain the friction register
 
@@ -31,10 +57,11 @@
 - Remove resolved entries instead of retaining a completed-work log. Preserve
   architecture rationale in ADRs and history, and do not reuse an old friction
   identifier for an unrelated issue.
-- Keep `FRICTIONS.md` consistent with READMEs, ADRs, the security profile, the
-  TLA+ specification, migrations, configuration, and CI. If an apparent
-  friction is an intentional long-term constraint, document that decision in
-  the appropriate durable document and adjust the register accordingly.
+- Keep `FRICTIONS.md` consistent with READMEs, ADRs, the guarantee register, the
+  security profile, the TLA+ specification, migrations, configuration, and CI.
+  If an apparent friction is an intentional long-term constraint, document that
+  decision in the appropriate durable document and adjust the register
+  accordingly.
 - When removing a resolved entry, remove every reference to its identifier in
   the same change. `docs:check` fails on a reference to an identifier that the
   register no longer defines.
@@ -53,10 +80,11 @@
   FMEA. Do not lower occurrence or detection scores without implementation,
   test, monitoring, or operational evidence. A low risk-priority number does
   not waive explicit review of a high-severity effect.
-- Keep FMEA actions synchronized with `FRICTIONS.md`, the ASVS profile, ADRs,
-  READMEs, the TLA+ specification, migrations, configuration, and CI. The FMEA
-  analyzes failure paths; `FRICTIONS.md` remains the source of truth for
-  verified unresolved rough edges and their completion conditions.
+- Keep FMEA actions synchronized with `FRICTIONS.md`, `docs/guarantees.md`, the
+  ASVS profile, ADRs, READMEs, the TLA+ specification, migrations,
+  configuration, and CI. The FMEA analyzes failure paths; `FRICTIONS.md` remains
+  the source of truth for verified unresolved rough edges and their completion
+  conditions, and `docs/guarantees.md` for the properties that currently hold.
 - Give new failure modes stable, sequential identifiers. Do not reuse an
   identifier. Retain controlled failure modes so their safety mechanisms stay
   visible; remove one only when the affected function or boundary no longer
@@ -118,6 +146,7 @@
 | `nix/` | Nix-packaged PostgreSQL lifecycle, demo, and development verification helpers. |
 | `spec/tla/` | TLA+ domain and behavior specifications, TLC model configuration, and model documentation. |
 | `docs/` | Operator and contributor guides: local demo, deployment operations, Banxico SIE exchange rates, and observability. |
+| `docs/guarantees.md` | Register of the guarantees the system holds, their boundaries, and the code, schema, specification, and tasks that verify each one. |
 | `docs/FMEA.md` | System-level failure mode, effects, controls, residual-risk, and follow-up analysis. |
 | `docs/adr/` | Architecture decision records and their index. |
 | `docs/security/` | ASVS application profile, requirement dispositions, and continuous-compliance evidence. |

@@ -10,7 +10,10 @@ production-ready or that deployment-owned controls exist.
 The FMEA is a prioritization aid, not a quantitative prediction, security
 certification, incident log, or acceptance of a high risk. The
 [friction register](../FRICTIONS.md) remains the source of truth for verified
-unresolved gaps and their completion conditions. The
+unresolved gaps and their completion conditions, and the
+[guarantee register](guarantees.md) remains the source of truth for the
+properties that currently hold and the evidence behind them; failure modes cite
+guarantees as prevention controls rather than restating them. The
 [ASVS profile](security/ASVS.md) tracks requirement-level security evidence,
 ADRs record durable architecture decisions, and the TLA+ model verifies the
 selected domain behavior. Links between them are intentional: update all
@@ -89,8 +92,9 @@ production-readiness decision.
   append-only facts, API, Go, PostgreSQL, TLA+, recovery behavior, and tests.
   Until then, treat production transaction claims as blocked.
 - **Traceability:** [F-001](../FRICTIONS.md#f-001--buying-stops-at-an-immutable-reservation-p1),
-  [database behavior](../db/README.md), and
-  [formal domain](../spec/tla/README.md).
+  [database behavior](../db/README.md),
+  [formal domain](../spec/tla/README.md), and the reservation boundary stated by
+  [G-001](guarantees.md#g-001--at-most-one-buyer-acquires-a-sale-offer).
 
 ### FM-002 — Unsupported market-integrity behavior
 
@@ -114,7 +118,8 @@ production-readiness decision.
   monitoring for every adopted rule. Define authoritative beneficial-owner or
   affiliation data before claiming cross-principal self-trade prevention.
 - **Traceability:** [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1),
-  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md), and
+  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md),
+  [G-002](guarantees.md#g-002--nobody-buys-their-own-sale-offer), and
   [formal-model scope](../spec/tla/README.md#behavior).
 
 ### FM-003 — Double acquisition of one offer
@@ -143,8 +148,9 @@ production-readiness decision.
   assumption true rather than improving on it.
 - **Traceability:** [ADR-0003](adr/0003-use-append-only-postgresql-facts.md),
   [ADR-0027](adr/0027-model-contended-buying-and-revocable-authorization.md),
-  [database behavior](../db/README.md), and
-  [TLA+ verification](../spec/tla/README.md#verification).
+  [database behavior](../db/README.md),
+  [TLA+ verification](../spec/tla/README.md#verification), and
+  [G-001](guarantees.md#g-001--at-most-one-buyer-acquires-a-sale-offer).
 
 ### FM-004 — Unauthorized, altered, or replayed mutation
 
@@ -196,7 +202,11 @@ production-readiness decision.
   the timing of the check.
 - **Traceability:** [ADR-0009](adr/0009-bind-federated-authorization-to-idempotent-operations.md),
   [ADR-0027](adr/0027-model-contended-buying-and-revocable-authorization.md),
-  and [ASVS security architecture](security/ASVS.md#security-architecture).
+  [ASVS security architecture](security/ASVS.md#security-architecture), and the
+  assertion-binding, idempotency, and in-transaction authorization promises of
+  [G-007](guarantees.md#g-007--every-request-carries-a-short-lived-assertion-bound-to-one-operation-and-one-body),
+  [G-008](guarantees.md#g-008--retrying-a-mutation-repeats-the-outcome-never-the-effect), and
+  [G-010](guarantees.md#g-010--authorization-is-decided-inside-the-transaction-that-appends-the-fact).
 
 ### FM-005 — Invalid immutable facts from an alternate writer
 
@@ -240,8 +250,10 @@ production-readiness decision.
 - **Traceability:** [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1),
   [F-004](../FRICTIONS.md#f-004--database-constraints-are-looser-than-domain-validation-p1),
   [F-023](../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2),
-  [ADR-0023](adr/0023-align-storage-constraints-with-domain-validation.md), and
-  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md).
+  [ADR-0023](adr/0023-align-storage-constraints-with-domain-validation.md),
+  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md), and the
+  writer-independent controls behind
+  [G-005](guarantees.md#g-005--domain-facts-are-append-only-corrections-are-new-facts).
 
 ### FM-006 — Storage or query exhaustion from retained history
 
@@ -382,8 +394,11 @@ production-readiness decision.
   backlog monitoring, payload approval, recovery ownership and runbook, and
   tested retry behavior; alternatively accept database-only retention in an
   ADR and remove outbound-delivery expectations.
-- **Traceability:** [F-017](../FRICTIONS.md#f-017--integration-event-recovery-is-manual-and-has-no-destination-p2)
-  and [ADR-0011](adr/0011-use-minimal-transactional-event-references.md).
+- **Traceability:** [F-017](../FRICTIONS.md#f-017--integration-event-recovery-is-manual-and-has-no-destination-p2),
+  [ADR-0011](adr/0011-use-minimal-transactional-event-references.md), and
+  [G-014](guarantees.md#g-014--integration-event-delivery-is-not-guaranteed),
+  which records the absence of a delivery guarantee where a reader is most
+  likely to assume one.
 
 ### FM-011 — Duplicate integration-event effect
 
@@ -567,8 +582,9 @@ production-readiness decision.
 - **Traceability:** [ADR-0004](adr/0004-use-dbmate-for-database-migrations.md),
   [ADR-0017](adr/0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md),
   [ADR-0018](adr/0018-contract-the-legacy-identifier-graph.md),
-  [database migration policy](../db/README.md), and
-  [repository guardrails](../AGENTS.md#architectural-guardrails).
+  [database migration policy](../db/README.md),
+  [repository guardrails](../AGENTS.md#architectural-guardrails), and
+  [G-013](guarantees.md#g-013--migrations-roll-forward-and-stay-compatible-with-the-deployed-application).
 
 ### FM-017 — USD quotation is unavailable
 
@@ -743,7 +759,8 @@ production-readiness decision.
 - **Traceability:** [ADR-0028](adr/0028-coordinate-per-principal-request-rate-limits-in-postgresql.md),
   [F-006](../FRICTIONS.md#f-006--read-apis-have-unbounded-resource-use-p1),
   [F-011](../FRICTIONS.md#f-011--the-production-deployment-boundary-is-unspecified-p1),
-  and [observability contract](observability.md).
+  [observability contract](observability.md), and
+  [G-011](guarantees.md#g-011--at-most-100-requests-per-principal-per-minute).
 
 ## Maintenance and review procedure
 
@@ -757,8 +774,11 @@ changes. At minimum:
    test, monitoring, or documented operational evidence;
 3. re-score residual severity, occurrence, and detection after those controls,
    calculate the RPN, and preserve explicit review for severity 9 or 10;
-4. synchronize required actions and statuses with `FRICTIONS.md`, ASVS, ADRs,
-   READMEs, TLA+, migrations, configuration, and CI as applicable; and
+4. synchronize required actions and statuses with `FRICTIONS.md`,
+   [`guarantees.md`](guarantees.md), ASVS, ADRs, READMEs, TLA+, migrations,
+   configuration, and CI as applicable — a control strong enough to cite here
+   as prevention usually belongs in the guarantee register, and a weakened
+   control must be withdrawn from it; and
 5. update the assessed date in the opening scope statement and record the
    focused checks used to validate changed controls in the change handoff.
 

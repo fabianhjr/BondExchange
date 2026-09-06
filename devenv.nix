@@ -375,7 +375,7 @@ in
   };
 
   tasks."docs:check" = {
-    description = "Verify documentation links, anchors, indexes, and register identifiers";
+    description = "Verify documentation links, anchors, indexes, register identifiers, and guarantee citations";
     exec = "${docsCheck}/bin/bond-exchange-docs-check";
   };
 

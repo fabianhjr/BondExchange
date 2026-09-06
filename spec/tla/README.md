@@ -180,6 +180,12 @@ settlement process in this model. Settlement semantics remain pending.
 
 ## Checked properties
 
+The [guarantee register](../../docs/guarantees.md) states in plain language
+which system promises these properties support, alongside the PostgreSQL and Go
+controls that enforce the same promises outside this model. Each property named
+below is cited there, and `docs:check` fails when a guarantee cites a property
+that this module no longer defines or that no TLC configuration checks.
+
 ### Marketplace exclusivity
 
 - `AtMostOnePurchasePerOffer` — one offer is acquired at most once, even when
