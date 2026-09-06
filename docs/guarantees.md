@@ -397,13 +397,16 @@ beneficial owner
 - PostgreSQL: `sale_offers_seller_principal_fkey`, `purchases_buyer_principal_fkey`, `principals_are_append_only`
 - Go: `PrincipalID`, `ResolvePrincipal`, `classifyFailedBuyQuery`
 - TLA+: `OfferSellersMatchOperationPrincipals`, `PurchaseBuyersMatchOperationPrincipals`
-- Verified by: `db:migrate`, `db:principal-contract-readiness`, `go:test`, `spec:check`
+- Verified by: `db:migrate`, `go:test`, `spec:check`
 
 The foreign keys were added `NOT VALID` and validated by a separate migration,
 so the retained history was proven to conform rather than assumed to. The
 `bond_exchange.users` table this replaced held no attribute other than its own
 identifier; see
 [ADR-0034](adr/0034-make-the-principal-the-sole-identity.md).
+`TestPrincipalIsTheSoleIdentityTable` re-checks the contracted shape on every
+run, so the transitional readiness gate that guarded the cutover was removed
+with the rest of its tooling.
 
 ## Operations
 

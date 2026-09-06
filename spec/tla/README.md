@@ -290,10 +290,8 @@ recorded rejection the model produces. The service also records
 `seller_not_found`, `bond_not_found`, `offer_already_exists`, and
 `conversion_quote_unavailable` as durable rejected results and replays them.
 Publishing cannot fail in the model, so `ResultShapeIsWellFormed` and the
-provenance properties exercise two rejection codes out of the six a current
-operation can produce: `offer_unavailable` and `self_trade_prohibited`. A
-seventh, `buyer_not_found`, is replayed but no longer produced; see
-[ADR-0034](../../docs/adr/0034-make-the-principal-the-sole-identity.md).
+provenance properties exercise two of the six recorded rejection codes:
+`offer_unavailable` and `self_trade_prohibited`.
 
 **Assertion binding is absent.** `operation_claims.assertion_digest` and the
 issuer, audience, `jti`, and audience-binding checks have no counterpart.

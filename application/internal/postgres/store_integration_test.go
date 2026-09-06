@@ -1106,7 +1106,6 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 		err  error
 		code string
 	}{
-		{exchange.ErrBuyerNotFound, "buyer_not_found"},
 		{exchange.ErrOfferUnavailable, "offer_unavailable"},
 		{exchange.ErrSelfTradeProhibited, "self_trade_prohibited"},
 		{exchange.ErrOfferAlreadyExists, "offer_already_exists"},
@@ -1151,7 +1150,6 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 	}{
 		{constraint: "sale_offers_pkey", want: exchange.ErrOfferAlreadyExists},
 		{constraint: "sale_offers_seller_principal_fkey", want: exchange.ErrSellerNotFound},
-		{constraint: "sale_offers_seller_uuid_fkey", want: exchange.ErrSellerNotFound},
 		{constraint: "sale_offers_bond_uuid_fkey", want: exchange.ErrBondNotFound},
 	} {
 		if got := classifyCreateSaleOfferError(&pgconn.PgError{ConstraintName: test.constraint}); !errors.Is(got, test.want) {

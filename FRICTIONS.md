@@ -254,7 +254,7 @@ those entries report.
   single use of a conversion quote is enforced at storage and not only by the
   `NOT EXISTS` check in `internal/postgres/offer_intake.go`.
   `classifyCreateSaleOfferError` in `internal/postgres/store.go` maps only
-  `sale_offers_pkey`, `sale_offers_seller_uuid_fkey`, and
+  `sale_offers_pkey`, `sale_offers_seller_principal_fkey`, and
   `sale_offers_bond_uuid_fkey`, so the quote-reuse violation falls through to
   the default branch and becomes an internal error. Serializable isolation
   usually converts the race into a retryable serialization failure first, so
@@ -372,8 +372,7 @@ those entries report.
   control for FM-004, whose named causes include RBAC evaluated outside the
   mutation transaction. That cause is currently detected by Go and PostgreSQL
   tests alone. Revoked or suspended read access, and four of the six durable
-  rejection outcomes a current operation can produce, are likewise unverified
-  by TLC.
+  rejection outcomes, are likewise unverified by TLC.
 - **Complete when:** Authorization is evaluated in a step the model can
   separate from the claim it authorizes, read operations that require a
   permission are represented, and every recorded rejection outcome is

@@ -636,14 +636,8 @@ WHERE claim.principal_uuid = $1
 	return *resourceID, nil
 }
 
-// `buyer_not_found` is retained in both directions although no current path
-// produces it: `purchases_buyer_principal_fkey` makes a buyer that is not a
-// principal unrepresentable, but `operation_results` is append-only, so a row
-// written before ADR-0034 must still replay as the error it recorded.
 func safeOperationErrorCode(err error) (string, bool) {
 	switch {
-	case errors.Is(err, exchange.ErrBuyerNotFound):
-		return "buyer_not_found", true
 	case errors.Is(err, exchange.ErrOfferUnavailable):
 		return "offer_unavailable", true
 	case errors.Is(err, exchange.ErrSelfTradeProhibited):
@@ -663,8 +657,6 @@ func safeOperationErrorCode(err error) (string, bool) {
 
 func operationErrorFromCode(code string) error {
 	switch code {
-	case "buyer_not_found":
-		return exchange.ErrBuyerNotFound
 	case "offer_unavailable":
 		return exchange.ErrOfferUnavailable
 	case "self_trade_prohibited":
@@ -779,11 +771,7 @@ func classifyCreateSaleOfferError(err error) error {
 	switch databaseError.ConstraintName {
 	case "sale_offers_pkey":
 		return exchange.ErrOfferAlreadyExists
-	// Both names are accepted for the rolling window in which the expand
-	// migration has run but the contract migration has not: the seller column
-	// carries a foreign key to `users` and one to `principals` at the same
-	// time, and either may name the violation.
-	case "sale_offers_seller_principal_fkey", "sale_offers_seller_uuid_fkey":
+	case "sale_offers_seller_principal_fkey":
 		return exchange.ErrSellerNotFound
 	case "sale_offers_bond_uuid_fkey":
 		return exchange.ErrBondNotFound

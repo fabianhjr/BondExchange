@@ -316,7 +316,7 @@ func TestGRPCErrors(t *testing.T) {
 		{name: "invalid", err: exchange.ErrInvalidOfferID, code: codes.InvalidArgument},
 		{name: "missing offer", err: exchange.ErrOfferUnavailable, code: codes.NotFound},
 		{name: "self trade", err: exchange.ErrSelfTradeProhibited, code: codes.FailedPrecondition},
-		{name: "identity inconsistency", err: exchange.ErrBuyerNotFound, code: codes.Internal},
+		{name: "identity inconsistency", err: exchange.ErrSellerNotFound, code: codes.Internal},
 		{name: "idempotency conflict", err: exchange.ErrIdempotencyConflict, code: codes.AlreadyExists},
 		{name: "internal", err: errors.New("boom"), code: codes.Internal},
 	}
