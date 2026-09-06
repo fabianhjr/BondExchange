@@ -67,7 +67,8 @@ Rejected  == "rejected"
 Outcomes  == {Succeeded, Rejected}
 
 OfferUnavailable == "offer_unavailable"
-SafeErrorCodes   == {OfferUnavailable}
+SelfTradeProhibited == "self_trade_prohibited"
+SafeErrorCodes   == {OfferUnavailable, SelfTradeProhibited}
 
 NoResource  == "no_resource"
 NoErrorCode == "no_error_code"
@@ -180,6 +181,11 @@ ActiveOffers == {offer \in publishedOffers : offer.id \notin PurchasedOfferIds}
 
 ActiveOfferIds == OfferIdsOf(ActiveOffers)
 
+TradableOffers(buyer) ==
+  {offer \in ActiveOffers : offer.seller # buyer}
+
+TradableOfferIds(buyer) == OfferIdsOf(TradableOffers(buyer))
+
 ClaimScopes == {claim.scope : claim \in claims}
 
 ResolvedClaims == {result.claim : result \in results}
@@ -267,7 +273,7 @@ ClaimBuy(buyer, client, key, requestDigest, offerId) ==
 
 CommitBuy(pending) ==
   /\ pending \in inFlightBuys
-  /\ pending.offer \in ActiveOfferIds
+  /\ pending.offer \in TradableOfferIds(pending.claim.scope.principal)
   /\ purchases' = purchases \cup {
        [offer |-> pending.offer, buyer |-> pending.claim.scope.principal]
      }
@@ -294,7 +300,22 @@ RejectBuy(pending) ==
   /\ UNCHANGED <<publishedOffers, purchases, claims>>
   /\ UNCHANGED authorizationVars
 
-ResolveBuy(pending) == CommitBuy(pending) \/ RejectBuy(pending)
+RejectSelfBuy(pending) ==
+  /\ pending \in inFlightBuys
+  /\ pending.offer \in ActiveOfferIds
+  /\ pending.offer \notin TradableOfferIds(pending.claim.scope.principal)
+  /\ results' = results \cup {
+       [claim     |-> pending.claim,
+        outcome   |-> Rejected,
+        resource  |-> NoResource,
+        errorCode |-> SelfTradeProhibited]
+     }
+  /\ inFlightBuys' = inFlightBuys \ {pending}
+  /\ UNCHANGED <<publishedOffers, purchases, claims>>
+  /\ UNCHANGED authorizationVars
+
+ResolveBuy(pending) ==
+  CommitBuy(pending) \/ RejectBuy(pending) \/ RejectSelfBuy(pending)
 
 (***************************************************************************)
 (* Retry actions                                                           *)

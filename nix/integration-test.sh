@@ -53,18 +53,27 @@ fi
 buy_request="{\"sale_offer_id\":\"$offer_id\"}"
 buy_key='00000000-0000-4000-8000-000000000002'
 second_buy_key='00000000-0000-4000-8000-000000000003'
+self_buy_key='00000000-0000-4000-8000-000000000004'
 buy_token="$(issue_token demo-buyer purchases.buy "$buy_key" "$buy_request")"
 buy_retry_token="$(issue_token demo-buyer purchases.buy "$buy_key" "$buy_request")"
 second_buy_token="$(issue_token demo-buyer purchases.buy "$second_buy_key" "$buy_request")"
+self_buy_token="$(issue_token demo-seller purchases.buy "$self_buy_key" "$buy_request")"
+self_buy_retry_token="$(issue_token demo-seller purchases.buy "$self_buy_key" "$buy_request")"
+seller_series_token="$(issue_token demo-seller bond-series.list - '{}')"
+seller_offers_token="$(issue_token demo-seller offers.list - '{"bond":"DEMO2026"}')"
 
 hurl --test --jobs 1 --no-output \
   --variable "base_url=$base_url" \
   --secret "series_token=$series_token" \
   --secret "offers_token=$offers_token" \
+  --secret "seller_series_token=$seller_series_token" \
+  --secret "seller_offers_token=$seller_offers_token" \
   --variable "offer_id=$offer_id" \
   --secret "buy_token=$buy_token" \
   --secret "buy_retry_token=$buy_retry_token" \
   --secret "second_buy_token=$second_buy_token" \
+  --secret "self_buy_token=$self_buy_token" \
+  --secret "self_buy_retry_token=$self_buy_retry_token" \
   "$project_root/tests/integration/http/sale-offer-lifecycle.hurl"
 
 curl --fail --silent \

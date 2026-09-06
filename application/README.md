@@ -54,6 +54,12 @@ every other missing variable named at once, and it is never logged or
 persisted. The marketplace core does not import the intake or exchange-rate
 packages and accepts only MXN.
 
+The marketplace also rejects a buy when the authenticated buyer UUID equals
+the referenced offer's seller UUID. The PostgreSQL adapter filters the same
+principal's offers from discovery and treats the database trigger as the final
+authority for alternate writers. No balance, holding, quantity, beneficial
+owner, or matching state is inferred by this control.
+
 The RPC adapter admits every authenticated request through the PostgreSQL
 adapter before authorization or application work. One internal principal gets
 100 requests per database-clock UTC minute across both transports, every

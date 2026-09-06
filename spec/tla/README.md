@@ -69,7 +69,8 @@ mapping is:
 | --- | --- |
 | `publishedOffers` | `sale_offers` joined to `sale_offer_canonical_terms` |
 | `offer.price`, `offer.currency` | `sale_offer_canonical_terms.price` and `.currency_code` |
-| `ActiveOffers` | the adapter's active-offer read: canonical terms, no purchase |
+| `ActiveOffers` | the global derived book: canonical terms, no purchase |
+| `TradableOffers(buyer)` | the adapter's principal-specific read: active offers whose seller differs from the principal |
 | `purchases` | `purchases`, referencing its offer by `sale_offer_uuid` |
 | `claims` | `operation_claims`, keyed by the scope's unique constraint |
 | `results` | `operation_results`, including the succeeded/rejected shape |
@@ -101,6 +102,9 @@ Two conflations are deliberate and both narrow what a checked property means:
   authenticated principal with no user row, which is the state behind
   `buyer_not_found` and `seller_not_found`. See
   [F-023](../../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2).
+  `NoSelfPurchases` therefore proves only that the one modeled identity cannot
+  buy its own offer. It does not prove that separate principals have different
+  beneficial owners.
 
 ## Behavior
 
@@ -121,10 +125,13 @@ Buying is split into a claim and a resolution:
 - `ClaimBuy` requires authorization and a new idempotency scope, then appends
   the claim and records the order as in flight. It may name any offer ID,
   including one that is unpublished or already sold.
-- `CommitBuy` is enabled only when the named offer is still in the active
-  book. It appends the purchase and a succeeded result.
+- `CommitBuy` is enabled only when the named offer is still active and its
+  seller differs from the buyer. It appends the purchase and a succeeded
+  result.
 - `RejectBuy` is enabled otherwise. It appends a rejected result carrying
   `offer_unavailable` and appends no purchase.
+- `RejectSelfBuy` handles an active offer attributed to the buyer. It appends a
+  rejected result carrying `self_trade_prohibited` and no purchase.
 
 The split is what gives the exclusivity property its content. Two authorized
 buyers can hold simultaneous claims against one active offer, so at most one
@@ -148,7 +155,8 @@ suspending are enabled only when the corresponding access state is not
 already in force.
 
 Bond-specific offer listing and active-series discovery are derived reads and
-do not change model state. HTTP parameters, SQL queries, ordering, and input
+do not change model state. Both use `TradableOffers` so a principal's own
+offers are absent. HTTP parameters, SQL queries, ordering, and input
 canonicalization remain implementation-boundary concerns.
 
 Outbound integration-event references and delivery attempts are likewise an
@@ -163,7 +171,8 @@ can invoke the modeled core action. `AllPublishedOffersAreMXN` verifies the
 resulting domain invariant without pulling HTTP, provider, or persistence
 mechanics into the model.
 
-The model does not prohibit a seller from buying their own offer.
+The model prohibits a user from buying an offer attributed to that same user.
+It has no beneficial-owner or affiliated-principal relationship.
 
 There are intentionally no buy offers, matching engine, balances, holdings,
 partial fills, order publication, ownership transfer, cancellation, expiry, or
@@ -181,6 +190,8 @@ settlement process in this model. Settlement semantics remain pending.
 - `AllPublishedOffersAreMXN` — every offer the model publishes carries MXN
   terms. This corresponds to canonical terms, not to every `sale_offers` row;
   see the refinement mapping above.
+- `NoSelfPurchases` — every committed purchase has a buyer different from the
+  referenced offer's seller.
 
 ### Provenance
 
@@ -271,8 +282,8 @@ recorded rejection the model produces. The service also records
 `buyer_not_found`, `seller_not_found`, `bond_not_found`,
 `offer_already_exists`, and `conversion_quote_unavailable` as durable rejected
 results and replays them. Publishing cannot fail in the model, so
-`ResultShapeIsWellFormed` and the provenance properties exercise one rejection
-code out of six.
+`ResultShapeIsWellFormed` and the provenance properties exercise two rejection
+codes out of seven: `offer_unavailable` and `self_trade_prohibited`.
 
 **Assertion binding is absent.** `operation_claims.assertion_digest` and the
 issuer, audience, `jti`, and audience-binding checks have no counterpart.
@@ -309,7 +320,7 @@ to reach the interesting interleavings:
 
 | Instance | Specification | Purpose |
 | --- | --- | --- |
-| `BondExchange.cfg` | `MarketplaceSpec` | Contention, provenance, append-only history, and idempotent retries under a fixed authorization state. Two users give two contending buyers; two offer identities and two prices make term immutability and identity reuse falsifiable; two request digests reach the conflicting-retry path. |
+| `BondExchange.cfg` | `MarketplaceSpec` | Contention, same-identity self-trade prevention, provenance, append-only history, and idempotent retries under a fixed authorization state. Two users make both self and non-self resolution reachable; two offer identities and two prices make term immutability and identity reuse falsifiable; two request digests reach the conflicting-retry path. |
 | `BondExchangeAuthorization.cfg` | `AuthorizationSpec` | Grants, revocations, suspensions, and reinstatements interleaved with marketplace operations. Two grant generations let access be revoked and then restored by a new fact. The market is kept minimal. |
 | `BondExchangeLiveness.cfg` | `FairSpec` | Resolution of claimed binding orders under weak fairness. Every dimension is at the minimum that still lets two buyers contend. |
 

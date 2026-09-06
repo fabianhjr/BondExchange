@@ -106,7 +106,7 @@
     },
     "/buys": {
       "post": {
-        "summary": "Buy places a binding order or reservation for one currently active sale offer.\nSettlement, payment, custody, and ownership transfer are outside this API.",
+        "summary": "Buy places a binding order or reservation for one currently tradable sale offer.\nA principal cannot buy a sale offer attributed to the same internal identity.\nSettlement, payment, custody, and ownership transfer are outside this API.",
         "operationId": "BondExchangeService_Buy",
         "responses": {
           "201": {
@@ -116,7 +116,7 @@
             }
           },
           "400": {
-            "description": "The request is invalid.",
+            "description": "The request is invalid or a market-integrity precondition prohibits the buy.",
             "schema": {
               "$ref": "#/definitions/bondexchange.v1.Error"
             }

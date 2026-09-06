@@ -36,7 +36,8 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
 
 // BondExchangeService exposes the bond-sale application over gRPC and REST.
 service BondExchangeService {
-  // Buy places a binding order or reservation for one currently active sale offer.
+  // Buy places a binding order or reservation for one currently tradable sale offer.
+  // A principal cannot buy a sale offer attributed to the same internal identity.
   // Settlement, payment, custody, and ownership transfer are outside this API.
   rpc Buy(BuyRequest) returns (BuyResponse) {
     option (google.api.http) = {
@@ -64,7 +65,7 @@ service BondExchangeService {
       responses: {
         key: "400"
         value: {
-          description: "The request is invalid."
+          description: "The request is invalid or a market-integrity precondition prohibits the buy."
           schema: {
             json_schema: {ref: ".bondexchange.v1.Error"}
           }

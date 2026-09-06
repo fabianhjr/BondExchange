@@ -47,7 +47,7 @@ production-readiness decision.
 | ID | Failure mode | S | O | D | RPN | Priority | Accountable area | Status |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
 | FM-001 | A binding reservation is treated as a settled securities transaction. | 10 | 7 | 8 | 560 | High | Product/domain | Open |
-| FM-002 | Unsupported market-integrity behavior is accepted as valid trading. | 9 | 5 | 9 | 405 | High | Product/domain | Open |
+| FM-002 | Unsupported market-integrity behavior is accepted as valid trading. | 9 | 5 | 9 | 405 | High | Product/domain | Partially controlled; policy open |
 | FM-003 | More than one buyer acquires the same offer. | 9 | 2 | 2 | 36 | Monitored; severity review | Domain/data | Controlled |
 | FM-004 | An unauthorized, altered, or replayed operation changes domain state. | 10 | 2 | 3 | 60 | Monitored; severity review | Security/data | Controlled |
 | FM-005 | Direct or alternate writers append facts outside domain constraints. | 8 | 4 | 6 | 192 | Medium | Data/security | Open |
@@ -95,20 +95,27 @@ production-readiness decision.
 ### FM-002 — Unsupported market-integrity behavior
 
 - **Function and failure:** The service accepts behavior that a real market
-  policy could prohibit, including a seller buying their own offer, because no
-  applicable rule exists in the current domain.
+  policy could prohibit because many applicable rules remain outside the
+  current domain.
 - **Effects:** Manipulative, unfunded, or otherwise invalid activity can look
   like a valid reservation, undermining business and audit conclusions.
-- **Causes:** Balances, holdings, eligibility, self-trade prevention, partial
-  fills, matching, and price/time priority are intentionally out of scope.
-- **Current controls and detection:** The limited behavior is explicit in the
-  formal model and documentation. No control detects activity against a policy
-  that has not been defined.
-- **Action:** Product and domain owners must decide which integrity rules this
-  service owns and add invariants, enforcement, negative tests, and monitoring
-  for every adopted rule.
-- **Traceability:** [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1)
-  and [formal-model scope](../spec/tla/README.md#behavior).
+- **Causes:** Balances, holdings, eligibility, beneficial-owner relationships,
+  partial fills, matching, price bands, and price/time priority are
+  intentionally out of scope.
+- **Current controls and detection:** Same-identity self-trading is prohibited
+  by principal-specific discovery, Go transaction logic, a PostgreSQL insert
+  trigger, and the TLA+ `NoSelfPurchases` invariant. Negative store, transport,
+  direct-SQL, and HTTP tests cover the control; rejected operations retain
+  `self_trade_prohibited`, and a bounded metric counts attempts. The occurrence
+  and detection scores remain unchanged because other integrity rules and
+  production alert ownership are still undecided.
+- **Action:** Product and domain owners must decide which additional integrity
+  rules this service owns and add invariants, enforcement, negative tests, and
+  monitoring for every adopted rule. Define authoritative beneficial-owner or
+  affiliation data before claiming cross-principal self-trade prevention.
+- **Traceability:** [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1),
+  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md), and
+  [formal-model scope](../spec/tla/README.md#behavior).
 
 ### FM-003 — Double acquisition of one offer
 
@@ -201,6 +208,8 @@ production-readiness decision.
   and append-only triggers prevent silent rewriting. Operational legacy aliases
   have been contracted. `sale_offers.currency_code` now requires `^[A-Z]{3}$`,
   canonical terms require MXN, and submission provenance requires MXN or USD.
+  A purchase trigger rejects a buyer UUID equal to the referenced offer's
+  seller UUID, and a direct-SQL integration test pins that control.
   `TestStorageConstraintsMatchDomainValidation` compares each Go validation rule
   against a direct SQL insert and fails on a disagreement in either direction,
   so constraint drift is detected rather than discovered. The constraint was
@@ -224,7 +233,8 @@ production-readiness decision.
 - **Traceability:** [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1),
   [F-004](../FRICTIONS.md#f-004--database-constraints-are-looser-than-domain-validation-p1),
   [F-023](../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2),
-  and [ADR-0023](adr/0023-align-storage-constraints-with-domain-validation.md).
+  [ADR-0023](adr/0023-align-storage-constraints-with-domain-validation.md), and
+  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md).
 
 ### FM-006 — Storage or query exhaustion from retained history
 

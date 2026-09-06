@@ -8,7 +8,7 @@ disposable demo: P1 blocks a credible production use, P2 is a material
 correctness, security, operability, or scaling concern, and P3 primarily
 affects maintainability or contributor experience.
 
-The repository was reviewed on 2026-09-05. `devenv test` and the default
+The repository was reviewed on 2026-09-06. `devenv test` and the default
 configurable integration load task passed for this review, so there is no known
 failing quality gate; the items below are gaps that the current gates either
 accept or do not cover.
@@ -30,11 +30,16 @@ accept or do not cover.
 
 ### F-002 — Market-integrity rules are undecided (P1)
 
-- **Evidence:** [`spec/tla/README.md`](spec/tla/README.md) explicitly permits a
-  seller to buy their own offer. The model also intentionally has no balances,
-  holdings, partial fills, matching engine, or price/time priority.
-- **Impact:** The current behavior is enough to demonstrate exclusive buying,
-  but it is not enough to state or enforce realistic trading rules.
+- **Evidence:** [ADR-0030](docs/adr/0030-prevent-same-identity-self-trading.md)
+  now prohibits a principal from buying an offer attributed to the same
+  internal UUID. Go, PostgreSQL, TLA+, principal-specific discovery, negative
+  tests, durable rejection records, and a bounded metric enforce that rule.
+  The model still intentionally has no balances, holdings, eligibility,
+  beneficial-owner relationships, partial fills, matching engine, price bands,
+  or price/time priority.
+- **Impact:** Same-identity self-trading is controlled, but affiliated-account,
+  unfunded, economically invalid, or manipulative activity can still look like
+  a valid reservation because the remaining applicable rules are undecided.
 - **Complete when:** Product policy identifies which rules belong in this
   service, architecture decisions record the boundary, and every adopted
   domain rule is synchronized across Go, PostgreSQL, TLA+, and documentation.
@@ -262,14 +267,17 @@ accept or do not cover.
   `principals`, and `buyQuery` cross-joins `users` on the principal's UUID. The
   Go store carries `ErrBuyerNotFound` and `ErrSellerNotFound`, and
   `safeOperationErrorCode` records them durably, for exactly the case where the
-  two disagree. The TLA+ model has one `Users` set, so no reachable state
-  distinguishes them.
+  two disagree. Same-identity self-trade prevention also compares these UUIDs.
+  The TLA+ model has one `Users` set, so no reachable state distinguishes them
+  or represents two principals under one beneficial owner.
 - **Impact:** Nothing states that an authenticated principal must have the user
   identity its facts are attributed to, in any artifact. A principal
   provisioned without a matching user row authenticates and passes
   authorization, then fails at the mutation with a rejection recorded against
   its idempotency scope. While F-003 keeps provisioning a direct-SQL activity,
-  that mismatch is created by hand and detected only at first use.
+  that mismatch is created by hand and detected only at first use. The
+  self-trade control is correspondingly limited to identities whose UUIDs are
+  equal; it cannot establish or compare beneficial ownership.
 - **Complete when:** The relationship between a principal and the user its
   offers and purchases are attributed to is stated as a constraint that the
   database enforces, and either the model represents both identities or an ADR
@@ -284,13 +292,13 @@ accept or do not cover.
   state separates the two, and `NewClaimsAreAuthorizedWhenClaimed` cannot fail
   for a check performed before the mutation. Active-offer listing and
   bond-series discovery require `offers.list` but have no modeled action.
-  `offer_unavailable` is the only rejection the model produces, while the
-  service also records `buyer_not_found`, `seller_not_found`,
+  `offer_unavailable` and `self_trade_prohibited` are the two rejections the
+  model produces, while the service also records `buyer_not_found`, `seller_not_found`,
   `bond_not_found`, `offer_already_exists`, and `conversion_quote_unavailable`.
 - **Impact:** [`docs/FMEA.md`](docs/FMEA.md) credits the model as a detection
   control for FM-004, whose named causes include RBAC evaluated outside the
   mutation transaction. That cause is currently detected by Go and PostgreSQL
-  tests alone. Revoked or suspended read access, and five of the six durable
+  tests alone. Revoked or suspended read access, and five of the seven durable
   rejection outcomes, are likewise unverified by TLC.
 - **Complete when:** Authorization is evaluated in a step the model can
   separate from the claim it authorizes, read operations that require a

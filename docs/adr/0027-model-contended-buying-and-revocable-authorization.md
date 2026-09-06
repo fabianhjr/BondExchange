@@ -1,5 +1,10 @@
 # ADR-0027: Model contended buying and revocable authorization
 
+ADR-0030 later adds a second modeled buy rejection,
+`self_trade_prohibited`, and restricts commit to offers whose seller differs
+from the buyer. The claim-and-resolve and authorization decisions here remain
+accepted.
+
 - Status: Accepted
 - Date: 2026-09-05
 

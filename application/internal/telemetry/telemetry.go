@@ -36,27 +36,28 @@ type Config struct {
 type Shutdown func(context.Context) error
 
 type recorder struct {
-	tracer              trace.Tracer
-	operations          metric.Int64Counter
-	operationDuration   metric.Float64Histogram
-	authentications     metric.Int64Counter
-	authDuration        metric.Float64Histogram
-	rateFetchAttempts   metric.Int64Counter
-	rateFetchWorkUnits  metric.Int64Counter
-	rateFetchSkips      metric.Int64Counter
-	rateFetchDuration   metric.Float64Histogram
-	rateCacheResults    metric.Int64Counter
-	observationAge      metric.Float64Histogram
-	observationResults  metric.Int64Counter
-	eventDeliveries     metric.Int64Counter
-	eventDuration       metric.Float64Histogram
-	eventStages         metric.Int64Counter
-	eventPublisherCount metric.Int64Gauge
-	databaseRetries     metric.Int64Counter
-	idempotencyResults  metric.Int64Counter
-	rateLimitDecisions  metric.Int64Counter
-	rateLimitDuration   metric.Float64Histogram
-	streamedOfferCount  metric.Int64Histogram
+	tracer                    trace.Tracer
+	operations                metric.Int64Counter
+	operationDuration         metric.Float64Histogram
+	authentications           metric.Int64Counter
+	authDuration              metric.Float64Histogram
+	rateFetchAttempts         metric.Int64Counter
+	rateFetchWorkUnits        metric.Int64Counter
+	rateFetchSkips            metric.Int64Counter
+	rateFetchDuration         metric.Float64Histogram
+	rateCacheResults          metric.Int64Counter
+	observationAge            metric.Float64Histogram
+	observationResults        metric.Int64Counter
+	eventDeliveries           metric.Int64Counter
+	eventDuration             metric.Float64Histogram
+	eventStages               metric.Int64Counter
+	eventPublisherCount       metric.Int64Gauge
+	databaseRetries           metric.Int64Counter
+	idempotencyResults        metric.Int64Counter
+	rateLimitDecisions        metric.Int64Counter
+	rateLimitDuration         metric.Float64Histogram
+	streamedOfferCount        metric.Int64Histogram
+	marketIntegrityRejections metric.Int64Counter
 }
 
 type operationState struct {
@@ -317,6 +318,7 @@ func newRecorder(tracerProvider trace.TracerProvider, meterProvider metric.Meter
 	rateLimitDecisions := mustInstrument(meter.Int64Counter("bondexchange.request.rate_limit.count", metric.WithDescription("Authenticated request rate-limit decisions"), metric.WithUnit("{decision}")))
 	rateLimitDuration := mustInstrument(meter.Float64Histogram("bondexchange.request.rate_limit.duration", metric.WithDescription("Authenticated request admission duration"), metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5)))
 	streamedOfferCount := mustInstrument(meter.Int64Histogram("bondexchange.stream.offer.count", metric.WithDescription("Offers written by a completed active-offer stream"), metric.WithUnit("{offer}"), metric.WithExplicitBucketBoundaries(0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000)))
+	marketIntegrityRejections := mustInstrument(meter.Int64Counter("bondexchange.market_integrity.rejection.count", metric.WithDescription("Market-integrity control rejections"), metric.WithUnit("{rejection}")))
 	return &recorder{
 		tracer: tracerProvider.Tracer(scopeName), operations: operations, operationDuration: operationDuration,
 		authentications: authentications, authDuration: authDuration,
@@ -326,6 +328,7 @@ func newRecorder(tracerProvider trace.TracerProvider, meterProvider metric.Meter
 		eventDeliveries: eventDeliveries, eventDuration: eventDuration, eventStages: eventStages, eventPublisherCount: eventPublisherCount,
 		databaseRetries: databaseRetries, idempotencyResults: idempotencyResults,
 		rateLimitDecisions: rateLimitDecisions, rateLimitDuration: rateLimitDuration, streamedOfferCount: streamedOfferCount,
+		marketIntegrityRejections: marketIntegrityRejections,
 	}
 }
 
@@ -398,6 +401,12 @@ func RecordOperation(ctx context.Context, operation string, outcome string, erro
 	current.operationDuration.Record(ctx, elapsed.Seconds(), options)
 	if streamedOffers >= 0 {
 		current.streamedOfferCount.Record(ctx, streamedOffers, options)
+	}
+}
+
+func RecordSelfTradeRejection(ctx context.Context) {
+	if current := active.Load(); current != nil {
+		current.marketIntegrityRejections.Add(ctx, 1, metric.WithAttributes(attribute.String("control", "self_trade")))
 	}
 }
 

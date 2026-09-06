@@ -1,5 +1,8 @@
 # ADR-0002: Use TLA+ for behavioral system specification
 
+ADR-0030 later restricts the original buy behavior by prohibiting a user from
+buying an offer attributed to that same modeled identity.
+
 - Status: Accepted
 - Date: 2026-09-01
 

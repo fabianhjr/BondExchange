@@ -20,11 +20,11 @@ REST routes:
 
 | Route | Notes |
 | --- | --- |
-| `POST /buys` | Takes a UUIDv7, for example `{"sale_offer_id":"01991a20-0000-7000-8000-000000000101"}`. |
+| `POST /buys` | Takes a UUIDv7. A principal cannot reserve its own offer. |
 | `POST /sale-offer-quotes` | Takes a USD submission, for example `{"bond_series":"BND2026","price":"99.75","currency_code":"USD"}`. |
 | `POST /sale-offers` | Takes an MXN submission, or the exact USD submission plus the returned `conversion_quote_id`. |
-| `GET /active-offers?bond=BND2026` | Streams every active offer and a terminal count as `application/json-seq`. |
-| `GET /active-bond-series` | Returns every bond series having an active offer. |
+| `GET /active-offers?bond=BND2026` | Streams every active offer tradable by the principal and a terminal count as `application/json-seq`. |
+| `GET /active-bond-series` | Returns every bond series having an offer tradable by the principal. |
 | `GET /healthz` | Readiness. |
 | `POST /event-publications:publish-pending` | Optional `{"destination_id":"..."}`. Returns aggregate counts, and an error while no publisher is configured. |
 
@@ -58,6 +58,11 @@ resolves the principal used as buyer or seller. Assertion content and validation
 are documented in [`../docs/security/ASVS.md`](../docs/security/ASVS.md), and
 [`../docs/demo.md`](../docs/demo.md) shows how to mint one locally.
 
+Buying an offer attributed to the same internal principal is rejected as gRPC
+`FailedPrecondition` and REST HTTP `400`, including when the caller retained the
+offer UUID. The rejection is idempotent. This rule compares internal UUIDs; it
+does not infer beneficial ownership or relationships between principals.
+
 ## Rate limiting
 
 After successful authentication, every method shares one 100-request
@@ -70,8 +75,9 @@ failure is gRPC `Unavailable`/HTTP `503`. The Proto3 OpenAPI annotations list th
 ## Streaming
 
 The API publishes sale offers with `POST /sale-offers`, lists every active offer
-for one required bond series with `GET /active-offers?bond=...`, and discovers
-all series currently having active offers with `GET /active-bond-series`.
+tradable by the authenticated principal for one required bond series with
+`GET /active-offers?bond=...`, and discovers all series currently having at
+least one offer tradable by that principal with `GET /active-bond-series`.
 
 Active-offer listing is deliberately unbounded but server-streamed. gRPC uses its
 native stream; a strict custom REST adapter uses RFC 7464 JSON Text Sequences

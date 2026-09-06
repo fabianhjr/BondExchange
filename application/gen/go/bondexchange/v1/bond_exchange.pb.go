@@ -1058,14 +1058,14 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error:\r\x92A\n" +
 	"\n" +
-	"\b\xd2\x01\x05error2\x97)\n" +
-	"\x13BondExchangeService\x12\xd8\x05\n" +
-	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\x95\x05\x92A\x81\x05JC\n" +
+	"\b\xd2\x01\x05error2\xcc)\n" +
+	"\x13BondExchangeService\x12\x8d\x06\n" +
+	"\x03Buy\x12\x1b.bondexchange.v1.BuyRequest\x1a\x1c.bondexchange.v1.BuyResponse\"\xca\x05\x92A\xb6\x05JC\n" +
 	"\x03201\x12<\n" +
 	"\x18The offer was purchased.\x12 \n" +
-	"\x1e\x1a\x1c.bondexchange.v1.BuyResponseJ<\n" +
-	"\x03400\x125\n" +
-	"\x17The request is invalid.\x12\x1a\n" +
+	"\x1e\x1a\x1c.bondexchange.v1.BuyResponseJq\n" +
+	"\x03400\x12j\n" +
+	"LThe request is invalid or a market-integrity precondition prohibits the buy.\x12\x1a\n" +
 	"\x18\x1a\x16.bondexchange.v1.ErrorJE\n" +
 	"\x03404\x12>\n" +
 	" The active offer is unavailable.\x12\x1a\n" +

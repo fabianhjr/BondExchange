@@ -1,4 +1,43 @@
-# Discover the bond series that currently have active offers.
+# A seller's discovery view omits series whose only active offers are their own.
+GET {{base_url}}/active-bond-series
+Authorization: Bearer {{seller_series_token}}
+HTTP 200
+[Asserts]
+jsonpath "$.bond_series" count == 0
+
+# A seller's offer book likewise omits their own offers.
+GET {{base_url}}/active-offers?bond=DEMO2026
+Authorization: Bearer {{seller_offers_token}}
+HTTP 200
+Content-Type: application/json-seq; charset=utf-8
+[Asserts]
+body contains "\"complete\":{}"
+
+# Retaining an offer ID cannot bypass the self-trade control.
+POST {{base_url}}/buys
+Authorization: Bearer {{self_buy_token}}
+Idempotency-Key: 00000000-0000-4000-8000-000000000004
+Content-Type: application/json
+{
+  "sale_offer_id": "{{offer_id}}"
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error" == "a buyer cannot reserve their own sale offer"
+
+# The rejected market-integrity decision is durable and replayable.
+POST {{base_url}}/buys
+Authorization: Bearer {{self_buy_retry_token}}
+Idempotency-Key: 00000000-0000-4000-8000-000000000004
+Content-Type: application/json
+{
+  "sale_offer_id": "{{offer_id}}"
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error" == "a buyer cannot reserve their own sale offer"
+
+# Another principal discovers the bond series that have tradable offers.
 GET {{base_url}}/active-bond-series
 Authorization: Bearer {{series_token}}
 HTTP 200
@@ -7,7 +46,7 @@ jsonpath "$.bond_series" count == 2
 jsonpath "$.bond_series[0]" == "DEMO2026"
 jsonpath "$.bond_series[1]" == "DEMO2027"
 
-# A listing is an RFC 7464 JSON Text Sequence. It includes the two seeded
+# The buyer's listing is an RFC 7464 JSON Text Sequence. It includes the two seeded
 # offers, the PostgreSQL-generated offer captured by the create scenario, and
 # then a terminal count.
 GET {{base_url}}/active-offers?bond=DEMO2026

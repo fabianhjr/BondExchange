@@ -47,6 +47,7 @@ metrics:
 | `bondexchange.authentication.count` / `.duration` | operation, outcome, stage | Federated assertion results and latency. Stages are metadata, assertion, principal resolution, and complete. |
 | `bondexchange.idempotency.result` | operation, outcome | Mutation claim, replay, conflict, and idempotency-storage-error decisions. Transaction retries can repeat a claim decision. |
 | `bondexchange.request.rate_limit.count` / `.duration` | operation, outcome | Authenticated admission decisions and coordination latency: allowed, rejected, or error. |
+| `bondexchange.market_integrity.rejection.count` | control | Market-integrity rejections; currently the bounded `self_trade` control. |
 | `bondexchange.database.transaction.retry` | operation, reason | Retryable serialization failures and deadlocks. |
 | `bondexchange.rate.cache.result` | outcome | Cache hits, misses, and lease contention. |
 | `bondexchange.rate.fetch.attempt.count` / `.duration` | fetch kind, outcome | Actual provider request count and latency. |
@@ -96,6 +97,8 @@ sampling.
 
 Candidate dashboards and alerts map directly to the FMEA:
 
+- same-identity self-trade rejection volume for FM-002, without principal,
+  offer, bond, or price labels;
 - route-specific HTTP/gRPC latency, authentication and rate-limit decisions,
   admission latency, stream duration, and pgx pool
   wait/utilization for FM-007 and FM-022;

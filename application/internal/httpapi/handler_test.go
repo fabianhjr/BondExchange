@@ -336,6 +336,7 @@ func TestBuyHandler(t *testing.T) {
 		{name: "invalid buyer", body: `{}`, err: exchange.ErrInvalidUserID, status: http.StatusBadRequest},
 		{name: "missing buyer", body: `{}`, err: exchange.ErrBuyerNotFound, status: http.StatusInternalServerError},
 		{name: "unavailable", body: `{}`, err: exchange.ErrOfferUnavailable, status: http.StatusNotFound},
+		{name: "self trade", body: `{}`, err: exchange.ErrSelfTradeProhibited, status: http.StatusBadRequest},
 		{name: "internal", body: `{}`, err: errors.New("boom"), status: http.StatusInternalServerError},
 	}
 	for _, test := range tests {

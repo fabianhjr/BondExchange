@@ -86,6 +86,10 @@ at the top level.
 - **The marketplace is MXN-only.** USD submissions are converted at intake
   against a pinned Banxico SIE observation; USD survives only as provenance
   ([ADR-0019](docs/adr/0019-canonicalize-sale-offers-to-mxn-at-intake.md)).
+- **Same-identity self-trading is prohibited.** Discovery omits the
+  authenticated principal's own offers, while Go, PostgreSQL, and TLA+ prevent
+  that principal from reserving one directly
+  ([ADR-0030](docs/adr/0030-prevent-same-identity-self-trading.md)).
 - **Proto3 is the transport contract.**
   [`bond_exchange.proto`](api/proto/bondexchange/v1/bond_exchange.proto)
   generates the Go bindings, the gRPC server, the in-process REST gateway, the

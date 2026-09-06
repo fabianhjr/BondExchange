@@ -212,6 +212,47 @@ func TestBuyRejectsMissingOffer(t *testing.T) {
 	}
 }
 
+func TestSelfTradeIsRejectedAndReplayed(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	ctx := context.Background()
+	seller := insertUser(t, pool, "seller")
+	bond := insertBond(t, pool)
+	offer := insertOffer(t, pool, seller, bond)
+	operation := mutation(seller, exchange.OperationBuy, uniqueID(t, "self-buy"), string(offer))
+
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := store.Buy(ctx, operation, offer); !errors.Is(err, exchange.ErrSelfTradeProhibited) {
+			t.Fatalf("self-trade attempt %d error = %v", attempt+1, err)
+		}
+	}
+
+	var purchaseCount, rejectionCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bond_exchange.purchases WHERE sale_offer_uuid = $1`, offer).Scan(&purchaseCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `
+SELECT count(*)
+FROM bond_exchange.operation_results AS result
+JOIN bond_exchange.operation_claims AS claim ON claim.uuid_id = result.claim_uuid
+WHERE claim.principal_uuid = $1
+  AND result.outcome = 'rejected'
+  AND result.safe_error_code = 'self_trade_prohibited'`, seller).Scan(&rejectionCount); err != nil {
+		t.Fatal(err)
+	}
+	if purchaseCount != 0 || rejectionCount != 1 {
+		t.Fatalf("purchases, durable rejections = %d, %d; want 0, 1", purchaseCount, rejectionCount)
+	}
+
+	_, err := pool.Exec(ctx, `
+INSERT INTO bond_exchange.purchases (sale_offer_uuid, buyer_uuid)
+VALUES ($1, $2)`, offer, seller)
+	var databaseError *pgconn.PgError
+	if !errors.As(err, &databaseError) || databaseError.ConstraintName != "purchases_buyer_not_seller" {
+		t.Fatalf("direct self-purchase error = %v", err)
+	}
+}
+
 func TestCreateSaleOffer(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
@@ -237,12 +278,21 @@ func TestCreateSaleOffer(t *testing.T) {
 		t.Fatalf("created offer = %#v, want %#v", created, offer)
 	}
 	activeOffers, err := collectOffers(store, access(seller, exchange.OperationListActiveOffers), bond)
-	if err != nil || len(activeOffers) != 1 || activeOffers[0].ID != created.ID {
-		t.Fatalf("ActiveOffers() after creation = %#v, %v", activeOffers, err)
+	if err != nil || len(activeOffers) != 0 {
+		t.Fatalf("seller-visible ActiveOffers() after creation = %#v, %v", activeOffers, err)
 	}
 	activeSeries, err := store.ActiveBondSeries(context.Background(), access(seller, exchange.OperationListBondSeries))
+	if err != nil || countSeries(activeSeries, bond) != 0 {
+		t.Fatalf("seller-visible ActiveBondSeries() after creation = %#v, %v", activeSeries, err)
+	}
+	buyer := insertUser(t, pool, "buyer")
+	activeOffers, err = collectOffers(store, access(buyer, exchange.OperationListActiveOffers), bond)
+	if err != nil || len(activeOffers) != 1 || activeOffers[0].ID != created.ID {
+		t.Fatalf("buyer-visible ActiveOffers() after creation = %#v, %v", activeOffers, err)
+	}
+	activeSeries, err = store.ActiveBondSeries(context.Background(), access(buyer, exchange.OperationListBondSeries))
 	if err != nil || countSeries(activeSeries, bond) != 1 {
-		t.Fatalf("ActiveBondSeries() after creation = %#v, %v", activeSeries, err)
+		t.Fatalf("buyer-visible ActiveBondSeries() after creation = %#v, %v", activeSeries, err)
 	}
 	replayed, err := store.CreateSaleOffer(context.Background(), operation, offer)
 	if err != nil || replayed.ID != created.ID {
@@ -1039,10 +1089,11 @@ func TestStreamStopsOnConsumerError(t *testing.T) {
 	pool := openTestPool(t)
 	store := NewStore(pool)
 	seller := insertUser(t, pool, "seller")
+	reader := insertUser(t, pool, "reader")
 	bond := insertBond(t, pool)
 	insertOffer(t, pool, seller, bond)
 	want := errors.New("consumer stopped")
-	err := store.StreamActiveOffers(context.Background(), access(seller, exchange.OperationListActiveOffers), bond, func(exchange.SaleOffer) error {
+	err := store.StreamActiveOffers(context.Background(), access(reader, exchange.OperationListActiveOffers), bond, func(exchange.SaleOffer) error {
 		return want
 	})
 	if !errors.Is(err, want) {
@@ -1057,6 +1108,7 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 	}{
 		{exchange.ErrBuyerNotFound, "buyer_not_found"},
 		{exchange.ErrOfferUnavailable, "offer_unavailable"},
+		{exchange.ErrSelfTradeProhibited, "self_trade_prohibited"},
 		{exchange.ErrOfferAlreadyExists, "offer_already_exists"},
 		{exchange.ErrSellerNotFound, "seller_not_found"},
 		{exchange.ErrBondNotFound, "bond_not_found"},
@@ -1083,6 +1135,13 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 		t.Fatal("non-database error was reclassified")
 	}
 	databaseError := &pgconn.PgError{ConstraintName: "other_constraint"}
+	if classifyBuyError(databaseError) != databaseError { //nolint:errorlint // This test requires exact passthrough identity.
+		t.Fatal("unrecognized buy constraint was reclassified")
+	}
+	selfTradeError := &pgconn.PgError{ConstraintName: "purchases_buyer_not_seller"}
+	if !errors.Is(classifyBuyError(selfTradeError), exchange.ErrSelfTradeProhibited) {
+		t.Fatal("self-trade constraint was not classified")
+	}
 	if classifyCreateSaleOfferError(databaseError) != databaseError { //nolint:errorlint // This test requires exact passthrough identity.
 		t.Fatal("unrecognized database error was reclassified")
 	}
@@ -1435,11 +1494,12 @@ func TestStreamActiveOffersReleasesConnectionsOnEveryExit(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 	seller := insertUser(t, pool, "")
+	readerID := insertUser(t, pool, "")
 	bond := insertBond(t, pool)
 	for range 3 {
 		insertOffer(t, pool, seller, bond)
 	}
-	reader := access(seller, exchange.OperationListActiveOffers)
+	reader := access(readerID, exchange.OperationListActiveOffers)
 
 	yieldFailure := errors.New("reader stopped early")
 	exits := []struct {
@@ -1520,11 +1580,12 @@ func TestConcurrentSlowReadersDoNotExhaustThePool(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 	seller := insertUser(t, pool, "")
+	readerID := insertUser(t, pool, "")
 	bond := insertBond(t, pool)
 	for range 2 {
 		insertOffer(t, pool, seller, bond)
 	}
-	reader := access(seller, exchange.OperationListActiveOffers)
+	reader := access(readerID, exchange.OperationListActiveOffers)
 
 	release := make(chan struct{})
 	var readers sync.WaitGroup

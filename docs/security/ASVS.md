@@ -84,6 +84,12 @@ custody, ownership transfer, finality, cancellation, expiry, and all other
 settlement semantics remain explicitly pending; this change does not implement
 or model them.
 
+The same internal UUID cannot be both the buyer and the referenced offer's
+seller. Principal-specific discovery omits those offers, the application
+records a durable `self_trade_prohibited` rejection for direct attempts, and a
+PostgreSQL trigger rejects alternate-writer inserts. This does not infer common
+beneficial ownership or relationships between distinct principals.
+
 Active-offer listing remains unbounded in count but is streamed with
 backpressure from one repeatable-read PostgreSQL snapshot. Native gRPC sends
 one event per offer and a terminal count event. REST uses RFC 7464 JSON Text
@@ -171,6 +177,7 @@ credentials, and dynamic resource identifiers.
 | AD-16 | PostgreSQL 18 generates and enforces UUIDv7 table identities; UUIDv4 is reserved for idempotency, assertion, and lease nonces. Non-derivable pre-UUID values are isolated in a restricted append-only archive. | UUIDv7 reveals approximate creation time; archive access, capacity, retention, and erasure require deployment policy. |
 | AD-17 | A separate intake layer turns an explicitly accepted `SF43718` USD quote into immutable MXN core terms and retains USD only as provenance. | USD intake depends on rate policy and availability; legacy non-MXN offers require seller disposition and old binaries must be drained before activation. |
 | AD-18 | PostgreSQL coordinates a 100-request fixed UTC-minute allowance per authenticated principal across transports, operations, clients, and instances. | The fixed window permits a boundary burst, adds a shared-database write, and cannot control unauthenticated, concurrent, or connection-level traffic. |
+| AD-19 | Same-identity self-trading is prohibited in discovery, execution, PostgreSQL, and TLA+. | Distinct principals can still share a beneficial owner because no authoritative affiliation data exists. |
 
 ## Pending non-code and deployment decisions
 
