@@ -516,8 +516,9 @@ production-readiness decision.
   dependency vulnerability is bounded to one day rather than to the next
   matching change. `docs:check` verifies that documentation links, anchors,
   indexes, and register identifiers still resolve, and the ASVS profile is
-  compared against its pinned upstream source, so security evidence cannot decay
-  silently. Environment parsing, verification-key loading, pool and transport
+  compared against an exact, checksummed vendored snapshot of its pinned
+  upstream source, so security evidence cannot decay silently. Environment
+  parsing, verification-key loading, pool and transport
   limits, listener binding including partial-startup release, and graceful and
   forced shutdown now live in `internal/serverruntime`, so the coverage and
   mutation gates measure them; `application/cmd/server` retains only wiring. A

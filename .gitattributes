@@ -1,0 +1,2 @@
+# Preserve the byte-exact upstream license, including its terminal blank line.
+third_party/asvs/LICENSE.md whitespace=-blank-at-eof

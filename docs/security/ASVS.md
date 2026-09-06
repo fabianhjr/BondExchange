@@ -1,23 +1,22 @@
 # ASVS 5.0.0 Level 3 application profile
 
 This repository targets the application-controlled portions of OWASP ASVS
-5.0.0 Level 3. The assessment baseline is the upstream English source, pinned
-as the `third_party/asvs` submodule of
+5.0.0 Level 3. The assessment baseline is the upstream English source from
 [OWASP/ASVS](https://github.com/OWASP/ASVS) at tag `v5.0.0_release`, commit
-`5cf9b032440be53ce345ab3c130fda46ba1ce7a2`. The requirement text lives in
-`third_party/asvs/5.0/en` and is licensed by OWASP under Creative Commons
-Attribution-ShareAlike 4.0 International; this repository references it rather
-than copying it. Check it out with:
+`5cf9b032440be53ce345ab3c130fda46ba1ce7a2`. The 17 unmodified requirement
+chapters used by the check are vendored under `third_party/asvs/5.0/en`; release
+history, translations, images, and generated publications are omitted. The
+[source record](../../third_party/asvs/SOURCE.md) documents the extraction and
+attribution, and preserves OWASP's Creative Commons Attribution-ShareAlike 4.0
+International [license](../../third_party/asvs/LICENSE.md).
 
-```console
-git submodule update --init --depth 1 third_party/asvs
-```
-
-`devenv tasks run security:check` verifies that the submodule is present, that
-it is at the recorded commit, and that this document records the same baseline.
-Anyone with the repository can therefore reproduce the assessment input; no
-contributor-local path is involved. Moving to another ASVS release requires
-re-pinning the submodule and reviewing every disposition below.
+`devenv tasks run security:check` verifies the exact chapter inventory and
+checksums, requires this document and the source record to name the same tag and
+commit, and compares the assessment profile with the vendored source. Anyone
+with a normal clone can therefore reproduce the assessment input offline; no
+submodule, network access, or contributor-local path is involved. Moving to
+another ASVS release requires refreshing the snapshot and reviewing every
+disposition below.
 
 The requirement-level profile is
 [`asvs-5.0.0-l3.tsv`](asvs-5.0.0-l3.tsv). Its 345 requirement identifiers and

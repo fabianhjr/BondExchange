@@ -54,7 +54,7 @@ Only the `main` branch is supported. There are no releases, tags, or backports.
 The [scheduled security workflow](.github/workflows/scheduled-security.yml)
 runs `devenv tasks run security:check` every day at 06:00 UTC, and on demand
 through workflow dispatch. It runs `govulncheck` against the locked Go module
-graph, verifies the ASVS profile against its pinned upstream source, records
+graph, verifies the ASVS profile against its pinned vendored source snapshot, records
 the module inventory as a retained artifact, and exercises the security-focused
 tests. A failure opens or updates a tracking issue on this repository.
 
