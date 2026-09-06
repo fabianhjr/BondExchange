@@ -162,7 +162,7 @@ func (store *Store) CreateSaleOffer(
 	operation exchange.MutationContext,
 	offer exchange.SaleOffer,
 ) (exchange.SaleOffer, error) {
-	return retryTransaction(ctx, func() (exchange.SaleOffer, error) {
+	return retryTransaction(ctx, exchange.OperationCreateSaleOffer, func() (exchange.SaleOffer, error) {
 		return store.createSaleOfferOnce(ctx, operation, offer)
 	})
 }
@@ -182,7 +182,6 @@ func (store *Store) createSaleOfferOnce(
 		return exchange.SaleOffer{}, err
 	}
 	if !claimed {
-		telemetry.RecordIdempotency(ctx, exchange.OperationCreateSaleOffer, "replayed")
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 			return exchange.SaleOffer{}, err
 		}
@@ -273,7 +272,7 @@ func (store *Store) Buy(
 	operation exchange.MutationContext,
 	offerID exchange.OfferID,
 ) (exchange.Purchase, error) {
-	return retryTransaction(ctx, func() (exchange.Purchase, error) {
+	return retryTransaction(ctx, exchange.OperationBuy, func() (exchange.Purchase, error) {
 		return store.buyOnce(ctx, operation, offerID)
 	})
 }
@@ -293,7 +292,6 @@ func (store *Store) buyOnce(
 		return exchange.Purchase{}, err
 	}
 	if !claimed {
-		telemetry.RecordIdempotency(ctx, exchange.OperationBuy, "replayed")
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 			return exchange.Purchase{}, err
 		}
@@ -517,8 +515,10 @@ RETURNING uuid_id`,
 		return "", false, nil
 	}
 	if err != nil {
+		telemetry.RecordIdempotency(ctx, operation.Operation, "storage_error")
 		return "", false, err
 	}
+	telemetry.RecordIdempotency(ctx, operation.Operation, "claimed")
 	return inserted, true, nil
 }
 
@@ -601,17 +601,22 @@ WHERE claim.principal_uuid = $1
 		operation.IdempotencyKey,
 	).Scan(&resourceID, &outcome, &safeErrorCode, &requestDigest)
 	if err != nil {
+		telemetry.RecordIdempotency(ctx, operation.Operation, "storage_error")
 		return "", err
 	}
 	if !equalDigest(requestDigest, operation.RequestDigest) {
+		telemetry.RecordIdempotency(ctx, operation.Operation, "conflict")
 		return "", exchange.ErrIdempotencyConflict
 	}
 	if outcome == "rejected" {
+		telemetry.RecordIdempotency(ctx, operation.Operation, "replayed")
 		return "", operationErrorFromCode(safeErrorCode)
 	}
 	if outcome != "succeeded" || resourceID == nil {
+		telemetry.RecordIdempotency(ctx, operation.Operation, "storage_error")
 		return "", errors.New("invalid stored operation result")
 	}
+	telemetry.RecordIdempotency(ctx, operation.Operation, "replayed")
 	return *resourceID, nil
 }
 
@@ -658,7 +663,7 @@ func isRetryableTransactionError(err error) bool {
 	return errors.As(err, &databaseError) && (databaseError.Code == "40001" || databaseError.Code == "40P01")
 }
 
-func retryTransaction[T any](ctx context.Context, operation func() (T, error)) (T, error) {
+func retryTransaction[T any](ctx context.Context, operationName string, operation func() (T, error)) (T, error) {
 	var zero T
 	var lastErr error
 	for attempt := 0; attempt < 8; attempt++ {
@@ -666,13 +671,21 @@ func retryTransaction[T any](ctx context.Context, operation func() (T, error)) (
 		if !isRetryableTransactionError(err) {
 			return value, err
 		}
-		telemetry.RecordDatabaseRetry(ctx, "transaction")
+		telemetry.RecordDatabaseRetry(ctx, operationName, retryReason(err))
 		lastErr = err
 		if err := waitBeforeTransactionRetry(ctx, attempt); err != nil {
 			return zero, err
 		}
 	}
 	return zero, lastErr
+}
+
+func retryReason(err error) string {
+	var databaseError *pgconn.PgError
+	if errors.As(err, &databaseError) && databaseError.Code == "40P01" {
+		return "deadlock"
+	}
+	return "serialization_failure"
 }
 
 func waitBeforeTransactionRetry(ctx context.Context, attempt int) error {

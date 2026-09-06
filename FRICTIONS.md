@@ -188,9 +188,10 @@ accept or do not cover.
   one immediate attempt per configured destination, but the repository ships
   no concrete publisher. There is deliberately no startup sweep, scheduled
   retry, or background worker; only an authorized operator can invoke
-  `PublishPendingEvents`. The application now reports configured-publisher and
-  claimed-delivery outcome metrics, but no destination exists from which to
-  derive or alert on a continuously measured shared backlog.
+  `PublishPendingEvents`. The application now reports configured-publisher,
+  scan/claim/load/publish/state-transition, and claimed-delivery outcome
+  metrics, but no destination exists from which to derive or alert on a
+  continuously measured shared backlog.
 - **Impact:** No event leaves the service in the checked-in configuration, and
   a crash or publisher failure can leave events pending indefinitely unless an
   operator detects the backlog and explicitly retries it. At-least-once

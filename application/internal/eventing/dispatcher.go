@@ -80,8 +80,10 @@ func (dispatcher *Dispatcher) PublishPending(ctx context.Context, destinationID 
 		for {
 			refs, err := dispatcher.store.PendingEvents(ctx, selected, after, pendingBatchSize)
 			if err != nil {
+				telemetry.RecordEventStage(ctx, "scan", "error")
 				return summary, err
 			}
+			telemetry.RecordEventStage(ctx, "scan", "succeeded")
 			if len(refs) == 0 {
 				break
 			}
@@ -110,8 +112,10 @@ func (dispatcher *Dispatcher) PublishPending(ctx context.Context, destinationID 
 		}
 		remaining, err := dispatcher.store.CountPendingEvents(ctx, selected)
 		if err != nil {
+			telemetry.RecordEventStage(ctx, "count_pending", "error")
 			return summary, err
 		}
+		telemetry.RecordEventStage(ctx, "count_pending", "succeeded")
 		summary.Remaining += remaining
 	}
 	return summary, nil
@@ -125,17 +129,21 @@ func (dispatcher *Dispatcher) publishOne(
 ) (bool, bool, error) {
 	leaseToken, err := newLeaseToken()
 	if err != nil {
+		telemetry.RecordEventStage(ctx, "claim", "error")
 		return false, false, err
 	}
 	attempt, claimed, err := dispatcher.store.ClaimEvent(
 		ctx, destinationID, ref, leaseToken, dispatcher.leasePeriod, force,
 	)
 	if err != nil {
+		telemetry.RecordEventStage(ctx, "claim", "error")
 		return false, false, err
 	}
 	if !claimed {
+		telemetry.RecordEventStage(ctx, "claim", "skipped")
 		return false, false, nil
 	}
+	telemetry.RecordEventStage(ctx, "claim", "succeeded")
 	deliveryContext, span := telemetry.Start(ctx, "integration_event.deliver",
 		attribute.String("messaging.destination.name", destinationID),
 		attribute.Bool("delivery.forced", force),
@@ -146,14 +154,24 @@ func (dispatcher *Dispatcher) publishOne(
 	event, err := dispatcher.store.LoadEvent(publishContext, ref)
 	loadFailed := err != nil
 	if err == nil {
+		telemetry.RecordEventStage(deliveryContext, "load", "succeeded")
 		err = safelyPublish(publishContext, dispatcher.destinations[destinationID], event)
+		if err == nil {
+			telemetry.RecordEventStage(deliveryContext, "publish", "succeeded")
+		} else {
+			telemetry.RecordEventStage(deliveryContext, "publish", "error")
+		}
+	} else {
+		telemetry.RecordEventStage(deliveryContext, "load", "error")
 	}
 	if err == nil {
 		if err := dispatcher.store.MarkEventDelivered(ctx, destinationID, ref, leaseToken); err != nil {
+			telemetry.RecordEventStage(deliveryContext, "mark_delivered", "error")
 			telemetry.RecordEventDelivery(deliveryContext, "failed", "mark_delivery_error", time.Since(started))
 			telemetry.End(span, "mark_delivery_error")
 			return false, true, err
 		}
+		telemetry.RecordEventStage(deliveryContext, "mark_delivered", "succeeded")
 		telemetry.RecordEventDelivery(deliveryContext, "delivered", "", time.Since(started))
 		telemetry.End(span, "")
 		return true, true, nil
@@ -175,10 +193,12 @@ func (dispatcher *Dispatcher) publishOne(
 		errorClass,
 		retryDelay(attempt, ref),
 	); markErr != nil {
+		telemetry.RecordEventStage(deliveryContext, "mark_failed", "error")
 		telemetry.RecordEventDelivery(deliveryContext, "failed", "mark_failure_error", time.Since(started))
 		telemetry.End(span, "mark_failure_error")
 		return false, true, markErr
 	}
+	telemetry.RecordEventStage(deliveryContext, "mark_failed", "succeeded")
 	telemetry.RecordEventDelivery(deliveryContext, "failed", errorClass, time.Since(started))
 	telemetry.End(span, errorClass)
 	return false, true, err

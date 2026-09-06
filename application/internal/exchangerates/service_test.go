@@ -360,6 +360,29 @@ func TestFailuresAndValidation(t *testing.T) {
 	}
 }
 
+func TestProviderOutcomeIsBounded(t *testing.T) {
+	retryAt := time.Now().Add(time.Minute)
+	for _, test := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "rate limited", err: &RateLimitError{RetryAt: retryAt}, want: "rate_limited"},
+		{name: "authentication", err: fmt.Errorf("wrapped: %w", ErrProviderAuthentication), want: "authentication_failed"},
+		{name: "invalid provider response", err: ErrProviderInvalidResponse, want: "invalid_response"},
+		{name: "invalid observation", err: ErrInvalidObservation, want: "invalid_response"},
+		{name: "incomplete response", err: ErrIncompleteResponse, want: "invalid_response"},
+		{name: "unavailable", err: ErrUpstreamUnavailable, want: "unavailable"},
+		{name: "unknown", err: errors.New("provider failed"), want: "unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := providerOutcome(test.err); got != test.want {
+				t.Fatalf("providerOutcome() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMakeBatchesOrdersByKindAndFetchBoundary(t *testing.T) {
 	t.Parallel()
 	day := mustDate(t, "2026-09-04")

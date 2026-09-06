@@ -294,7 +294,7 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 		return err
 	}
 	if blockedUntil.After(service.config.Now()) {
-		telemetry.RecordRateFetch(ctx, "cooldown", "rate_limited", len(units), 0)
+		telemetry.RecordRateFetchSkip(ctx, fetchKindName(units), "rate_limited")
 		delay := blockedUntil.Sub(service.config.Now())
 		if failErr := service.store.Fail(ctx, leaseToken, units, "provider_rate_limited", delay); failErr != nil {
 			return failErr
@@ -327,6 +327,7 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 		}
 		delay := service.config.RetryAfter
 		errorClass := "provider_error"
+		metricOutcome := providerOutcome(fetchErr)
 		var limited *RateLimitError
 		var blockErr error
 		if errors.As(fetchErr, &limited) {
@@ -336,7 +337,7 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 			}
 			blockErr = service.store.BlockProviderUntil(ctx, limited.RetryAt)
 		}
-		telemetry.RecordRateFetch(fetchContext, kind, errorClass, len(batch), time.Since(started))
+		telemetry.RecordRateFetch(fetchContext, kind, metricOutcome, len(batch), time.Since(started))
 		telemetry.End(span, errorClass)
 		if blockErr != nil {
 			return blockErr
@@ -347,6 +348,27 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 		return fetchErr
 	}
 	return nil
+}
+
+func fetchKindName(units []WorkUnit) string {
+	if allLatest(units) {
+		return "latest"
+	}
+	return "range"
+}
+
+func providerOutcome(err error) string {
+	var limited *RateLimitError
+	switch {
+	case errors.As(err, &limited):
+		return "rate_limited"
+	case errors.Is(err, ErrProviderAuthentication):
+		return "authentication_failed"
+	case errors.Is(err, ErrProviderInvalidResponse), errors.Is(err, ErrInvalidObservation), errors.Is(err, ErrIncompleteResponse):
+		return "invalid_response"
+	default:
+		return "unavailable"
+	}
 }
 
 func remainingUnits(batches [][]WorkUnit) []WorkUnit {

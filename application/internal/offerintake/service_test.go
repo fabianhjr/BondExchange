@@ -137,6 +137,37 @@ func TestQuoteSaleOfferPinsFIXRevisionAndRoundsCanonicalMXN(t *testing.T) {
 	}
 }
 
+func TestObservationValidationOutcomesAreBounded(t *testing.T) {
+	today := time.Date(2026, time.September, 6, 0, 0, 0, 0, time.UTC)
+	valid := exchangerates.Observation{
+		RevisionID: "01991a20-0000-7000-8000-000000000010",
+		SeriesID:   FIXSeriesID,
+		Base:       "USD",
+		Quote:      "MXN",
+		Date:       today.AddDate(0, 0, -1),
+		Value:      decimal.NewFromInt(19),
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*exchangerates.Observation)
+		want   string
+	}{
+		{name: "accepted", mutate: func(*exchangerates.Observation) {}, want: "accepted"},
+		{name: "invalid", mutate: func(value *exchangerates.Observation) { value.SeriesID = "SF1" }, want: "invalid"},
+		{name: "stale", mutate: func(value *exchangerates.Observation) { value.Stale = true }, want: "stale"},
+		{name: "future", mutate: func(value *exchangerates.Observation) { value.Date = today.AddDate(0, 0, 1) }, want: "future"},
+		{name: "over age", mutate: func(value *exchangerates.Observation) { value.Date = today.AddDate(0, 0, -8) }, want: "over_age"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			observation := valid
+			test.mutate(&observation)
+			if got := observationValidationOutcome(observation, today, 7*24*time.Hour); got != test.want {
+				t.Fatalf("observationValidationOutcome() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestQuoteSaleOfferFailsClosedWithoutAcceptableRate(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.September, 4, 18, 0, 0, 0, time.UTC)

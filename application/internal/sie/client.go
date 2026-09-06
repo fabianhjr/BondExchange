@@ -28,8 +28,8 @@ const (
 
 var (
 	ErrInvalidConfiguration = errors.New("invalid SIE client configuration")
-	ErrAuthentication       = errors.New("SIE API rejected its configured token")
-	ErrInvalidResponse      = errors.New("SIE API returned an invalid response")
+	ErrAuthentication       = fmt.Errorf("%w: SIE API rejected its configured token", exchangerates.ErrProviderAuthentication)
+	ErrInvalidResponse      = fmt.Errorf("%w: SIE API returned an invalid response", exchangerates.ErrProviderInvalidResponse)
 )
 
 type Config struct {
