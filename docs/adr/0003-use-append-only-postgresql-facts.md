@@ -51,9 +51,14 @@ TLA+ purchases  = purchase facts joined to their immutable sale offers
 ```
 
 [ADR-0026](0026-verify-fact-provenance-and-append-only-history-in-tla.md)
-restates this mapping. The model no longer holds the active book as a variable:
-`publishedOffers` corresponds to `sale_offers`, `purchases` references its
-offer by ID, and `ActiveOffers` is the view corresponding to `active_offers`.
+restates this mapping, and
+[the specification README](../../spec/tla/README.md#refinement-mapping) holds
+the current version. The model no longer keeps the active book as a variable:
+`publishedOffers` corresponds to `sale_offers` joined to its canonical terms,
+`purchases` references its offer by ID, and `ActiveOffers` corresponds to the
+adapter's active-offer read. ADR-0019 later introduced canonical terms, so
+`ActiveOffers` is no longer the `active_offers` view named here; that view keeps
+its pre-canonical shape for rolling deployment and the adapter does not read it.
 
 The abstract buy transition corresponds to atomically inserting one purchase
 fact. It does not require the formal specification to describe tables, SQL,

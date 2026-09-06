@@ -69,6 +69,16 @@ Starting from an empty market removes "any well-formed initial book" from the
 model. That state was never reachable in the service, which begins with an
 empty schema and produces every offer through an operation.
 
+The mapping from model names to database objects is no longer one-to-one, and
+the specification README now states it in full. Two conflations narrow what a
+checked property means and are accepted here rather than left implicit. An
+offer's terms map to `sale_offer_canonical_terms`, so `AllPublishedOffersAreMXN`
+covers the terms that reads and buys use and not every `sale_offers` row, which
+is what F-018 is about. `Users` covers both `principals` and `users`, which have
+no foreign key between them, so the model cannot represent the mismatch behind
+`buyer_not_found` and `seller_not_found`; F-023 tracks stating that
+relationship as an enforced constraint.
+
 ## Alternatives considered
 
 **Keep the active book as a variable and add a consistency invariant.** This

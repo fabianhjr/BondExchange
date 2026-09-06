@@ -252,3 +252,48 @@ accept or do not cover.
   covers contention and revocation together, or an ADR records that the
   separation is sufficient and states why the interaction cannot produce a
   distinct failure.
+
+### F-023 — The model conflates principal and user identity (P2)
+
+- **Evidence:** `bond_exchange.users` and `bond_exchange.principals` are
+  separate tables with no foreign key between them. `sale_offers.seller_uuid`
+  references `users`, while `operation_claims.principal_uuid` references
+  `principals`, and `buyQuery` cross-joins `users` on the principal's UUID. The
+  Go store carries `ErrBuyerNotFound` and `ErrSellerNotFound`, and
+  `safeOperationErrorCode` records them durably, for exactly the case where the
+  two disagree. The TLA+ model has one `Users` set, so no reachable state
+  distinguishes them.
+- **Impact:** Nothing states that an authenticated principal must have the user
+  identity its facts are attributed to, in any artifact. A principal
+  provisioned without a matching user row authenticates and passes
+  authorization, then fails at the mutation with a rejection recorded against
+  its idempotency scope. While F-003 keeps provisioning a direct-SQL activity,
+  that mismatch is created by hand and detected only at first use.
+- **Complete when:** The relationship between a principal and the user its
+  offers and purchases are attributed to is stated as a constraint that the
+  database enforces, and either the model represents both identities or an ADR
+  records that one abstract identity is the intended domain and the schema is
+  changed to match.
+
+### F-024 — The model omits authorization timing, reads, and rejection paths (P2)
+
+- **Evidence:** [`spec/tla/README.md`](spec/tla/README.md) records the
+  boundaries under "What a passing check does not establish". `ClaimBuy`
+  evaluates authorization and appends the claim in one step, so no reachable
+  state separates the two, and `NewClaimsAreAuthorizedWhenClaimed` cannot fail
+  for a check performed before the mutation. Active-offer listing and
+  bond-series discovery require `offers.list` but have no modeled action.
+  `offer_unavailable` is the only rejection the model produces, while the
+  service also records `buyer_not_found`, `seller_not_found`,
+  `bond_not_found`, `offer_already_exists`, and `conversion_quote_unavailable`.
+- **Impact:** [`docs/FMEA.md`](docs/FMEA.md) credits the model as a detection
+  control for FM-004, whose named causes include RBAC evaluated outside the
+  mutation transaction. That cause is currently detected by Go and PostgreSQL
+  tests alone. Revoked or suspended read access, and five of the six durable
+  rejection outcomes, are likewise unverified by TLC.
+- **Complete when:** Authorization is evaluated in a step the model can
+  separate from the claim it authorizes, read operations that require a
+  permission are represented, and every recorded rejection outcome is
+  reachable — or an ADR records which of these belong to the test suite rather
+  than the specification, and the FMEA credits the controls that actually cover
+  them.

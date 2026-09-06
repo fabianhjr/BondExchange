@@ -93,6 +93,16 @@ Checking the authorization instance takes roughly a minute, which is the
 dominant cost of `spec:check`. That is the price of a property about revocation
 that can actually fail.
 
+The model gains revocation semantics but not the timing of an authorization
+check. `ClaimBuy` evaluates permission and appends the claim in one step, which
+matches the service and leaves no reachable state between them, so
+`NewClaimsAreAuthorizedWhenClaimed` cannot fail for a check performed before the
+mutation transaction — a cause FM-004 names. Read operations and five of the six
+recorded rejection outcomes are likewise unrepresented. The specification README
+states these boundaries under "What a passing check does not establish", and
+F-024 tracks closing them or reassigning the credit to the tests that cover
+them.
+
 ## Alternatives considered
 
 **Keep buying atomic and rely on the database tests.** Integration tests and a

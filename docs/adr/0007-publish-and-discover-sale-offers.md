@@ -32,6 +32,11 @@ Add `ListActiveBondSeries`, exposed as `GET /active-bond-series`, to return each
 bond series represented by at least one active offer exactly once and in
 lexicographic order. Derive both reads from the UUID-backed `active_offers` view.
 
+ADR-0019 superseded that last sentence. Both reads now join
+`sale_offer_canonical_terms` directly so that only canonical MXN offers are
+served, and the `active_offers` view keeps its earlier shape for expand-first
+rolling deployment. The read semantics above are otherwise unchanged.
+
 Add `CreateSaleOffer`, exposed as `POST /sale-offers`. A caller supplies the
 bond series, exact decimal price string, and currency code; the
 seller is the authenticated principal and cannot be assigned in the request.
