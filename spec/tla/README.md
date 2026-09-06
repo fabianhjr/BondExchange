@@ -14,12 +14,13 @@ This directory contains a deliberately small marketplace model:
 
 ## Domain
 
-- A user is an element of the finite `Users` set.
+- A principal is an element of the finite `Principals` set. It is the only
+  identity in the model: it authenticates, sells, and buys.
 - A bond is identified by an uppercase alphanumeric series string whose length
   is between 3 and 40 characters, inclusive.
 - A sale offer has a unique ID, a seller, a bond, a positive price, and
   MXN-denominated terms.
-- A purchase fact relates a reserved offer ID to the user who placed the
+- A purchase fact relates a reserved offer ID to the principal who placed the
   binding order. It does not assert settlement or ownership transfer.
 - An operation claim records a principal, client, operation, idempotency key,
   and abstract request digest. An operation result records the outcome of one
@@ -29,7 +30,7 @@ This directory contains a deliberately small marketplace model:
   principal-role grants, the revocations that name individual grants, and the
   suspensions and reinstatements that name individual principals.
 
-Users, offers, operation keys, and purchases are abstract values here. The
+Principals, offers, operation keys, and purchases are abstract values here. The
 implementation's UUIDv7 identity representation, UUIDv4 nonce syntax, and
 PostgreSQL 18 generation mechanics do not change domain behavior and remain
 outside the model.
@@ -77,9 +78,9 @@ mapping is:
 | `inFlightBuys` | a mutation request between claim and commit, not a row |
 | authorization facts | the RBAC grant, revocation, suspension, and reinstatement tables |
 | `EffectivePermissions` | `effective_principal_permissions` |
-| `Users` | `principals` and `users` together — see below |
+| `Principals` | `principals` |
 
-Two conflations are deliberate and both narrow what a checked property means:
+One conflation is deliberate and narrows what a checked property means:
 
 - **Offer terms.** `sale_offers.currency_code` is constrained only to
   `^[A-Z]{3}$`, while `sale_offer_canonical_terms.currency_code` requires MXN.
@@ -95,16 +96,16 @@ Two conflations are deliberate and both narrow what a checked property means:
   expand-first rolling deployment and the current adapter does not read it. The
   model corresponds to the adapter's query, so it says nothing about what the
   compatibility view returns while legacy rows remain.
-- **Identity.** `bond_exchange.users` and `bond_exchange.principals` are
-  separate tables with no foreign key between them: `sale_offers.seller_uuid`
-  references `users`, while `operation_claims.principal_uuid` references
-  `principals`. `Users` is one set, so the model cannot represent an
-  authenticated principal with no user row, which is the state behind
-  `buyer_not_found` and `seller_not_found`. See
-  [F-023](../../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2).
-  `NoSelfPurchases` therefore proves only that the one modeled identity cannot
-  buy its own offer. It does not prove that separate principals have different
-  beneficial owners.
+
+`Principals` is one set and now maps to one table.
+[ADR-0034](../../docs/adr/0034-make-the-principal-the-sole-identity.md) removed
+`bond_exchange.users`, so an identity that sells or buys but cannot
+authenticate is no longer representable in the schema either, and the model is
+not narrower than the implementation on that point. What the single set still
+does not represent is two principals under one beneficial owner:
+`NoSelfPurchases` proves that one identity cannot buy its own offer, not that
+distinct principals are unaffiliated
+([F-002](../../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1)).
 
 ## Behavior
 
@@ -112,7 +113,7 @@ The market starts empty. Every offer, purchase, claim, and result is produced
 by a modeled operation, so every fact has provenance and the specification can
 require that no fact exists without an authorized operation. The initial
 authorization state is the reviewed bootstrap: one trader role carrying both
-mutation permissions, granted to every user.
+mutation permissions, granted to every principal.
 
 `CreateSaleOffer` publishes a new active MXN sale offer atomically. It requires
 authorization, a new idempotency scope, and an ID that has never appeared
@@ -171,7 +172,8 @@ can invoke the modeled core action. `AllPublishedOffersAreMXN` verifies the
 resulting domain invariant without pulling HTTP, provider, or persistence
 mechanics into the model.
 
-The model prohibits a user from buying an offer attributed to that same user.
+The model prohibits a principal from buying an offer attributed to that same
+principal.
 It has no beneficial-owner or affiliated-principal relationship.
 
 There are intentionally no buy offers, matching engine, balances, holdings,
@@ -285,11 +287,13 @@ cannot read the book.
 
 **Rejection paths are largely absent.** `offer_unavailable` is the only
 recorded rejection the model produces. The service also records
-`buyer_not_found`, `seller_not_found`, `bond_not_found`,
-`offer_already_exists`, and `conversion_quote_unavailable` as durable rejected
-results and replays them. Publishing cannot fail in the model, so
-`ResultShapeIsWellFormed` and the provenance properties exercise two rejection
-codes out of seven: `offer_unavailable` and `self_trade_prohibited`.
+`seller_not_found`, `bond_not_found`, `offer_already_exists`, and
+`conversion_quote_unavailable` as durable rejected results and replays them.
+Publishing cannot fail in the model, so `ResultShapeIsWellFormed` and the
+provenance properties exercise two rejection codes out of the six a current
+operation can produce: `offer_unavailable` and `self_trade_prohibited`. A
+seventh, `buyer_not_found`, is replayed but no longer produced; see
+[ADR-0034](../../docs/adr/0034-make-the-principal-the-sole-identity.md).
 
 **Assertion binding is absent.** `operation_claims.assertion_digest` and the
 issuer, audience, `jti`, and audience-binding checks have no counterpart.
@@ -306,8 +310,8 @@ unresolved. The state is not durably reachable, so the two cannot disagree in
 practice, but the model is the more permissive of the two.
 
 `FRICTIONS.md` records the coverage gaps that remain open:
-[F-022](../../FRICTIONS.md#f-022--marketplace-and-authorization-behavior-are-model-checked-separately-p3),
-[F-023](../../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2), and
+[F-022](../../FRICTIONS.md#f-022--marketplace-and-authorization-behavior-are-model-checked-separately-p3)
+and
 [F-024](../../FRICTIONS.md#f-024--the-model-omits-authorization-timing-reads-and-rejection-paths-p2).
 
 ## Verification
@@ -326,7 +330,7 @@ to reach the interesting interleavings:
 
 | Instance | Specification | Purpose |
 | --- | --- | --- |
-| `BondExchange.cfg` | `MarketplaceSpec` | Contention, same-identity self-trade prevention, provenance, append-only history, and idempotent retries under a fixed authorization state. Two users make both self and non-self resolution reachable; two offer identities and two prices make term immutability and identity reuse falsifiable; two request digests reach the conflicting-retry path. |
+| `BondExchange.cfg` | `MarketplaceSpec` | Contention, same-identity self-trade prevention, provenance, append-only history, and idempotent retries under a fixed authorization state. Two principals make both self and non-self resolution reachable; two offer identities and two prices make term immutability and identity reuse falsifiable; two request digests reach the conflicting-retry path. |
 | `BondExchangeAuthorization.cfg` | `AuthorizationSpec` | Grants, revocations, suspensions, and reinstatements interleaved with marketplace operations. Two grant generations let access be revoked and then restored by a new fact. The market is kept minimal. |
 | `BondExchangeLiveness.cfg` | `FairSpec` | Resolution of claimed binding orders under weak fairness. Every dimension is at the minimum that still lets two buyers contend. |
 

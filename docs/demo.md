@@ -30,7 +30,7 @@ to change the respective listener addresses.
 
 The seed provides:
 
-- users `demo-seller`, `demo-buyer`, the dedicated `demo-rate-limited`
+- principals `demo-seller`, `demo-buyer`, the dedicated `demo-rate-limited`
   verification principal, and the `demo-unauthorized` and `demo-suspended`
   principals that make a `403` and a suspension-driven `401` reachable against
   the running server;

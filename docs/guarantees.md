@@ -169,8 +169,8 @@ workflow at all; a correction would require new facts and a decided lifecycle
 
 ### G-005 — Domain facts are append-only; corrections are new facts
 
-**Promise.** Users, bonds, sale offers, purchases, principals, RBAC changes,
-and operation results are inserted and never updated or deleted.
+**Promise.** Principals, bonds, sale offers, purchases, RBAC changes, and
+operation results are inserted and never updated or deleted.
 
 **Even when.** The write is attempted directly in SQL by the application role
 rather than through the API, or by a future migration.
@@ -190,7 +190,7 @@ into its own tables.
 
 **Enforced by.**
 
-- PostgreSQL: `reject_domain_fact_mutation`, `users_are_append_only`, `bonds_are_append_only`, `sale_offers_are_append_only`, `purchases_are_append_only`
+- PostgreSQL: `reject_domain_fact_mutation`, `principals_are_append_only`, `bonds_are_append_only`, `sale_offers_are_append_only`, `purchases_are_append_only`
 - TLA+: `FactsAreAppendOnly`, `AuthorizationFactsAreAppendOnly`
 - Verified by: `spec:check`, `go:test`, `db:migrate`
 
@@ -297,10 +297,10 @@ response message; those field names are reserved in the Proto3 contract so they
 cannot be reintroduced by accident. You cannot publish or buy on behalf of
 another identity, and you cannot learn the counterparty's identifier.
 
-**Not promised.** `principals` and `users` are separate tables with no foreign
-key between them, and the TLA+ model conflates the two, so the model does not
-cover an authenticated principal without a user row
-([F-023](../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2)).
+**Not promised.** The principal is the identity, not the person behind it. Two
+principals under one beneficial owner are indistinguishable from two unrelated
+counterparties, because the service holds no affiliation data
+([F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1)).
 
 **Enforced by.**
 
@@ -369,6 +369,41 @@ query fails the request is refused with `503 Service Unavailable`
 The window boundary comes from `statement_timestamp()` in the database, so all
 instances share one clock. See
 [ADR-0028](adr/0028-coordinate-per-principal-request-rate-limits-in-postgresql.md).
+
+### G-016 — Every seller and buyer is an authenticated principal
+
+**Promise.** The service has one identity table. Every sale offer and every
+purchase is attributed to a principal — an identity that can authenticate —
+and no other kind of identity exists for a fact to be attributed to.
+
+**Even when.** The fact is appended by direct SQL rather than through the API,
+or by a future alternate writer.
+
+**You will see.** No response can carry a seller or buyer that could not have
+authenticated, and no operation can be rejected because the identity that
+authenticated is not the identity its facts are attributed to. That failure
+mode is removed rather than handled.
+
+**Not promised.** The register says nothing about *who* the principal is.
+Provisioning a principal remains a direct-SQL activity with no reviewed
+workflow
+([F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1)),
+and the service holds no data relating distinct principals to a common
+beneficial owner
+([F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1)).
+
+**Enforced by.**
+
+- PostgreSQL: `sale_offers_seller_principal_fkey`, `purchases_buyer_principal_fkey`, `principals_are_append_only`
+- Go: `PrincipalID`, `ResolvePrincipal`, `classifyFailedBuyQuery`
+- TLA+: `OfferSellersMatchOperationPrincipals`, `PurchaseBuyersMatchOperationPrincipals`
+- Verified by: `db:migrate`, `db:principal-contract-readiness`, `go:test`, `spec:check`
+
+The foreign keys were added `NOT VALID` and validated by a separate migration,
+so the retained history was proven to conform rather than assumed to. The
+`bond_exchange.users` table this replaced held no attribute other than its own
+identifier; see
+[ADR-0034](adr/0034-make-the-principal-the-sole-identity.md).
 
 ## Operations
 
@@ -503,7 +538,8 @@ a deliberate scope decision, tracked where it can be acted on.
 | Cancellation, expiry, amendment, or any return of an offer to the active book. | [F-001](../FRICTIONS.md#f-001--buying-stops-at-an-immutable-reservation-p1) |
 | Buy offers, a matching engine, partial fills, balances, holdings, eligibility, price bands, or price/time priority. | [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1), [FM-002](FMEA.md#fm-002--unsupported-market-integrity-behavior) |
 | Detection of affiliated-account, wash, or otherwise manipulative trading. Only same-identity self-trading is prevented. | [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1) |
-| Creation of users or bonds through the API, or any administration of principals, roles, and grants. | [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1) |
+| Creation of principals or bonds through the API, or any administration of principals, roles, and grants. | [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1) |
+| Any relationship between distinct principals: the principal is the identity, not the person behind it. | [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1) |
 | Storage constraints as strict as the Go domain validation for every column. | [F-004](../FRICTIONS.md#f-004--database-constraints-are-looser-than-domain-validation-p1) |
 | Bounded resource use on read APIs, or any server-side operation deadline. | [F-006](../FRICTIONS.md#f-006--read-apis-have-unbounded-resource-use-p1), [F-027](../FRICTIONS.md#f-027--no-operation-has-a-server-side-deadline-p2) |
 | Delivery of integration events. See [G-014](#g-014--integration-event-delivery-is-not-guaranteed). | [F-017](../FRICTIONS.md#f-017--integration-event-recovery-is-manual-and-has-no-destination-p2), [FM-010](FMEA.md#fm-010--committed-event-remains-undelivered) |

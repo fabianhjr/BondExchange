@@ -11,21 +11,15 @@ import (
 func TestIdentifierParsing(t *testing.T) {
 	t.Parallel()
 
-	if user, err := ParseUserID(testUserID); err != nil || user != testUserID {
-		t.Fatalf("ParseUserID() = %q, %v", user, err)
-	}
-	if _, err := ParseUserID(""); !errors.Is(err, ErrInvalidUserID) {
-		t.Fatalf("ParseUserID(empty) error = %v", err)
-	}
 	if offer, err := ParseOfferID(testOfferID); err != nil || offer != testOfferID {
 		t.Fatalf("ParseOfferID() = %q, %v", offer, err)
 	}
 	if _, err := ParseOfferID(""); !errors.Is(err, ErrInvalidOfferID) {
 		t.Fatalf("ParseOfferID(empty) error = %v", err)
 	}
-	for _, invalid := range []string{strings.Repeat("x", 129), "user\nname", "41db1265-8bc1-4ab3-992f-885799a4af1d"} {
-		if _, err := ParseUserID(invalid); !errors.Is(err, ErrInvalidUserID) {
-			t.Fatalf("ParseUserID(%q) error = %v", invalid, err)
+	for _, invalid := range []string{strings.Repeat("x", 129), "offer\nname", "41db1265-8bc1-4ab3-992f-885799a4af1d"} {
+		if _, err := ParseOfferID(invalid); !errors.Is(err, ErrInvalidOfferID) {
+			t.Fatalf("ParseOfferID(%q) error = %v", invalid, err)
 		}
 	}
 }

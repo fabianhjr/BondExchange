@@ -7,7 +7,7 @@ EXTENDS BondExchangeProperties
 (* The market starts empty and every offer, purchase, claim, and result is *)
 (* produced by a modeled operation, so every fact has provenance. The      *)
 (* initial authorization state is the reviewed bootstrap: one trader role  *)
-(* carrying both mutation permissions, granted to every user.              *)
+(* carrying both mutation permissions, granted to every principal.         *)
 (***************************************************************************)
 
 InitialRolePermissionGrants ==
@@ -15,8 +15,8 @@ InitialRolePermissionGrants ==
      permission \in Permissions}
 
 InitialPrincipalRoleGrants ==
-  {[principal |-> user, role |-> TraderRole, generation |-> 1] :
-     user \in Users}
+  {[principal |-> holder, role |-> TraderRole, generation |-> 1] :
+     holder \in Principals}
 
 Init ==
   /\ publishedOffers           = {}
@@ -32,13 +32,13 @@ Init ==
   /\ reinstatements            = {}
 
 PublishNext ==
-  \E seller \in Users, client \in Clients, key \in IdempotencyKeys,
+  \E seller \in Principals, client \in Clients, key \in IdempotencyKeys,
      requestDigest \in RequestDigests, bond \in Bonds,
      offerId \in SaleOfferIds, price \in Prices :
        CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price)
 
 BuyNext ==
-  \/ \E buyer \in Users, client \in Clients, key \in IdempotencyKeys,
+  \/ \E buyer \in Principals, client \in Clients, key \in IdempotencyKeys,
         requestDigest \in RequestDigests, offerId \in SaleOfferIds :
           ClaimBuy(buyer, client, key, requestDigest, offerId)
   \/ \E pending \in inFlightBuys : CommitBuy(pending)
@@ -55,10 +55,10 @@ AuthorizationNext ==
   \/ \E role \in Roles, permission \in Permissions, generation \in Generations :
        GrantRolePermission(role, permission, generation)
   \/ \E grant \in rolePermissionGrants : RevokeRolePermission(grant)
-  \/ \E principal \in Users, role \in Roles, generation \in Generations :
+  \/ \E principal \in Principals, role \in Roles, generation \in Generations :
        GrantPrincipalRole(principal, role, generation)
   \/ \E grant \in principalRoleGrants : RevokePrincipalRole(grant)
-  \/ \E principal \in Users, generation \in Generations :
+  \/ \E principal \in Principals, generation \in Generations :
        SuspendPrincipal(principal, generation)
   \/ \E suspension \in suspensions : ReinstatePrincipal(suspension)
 

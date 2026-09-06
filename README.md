@@ -68,8 +68,8 @@ at the top level.
 
 - **Servers are stateless.** Multiple instances serve requests concurrently and
   share PostgreSQL as the concurrency and durable-idempotency authority.
-- **Domain facts are append-only.** Users, bonds, sale offers, binding orders,
-  principals, RBAC changes, and operation results are inserted, never mutated.
+- **Domain facts are append-only.** Principals, bonds, sale offers, binding
+  orders, RBAC changes, and operation results are inserted, never mutated.
   A unique purchase constraint on the offer UUID guarantees one winner per
   offer race ([ADR-0003](docs/adr/0003-use-append-only-postgresql-facts.md)).
 - **PostgreSQL generates identity.** Every table has a database-generated UUIDv7
@@ -113,8 +113,8 @@ The [guarantee register](docs/guarantees.md) restates these as promises — each
 with the adverse condition it survives, what a caller observes, where it stops,
 and the named constraints, properties, and tasks that back it.
 
-The API deliberately has no method for creating users or bonds yet. Those facts
-must be provisioned separately before publishing or buying sale offers.
+The API deliberately has no method for creating principals or bonds yet. Those
+facts must be provisioned separately before publishing or buying sale offers.
 
 ## Verification
 

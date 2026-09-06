@@ -73,14 +73,18 @@ model. That state was never reachable in the service, which begins with an
 empty schema and produces every offer through an operation.
 
 The mapping from model names to database objects is no longer one-to-one, and
-the specification README now states it in full. Two conflations narrow what a
-checked property means and are accepted here rather than left implicit. An
+the specification README now states it in full. One conflation narrows what a
+checked property means and is accepted here rather than left implicit. An
 offer's terms map to `sale_offer_canonical_terms`, so `AllPublishedOffersAreMXN`
 covers the terms that reads and buys use and not every `sale_offers` row, which
-is what F-018 is about. `Users` covers both `principals` and `users`, which have
-no foreign key between them, so the model cannot represent the mismatch behind
-`buyer_not_found` and `seller_not_found`; F-023 tracks stating that
-relationship as an enforced constraint.
+is what F-018 is about.
+
+This decision originally recorded a second conflation: the model's identity set
+covered both `principals` and `users`, so it could not represent the mismatch
+behind `buyer_not_found` and `seller_not_found`.
+[ADR-0034](0034-make-the-principal-the-sole-identity.md) removed `users`, so
+the set — now named `Principals` — maps to one table and that mismatch is no
+longer representable in the schema either.
 
 ## Alternatives considered
 

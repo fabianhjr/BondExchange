@@ -238,22 +238,25 @@ production-readiness decision.
   There is still no supported provisioning path and no pre-insert detection for
   privileged SQL, and the model constrains the application's own writers rather
   than an alternate one.
-  No constraint relates a principal to the user its facts are attributed to, so
-  provisioning can create a principal that authenticates and passes
-  authorization but cannot own an offer or a purchase.
-- **Action:** Define and test a supported administration workflow, decide
+  Provisioning a principal that authenticates and passes authorization but
+  cannot own an offer or a purchase is no longer representable:
+  [ADR-0034](adr/0034-make-the-principal-the-sole-identity.md) made the
+  principal the sole identity, and validated foreign keys attribute every sale
+  offer and purchase to it.
+- **Action:** Define and test a supported administration workflow, and decide
   whether the monetary representation should reject rather than round an
-  over-precise price, and state the principal-to-user relationship as an
-  enforced constraint. Occurrence drops from 6 to 4 and detection from 8 to 6 on
+  over-precise price. Occurrence drops from 6 to 4 and detection from 8 to 6 on
   the implemented constraints and the equivalence test; severity is unchanged
   because a nonconforming fact remains permanent.
 - **Traceability:** [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1),
   [F-004](../FRICTIONS.md#f-004--database-constraints-are-looser-than-domain-validation-p1),
-  [F-023](../FRICTIONS.md#f-023--the-model-conflates-principal-and-user-identity-p2),
   [ADR-0023](adr/0023-align-storage-constraints-with-domain-validation.md),
-  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md), and the
+  [ADR-0030](adr/0030-prevent-same-identity-self-trading.md),
+  [ADR-0034](adr/0034-make-the-principal-the-sole-identity.md), and the
   writer-independent controls behind
-  [G-005](guarantees.md#g-005--domain-facts-are-append-only-corrections-are-new-facts).
+  [G-005](guarantees.md#g-005--domain-facts-are-append-only-corrections-are-new-facts)
+  and
+  [G-016](guarantees.md#g-016--every-seller-and-buyer-is-an-authenticated-principal).
 
 ### FM-006 — Storage or query exhaustion from retained history
 

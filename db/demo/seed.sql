@@ -1,13 +1,5 @@
 \set ON_ERROR_STOP on
 
-INSERT INTO bond_exchange.users (uuid_id)
-VALUES
-  ('01991a20-0000-7000-8000-000000000001'),
-  ('01991a20-0000-7000-8000-000000000002'),
-  ('01991a20-0000-7000-8000-000000000003'),
-  ('01991a20-0000-7000-8000-000000000004'),
-  ('01991a20-0000-7000-8000-000000000005');
-
 -- `demo-unauthorized` and `demo-suspended` exist so the authorization and
 -- suspension branches of `effective_principal_permissions` are reachable from
 -- the running server, not only from the PostgreSQL integration tests. They

@@ -42,9 +42,16 @@ those entries report.
   The model still intentionally has no balances, holdings, eligibility,
   beneficial-owner relationships, partial fills, matching engine, price bands,
   or price/time priority.
+  [ADR-0034](docs/adr/0034-make-the-principal-the-sole-identity.md) makes the
+  principal the sole identity, so `principals` is now the only identity a rule
+  could group: there is no owner table, and expressing one legal person behind
+  several principals would require a new many-to-one relationship and
+  authoritative affiliation data the service does not have.
 - **Impact:** Same-identity self-trading is controlled, but affiliated-account,
   unfunded, economically invalid, or manipulative activity can still look like
   a valid reservation because the remaining applicable rules are undecided.
+  Two principals under one beneficial owner remain indistinguishable from two
+  unrelated counterparties in every artifact.
 - **Complete when:** Product policy identifies which rules belong in this
   service, architecture decisions record the boundary, and every adopted
   domain rule is synchronized across Go, PostgreSQL, TLA+, and documentation.
@@ -53,7 +60,7 @@ those entries report.
 
 ### F-003 — Provisioning and security administration require direct SQL (P1)
 
-- **Evidence:** [`README.md`](README.md) says users and bonds must be
+- **Evidence:** [`README.md`](README.md) says principals and bonds must be
   provisioned separately. Principals, suspensions, role grants, and revocations
   likewise have schema but no supported command or API. The `rbac.read`,
   `rbac.grant`, `rbac.revoke`, and `audit.read` permissions are seeded but no
@@ -350,31 +357,6 @@ those entries report.
   separation is sufficient and states why the interaction cannot produce a
   distinct failure.
 
-### F-023 — The model conflates principal and user identity (P2)
-
-- **Evidence:** `bond_exchange.users` and `bond_exchange.principals` are
-  separate tables with no foreign key between them. `sale_offers.seller_uuid`
-  references `users`, while `operation_claims.principal_uuid` references
-  `principals`, and `buyQuery` cross-joins `users` on the principal's UUID. The
-  Go store carries `ErrBuyerNotFound` and `ErrSellerNotFound`, and
-  `safeOperationErrorCode` records them durably, for exactly the case where the
-  two disagree. Same-identity self-trade prevention also compares these UUIDs.
-  The TLA+ model has one `Users` set, so no reachable state distinguishes them
-  or represents two principals under one beneficial owner.
-- **Impact:** Nothing states that an authenticated principal must have the user
-  identity its facts are attributed to, in any artifact. A principal
-  provisioned without a matching user row authenticates and passes
-  authorization, then fails at the mutation with a rejection recorded against
-  its idempotency scope. While F-003 keeps provisioning a direct-SQL activity,
-  that mismatch is created by hand and detected only at first use. The
-  self-trade control is correspondingly limited to identities whose UUIDs are
-  equal; it cannot establish or compare beneficial ownership.
-- **Complete when:** The relationship between a principal and the user its
-  offers and purchases are attributed to is stated as a constraint that the
-  database enforces, and either the model represents both identities or an ADR
-  records that one abstract identity is the intended domain and the schema is
-  changed to match.
-
 ### F-024 — The model omits authorization timing, reads, and rejection paths (P2)
 
 - **Evidence:** [`spec/tla/README.md`](spec/tla/README.md) records the
@@ -384,13 +366,14 @@ those entries report.
   for a check performed before the mutation. Active-offer listing and
   bond-series discovery require `offers.list` but have no modeled action.
   `offer_unavailable` and `self_trade_prohibited` are the two rejections the
-  model produces, while the service also records `buyer_not_found`, `seller_not_found`,
+  model produces, while the service also records `seller_not_found`,
   `bond_not_found`, `offer_already_exists`, and `conversion_quote_unavailable`.
 - **Impact:** [`docs/FMEA.md`](docs/FMEA.md) credits the model as a detection
   control for FM-004, whose named causes include RBAC evaluated outside the
   mutation transaction. That cause is currently detected by Go and PostgreSQL
-  tests alone. Revoked or suspended read access, and five of the seven durable
-  rejection outcomes, are likewise unverified by TLC.
+  tests alone. Revoked or suspended read access, and four of the six durable
+  rejection outcomes a current operation can produce, are likewise unverified
+  by TLC.
 - **Complete when:** Authorization is evaluated in a step the model can
   separate from the claim it authorizes, read operations that require a
   permission are represented, and every recorded rejection outcome is

@@ -36,7 +36,7 @@ func ParseQuoteID(value string) (QuoteID, error) {
 
 type Quote struct {
 	ID             QuoteID
-	SellerID       exchange.UserID
+	SellerID       exchange.PrincipalID
 	BondSeries     exchange.BondSeries
 	SubmittedPrice decimal.Decimal
 	MXNPrice       decimal.Decimal

@@ -1,12 +1,13 @@
 # Database
 
 PostgreSQL is the durable record and the concurrency authority. Domain facts
-are append-only: users, bonds, sale offers, purchases, principals, RBAC changes,
-and operation results are inserted and never updated or deleted. A small,
-clearly separated set of tables holds mutable operational coordination instead.
+are append-only: principals, bonds, sale offers, purchases, RBAC changes, and
+operation results are inserted and never updated or deleted. A small, clearly
+separated set of tables holds mutable operational coordination instead.
 
 - [Schema history](#schema-history)
 - [Identity and keys](#identity-and-keys)
+- [One identity table](#one-identity-table)
 - [Monetary amounts](#monetary-amounts)
 - [Marketplace facts](#marketplace-facts)
 - [Canonical MXN terms and provenance](#canonical-mxn-terms-and-provenance)
@@ -44,6 +45,9 @@ one is missing from this table.
 | 20260905010000 | [`validate_currency_codes.sql`](migrations/20260905010000_validate_currency_codes.sql) | Validation of that constraint against retained history. |
 | 20260905020000 | [`add_principal_rate_limits.sql`](migrations/20260905020000_add_principal_rate_limits.sql) | Shared authenticated request admission. |
 | 20260906000000 | [`prevent_self_trading.sql`](migrations/20260906000000_prevent_self_trading.sql) | Same-identity self-trade prevention. |
+| 20260906010000 | [`expand_principal_identity.sql`](migrations/20260906010000_expand_principal_identity.sql) | Principal-referencing marketplace keys, added `NOT VALID` (expand). |
+| 20260906020000 | [`validate_principal_identity.sql`](migrations/20260906020000_validate_principal_identity.sql) | Validation of those keys against retained history. |
+| 20260906030000 | [`contract_user_identity.sql`](migrations/20260906030000_contract_user_identity.sql) | Removal of the separate user identity table (contract). |
 | 20260906120000 | [`retire_legacy_identifier_archive.sql`](migrations/20260906120000_retire_legacy_identifier_archive.sql) | Accepted retirement of expired pre-UUID identifier evidence. |
 
 ## Identity and keys
@@ -63,6 +67,36 @@ The migration history copied non-derivable values into an append-only archive
 before contraction. ADR-0033 records that the accepted retention period later
 elapsed, and the current schema removes that archive with recovery available
 only from a verified pre-retirement backup.
+
+## One identity table
+
+`bond_exchange.principals` is the only identity. It generates its own UUIDv7,
+and `sale_offers.seller_uuid` and `purchases.buyer_uuid` reference it directly,
+so every domain fact is attributed to an identity that can authenticate.
+
+The schema previously had a second table, `bond_exchange.users`. After the UUID
+contraction it held one column — its own `uuid_id` — and `principals.uuid_id`
+was both that table's primary key and a foreign key to it, so the relationship
+was one-to-one and a principal could not exist without a user row. The only
+state it could represent was an allocated identity that can never authenticate,
+sell, or buy.
+[ADR-0034](../docs/adr/0034-make-the-principal-the-sole-identity.md) removes it
+in three migrations: an expand that adds the principal-referencing keys
+`NOT VALID` and gives `principals.uuid_id` its own default, a validation that
+proves the retained history conforms, and a contract that drops the
+user-referencing keys and the table.
+
+An identity allocated in `users` that no principal covers is the only value the
+table holds that dropping it would discard, so the contract migration refuses
+rather than discarding it. `users` is append-only, so the lossless resolution is
+to append the missing principal fact and link the identity; the migration does
+not do that on the operator's behalf.
+
+Expressing beneficial ownership — one legal person behind several principals —
+is a separate concern that this shape never supported, because a primary key
+that is also the foreign key cannot be many-to-one. It remains tracked by
+[F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1) and
+would be added as a nullable owner column on `principals`.
 
 ## Monetary amounts
 
@@ -135,7 +169,8 @@ observed query plans.
 The API creates sale offers, canonical terms, and submission provenance in one
 statement with `INSERT ... RETURNING`; PostgreSQL generates the UUIDv7 resource
 identity. Clients do not supply an ID. UUID foreign keys require the
-authenticated seller and bond series to have been provisioned already.
+authenticated seller's principal and the bond series to have been provisioned
+already.
 Idempotency, rather than a caller-selected resource key, serializes exact
 retries.
 
@@ -159,9 +194,10 @@ disposition legacy non-MXN rows without mutation.
 
 ## Authentication and authorization
 
-Federated identities are linked to internal users by the unique
-`(issuer, subject)` pair in `principals`; the API never accepts that user ID as
-operation input. `client_class` distinguishes human and automated principals.
+A federated identity is resolved to a principal by the unique
+`(issuer, subject)` pair in `principals`; the API never accepts the principal's
+UUID as operation input. `client_class` distinguishes human and automated
+principals.
 
 Roles and permissions have append-only grant and revocation tables, and
 `effective_principal_permissions` derives current access while excluding revoked
@@ -336,8 +372,29 @@ canonical terms, and any still-active legacy offer without seller-accepted MXN
 terms. It is part of `dev:ci`, so its behavior is exercised locally and in
 continuous integration against a disposable migrated database.
 
-Database checks cannot prove reader retirement. Release evidence must also show
-that sanctioned canonical-MXN compatibility-view readers are drained.
+Before contracting the separate user identity table against an existing
+database, run:
+
+```console
+DATABASE_URL=... devenv tasks run db:principal-contract-readiness
+```
+
+That gate refuses any sale offer or purchase attributed to an identity that is
+not a principal, refuses any allocated identity that no principal covers,
+requires `principals.uuid_id` to generate its own identity, and — while
+`bond_exchange.users` still exists — requires both principal-referencing foreign
+keys to be present and validated. It is part of `dev:ci` and runs in both the
+pre-contraction and post-contraction states.
+
+The contract migration must not be applied while any writer still names
+`bond_exchange.users`. The previously deployed application named it in its buy
+query, so applying the contraction first breaks those instances at their next
+purchase.
+
+Database checks cannot prove reader or writer retirement. Release evidence must
+also show that sanctioned canonical-MXN compatibility-view readers are drained
+and that every binary and direct-SQL writer naming `bond_exchange.users` is
+retired with its credentials revoked.
 
 ## Disposable lifecycles and the demo seed
 

@@ -435,8 +435,7 @@ func transportError(err error) error {
 		return withRetry.Err()
 	case errors.Is(err, ratelimit.ErrUnavailable):
 		return status.Error(codes.Unavailable, "request admission unavailable")
-	case errors.Is(err, exchange.ErrInvalidUserID),
-		errors.Is(err, exchange.ErrInvalidOfferID),
+	case errors.Is(err, exchange.ErrInvalidOfferID),
 		errors.Is(err, exchange.ErrInvalidBondSeries),
 		errors.Is(err, exchange.ErrInvalidPrice),
 		errors.Is(err, exchange.ErrInvalidCurrencyCode),

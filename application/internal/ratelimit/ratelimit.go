@@ -25,7 +25,7 @@ func (err *ExceededError) Error() string { return ErrExceeded.Error() }
 func (err *ExceededError) Unwrap() error { return ErrExceeded }
 
 type Limiter interface {
-	AdmitRequest(ctx context.Context, principalID exchange.UserID) error
+	AdmitRequest(ctx context.Context, principalID exchange.PrincipalID) error
 }
 
 func RetryAfter(err error) (time.Duration, bool) {

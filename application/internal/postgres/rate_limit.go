@@ -38,7 +38,7 @@ SELECT
     )))
   )::bigint`
 
-func (store *Store) AdmitRequest(ctx context.Context, principalID exchange.UserID) error {
+func (store *Store) AdmitRequest(ctx context.Context, principalID exchange.PrincipalID) error {
 	var (
 		admitted     bool
 		retrySeconds int64

@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	testSellerID   = exchange.UserID("01991a20-0000-7000-8000-000000000001")
+	testSellerID   = exchange.PrincipalID("01991a20-0000-7000-8000-000000000001")
 	testQuoteID    = QuoteID("01991a20-0000-7000-8000-000000000099")
 	testOfferID    = exchange.OfferID("01991a20-0000-7000-8000-000000000101")
 	testPurchaseID = exchange.PurchaseID("01991a20-0000-7000-8000-000000000201")

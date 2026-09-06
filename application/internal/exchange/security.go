@@ -43,7 +43,7 @@ const (
 )
 
 type Principal struct {
-	ID          UserID
+	ID          PrincipalID
 	Issuer      string
 	Subject     string
 	ClientID    string

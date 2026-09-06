@@ -267,6 +267,12 @@ let
     text = builtins.readFile ./nix/canonical-mxn-readiness.sh;
   };
 
+  principalContractReadiness = pkgs.writeShellApplication {
+    name = "bond-exchange-principal-contract-readiness";
+    runtimeInputs = [ pkgs.postgresql_18 ];
+    text = builtins.readFile ./nix/principal-contract-readiness.sh;
+  };
+
   observabilityCheck = pkgs.writeShellApplication {
     name = "bond-exchange-observability-check";
     runtimeInputs = [
@@ -305,6 +311,7 @@ in
     integrationCheck
     integrationLoad
     canonicalMxnReadiness
+    principalContractReadiness
     observabilityCheck
   ];
 
@@ -333,6 +340,12 @@ in
   tasks."db:canonical-mxn-readiness" = {
     description = "Verify every active offer has consistent accepted MXN terms";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${canonicalMxnReadiness}/bin/bond-exchange-canonical-mxn-readiness";
+    after = [ "db:migrate" ];
+  };
+
+  tasks."db:principal-contract-readiness" = {
+    description = "Verify every seller and buyer is a principal before contracting the user table";
+    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${principalContractReadiness}/bin/bond-exchange-principal-contract-readiness";
     after = [ "db:migrate" ];
   };
 
@@ -521,6 +534,7 @@ in
       "api:check"
       "db:canonical-mxn-readiness"
       "db:migrate"
+      "db:principal-contract-readiness"
       "demo:smoke"
       "dev:check"
       "dev:smoke"
