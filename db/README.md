@@ -105,7 +105,10 @@ and cancellation are not represented and remain pending.
 The unique `sale_offer_uuid` constraint gives concurrent inserts for the same
 offer one winner even when they come from different server instances. The losing
 requests are reported as an unavailable offer, while the original offer row
-remains as history.
+remains as history. That constraint, the self-trade trigger below, and the
+append-only triggers are cited as evidence by the
+[guarantee register](../docs/guarantees.md), which states the promises they
+back and what those promises exclude.
 
 The `purchases_reject_self_trade` trigger compares each new purchase's buyer to
 the referenced offer's seller and raises the named

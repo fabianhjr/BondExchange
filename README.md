@@ -5,8 +5,10 @@ publish and buy sale offers; the service does not publish buy offers.
 
 `Buy` records a binding reservation. Settlement, payment, custody, and ownership
 transfer are not implemented. This is a reviewable demo of a domain, not a
-production trading venue — see the [friction register](FRICTIONS.md) and the
-[failure mode and effects analysis](docs/FMEA.md) for what that excludes.
+production trading venue. The [guarantee register](docs/guarantees.md) states
+what the service does promise and how each promise is verified; the [friction
+register](FRICTIONS.md) and the [failure mode and effects
+analysis](docs/FMEA.md) state what it excludes.
 
 ## Quick start
 
@@ -51,6 +53,7 @@ the seeded data and an authenticated request.
 | Understand USD-to-MXN conversion | [`docs/exchange-rates.md`](docs/exchange-rates.md) |
 | Configure traces, metrics, and logs | [`docs/observability.md`](docs/observability.md) |
 | Run or extend the HTTP tests | [`tests/integration/README.md`](tests/integration/README.md) |
+| Know what the service guarantees | [`docs/guarantees.md`](docs/guarantees.md) |
 | Know why something is the way it is | [`docs/adr/README.md`](docs/adr/README.md) |
 | Know what is missing or risky | [`FRICTIONS.md`](FRICTIONS.md), [`docs/FMEA.md`](docs/FMEA.md) |
 | Report a vulnerability | [`SECURITY.md`](SECURITY.md) |
@@ -106,6 +109,10 @@ at the top level.
   boundaries, exporting over OTLP only when standard `OTEL_*` configuration
   enables a signal ([ADR-0025](docs/adr/0025-own-application-opentelemetry-instrumentation.md)).
 
+The [guarantee register](docs/guarantees.md) restates these as promises — each
+with the adverse condition it survives, what a caller observes, where it stops,
+and the named constraints, properties, and tasks that back it.
+
 The API deliberately has no method for creating users or bonds yet. Those facts
 must be provisioned separately before publishing or buying sale offers.
 
@@ -116,7 +123,7 @@ must be provisioned separately before publishing or buying sale offers.
 | Task | Proves |
 | --- | --- |
 | `api:check` | Proto3 lints and the generated Go, Swagger, and descriptor artifacts are current. |
-| `docs:check` | Documentation links, anchors, indexes, and register identifiers resolve. |
+| `docs:check` | Documentation links, anchors, indexes, register identifiers, and guarantee citations resolve. |
 | `spec:check` | Every TLC instance model-checks and every action is reachable. |
 | `db:migrate` | The full migration history applies to a fresh database. |
 | `db:uuid-contract-history` | Pre-UUID values were archived losslessly. |
@@ -142,8 +149,13 @@ each instance checks.
 
 `docs:check` also requires each migration to appear in the database README and
 each architecture decision record to appear in its index, and rejects a
-reference to a friction or failure-mode identifier that its register does not
-define. `security:check` verifies the ASVS profile against the pinned
+reference to a friction, failure-mode, or guarantee identifier that its register
+does not define. It further resolves every constraint, trigger, Go identifier,
+Proto3 declaration, TLA+ property, and task name that the
+[guarantee register](docs/guarantees.md) cites as evidence, so a guarantee
+cannot outlive what enforces it
+([ADR-0032](docs/adr/0032-publish-a-verified-guarantee-register.md)).
+`security:check` verifies the ASVS profile against the pinned
 `third_party/asvs` source rather than a contributor-local copy.
 
 Coverage and mutation efficacy both measure `application/internal/`; the thin
