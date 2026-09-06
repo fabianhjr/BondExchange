@@ -40,24 +40,34 @@ WHERE claim.principal_uuid = $1
 		operation.IdempotencyKey,
 	).Scan(&resourceID, &requestDigest)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return offerintake.Quote{}, false, tx.Commit(ctx)
+		commitErr := tx.Commit(ctx)
+		if commitErr != nil {
+			telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "storage_error")
+		}
+		return offerintake.Quote{}, false, commitErr
 	}
 	if err != nil {
+		telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "storage_error")
 		return offerintake.Quote{}, false, err
 	}
 	if len(requestDigest) != sha256.Size || !equalDigest(requestDigest, operation.RequestDigest) {
+		telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "conflict")
 		return offerintake.Quote{}, false, exchange.ErrIdempotencyConflict
 	}
 	if resourceID == nil {
+		telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "storage_error")
 		return offerintake.Quote{}, false, errors.New("successful quote operation has no resource")
 	}
 	quote, err := scanConversionQuote(tx.QueryRow(ctx, conversionQuoteByIDQuery, *resourceID))
 	if err != nil {
+		telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "storage_error")
 		return offerintake.Quote{}, false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
+		telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "storage_error")
 		return offerintake.Quote{}, false, err
 	}
+	telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "replayed")
 	return quote, true, nil
 }
 
@@ -83,7 +93,7 @@ func (store *Store) CreateConversionQuote(
 	operation exchange.MutationContext,
 	draft offerintake.QuoteDraft,
 ) (offerintake.Quote, error) {
-	return retryTransaction(ctx, func() (offerintake.Quote, error) {
+	return retryTransaction(ctx, exchange.OperationQuoteSaleOffer, func() (offerintake.Quote, error) {
 		tx, err := store.beginAuthorizedMutation(ctx, operation, exchange.PermissionQuoteSaleOffer)
 		if err != nil {
 			return offerintake.Quote{}, err
@@ -94,7 +104,6 @@ func (store *Store) CreateConversionQuote(
 			return offerintake.Quote{}, err
 		}
 		if !claimed {
-			telemetry.RecordIdempotency(ctx, exchange.OperationQuoteSaleOffer, "replayed")
 			if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 				return offerintake.Quote{}, err
 			}
@@ -163,7 +172,7 @@ func (store *Store) CreateSaleOfferFromSubmission(
 	operation exchange.MutationContext,
 	submission offerintake.Submission,
 ) (exchange.SaleOffer, error) {
-	return retryTransaction(ctx, func() (exchange.SaleOffer, error) {
+	return retryTransaction(ctx, exchange.OperationCreateSaleOffer, func() (exchange.SaleOffer, error) {
 		tx, err := store.beginAuthorizedMutation(ctx, operation, exchange.PermissionCreateSaleOffer)
 		if err != nil {
 			return exchange.SaleOffer{}, err
@@ -174,7 +183,6 @@ func (store *Store) CreateSaleOfferFromSubmission(
 			return exchange.SaleOffer{}, err
 		}
 		if !claimed {
-			telemetry.RecordIdempotency(ctx, exchange.OperationCreateSaleOffer, "replayed")
 			if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 				return exchange.SaleOffer{}, err
 			}

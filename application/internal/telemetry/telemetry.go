@@ -39,22 +39,30 @@ type recorder struct {
 	tracer              trace.Tracer
 	operations          metric.Int64Counter
 	operationDuration   metric.Float64Histogram
-	rateFetches         metric.Int64Counter
+	authentications     metric.Int64Counter
+	authDuration        metric.Float64Histogram
+	rateFetchAttempts   metric.Int64Counter
+	rateFetchWorkUnits  metric.Int64Counter
+	rateFetchSkips      metric.Int64Counter
 	rateFetchDuration   metric.Float64Histogram
 	rateCacheResults    metric.Int64Counter
 	observationAge      metric.Float64Histogram
+	observationResults  metric.Int64Counter
 	eventDeliveries     metric.Int64Counter
 	eventDuration       metric.Float64Histogram
+	eventStages         metric.Int64Counter
 	eventPublisherCount metric.Int64Gauge
 	databaseRetries     metric.Int64Counter
 	idempotencyResults  metric.Int64Counter
 	rateLimitDecisions  metric.Int64Counter
+	rateLimitDuration   metric.Float64Histogram
 	streamedOfferCount  metric.Int64Histogram
 }
 
 type operationState struct {
-	started time.Time
-	span    trace.Span
+	started   time.Time
+	span      trace.Span
+	completed atomic.Bool
 }
 
 type operationStateKey struct{}
@@ -290,24 +298,34 @@ func mustInstrument[T any](instrument T, err error) T {
 func newRecorder(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider) *recorder {
 	meter := meterProvider.Meter(scopeName)
 	operations := mustInstrument(meter.Int64Counter("bondexchange.operation.count", metric.WithDescription("Completed application operations"), metric.WithUnit("{operation}")))
-	operationDuration := mustInstrument(meter.Float64Histogram("bondexchange.operation.duration", metric.WithDescription("Application operation duration"), metric.WithUnit("s")))
-	rateFetches := mustInstrument(meter.Int64Counter("bondexchange.rate.fetch.count", metric.WithDescription("Exchange-rate provider fetches"), metric.WithUnit("{fetch}")))
-	rateFetchDuration := mustInstrument(meter.Float64Histogram("bondexchange.rate.fetch.duration", metric.WithDescription("Exchange-rate provider fetch duration"), metric.WithUnit("s")))
+	operationDuration := mustInstrument(meter.Float64Histogram("bondexchange.operation.duration", metric.WithDescription("Application operation duration"), metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 10)))
+	authentications := mustInstrument(meter.Int64Counter("bondexchange.authentication.count", metric.WithDescription("Federated operation authentication results"), metric.WithUnit("{authentication}")))
+	authDuration := mustInstrument(meter.Float64Histogram("bondexchange.authentication.duration", metric.WithDescription("Federated operation authentication duration"), metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5)))
+	rateFetchAttempts := mustInstrument(meter.Int64Counter("bondexchange.rate.fetch.attempt.count", metric.WithDescription("Exchange-rate provider requests"), metric.WithUnit("{attempt}")))
+	rateFetchWorkUnits := mustInstrument(meter.Int64Counter("bondexchange.rate.fetch.work_unit.count", metric.WithDescription("Exchange-rate work units included in provider requests"), metric.WithUnit("{work_unit}")))
+	rateFetchSkips := mustInstrument(meter.Int64Counter("bondexchange.rate.fetch.skip.count", metric.WithDescription("Exchange-rate provider requests skipped before transport"), metric.WithUnit("{skip}")))
+	rateFetchDuration := mustInstrument(meter.Float64Histogram("bondexchange.rate.fetch.duration", metric.WithDescription("Exchange-rate provider request duration"), metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 10)))
 	rateCacheResults := mustInstrument(meter.Int64Counter("bondexchange.rate.cache.result", metric.WithDescription("Exchange-rate cache resolution outcomes"), metric.WithUnit("{result}")))
-	observationAge := mustInstrument(meter.Float64Histogram("bondexchange.rate.observation.age", metric.WithDescription("Age of an exchange-rate observation used by intake"), metric.WithUnit("s")))
+	observationAge := mustInstrument(meter.Float64Histogram("bondexchange.rate.observation.age", metric.WithDescription("Age of an exchange-rate observation accepted by intake"), metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(0, 3600, 21600, 43200, 86400, 172800, 259200, 345600, 432000, 518400, 604800)))
+	observationResults := mustInstrument(meter.Int64Counter("bondexchange.rate.observation.validation.count", metric.WithDescription("Exchange-rate observation validation results"), metric.WithUnit("{validation}")))
 	eventDeliveries := mustInstrument(meter.Int64Counter("bondexchange.event.delivery.count", metric.WithDescription("Integration-event delivery attempts"), metric.WithUnit("{attempt}")))
-	eventDuration := mustInstrument(meter.Float64Histogram("bondexchange.event.delivery.duration", metric.WithDescription("Integration-event delivery attempt duration"), metric.WithUnit("s")))
+	eventDuration := mustInstrument(meter.Float64Histogram("bondexchange.event.delivery.duration", metric.WithDescription("Integration-event delivery attempt duration"), metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 10)))
+	eventStages := mustInstrument(meter.Int64Counter("bondexchange.event.stage.count", metric.WithDescription("Integration-event processing stage results"), metric.WithUnit("{result}")))
 	eventPublisherCount := mustInstrument(meter.Int64Gauge("bondexchange.event.publisher.configured", metric.WithDescription("Configured integration-event publishers"), metric.WithUnit("{publisher}")))
 	databaseRetries := mustInstrument(meter.Int64Counter("bondexchange.database.transaction.retry", metric.WithDescription("Retryable PostgreSQL transaction failures"), metric.WithUnit("{retry}")))
 	idempotencyResults := mustInstrument(meter.Int64Counter("bondexchange.idempotency.result", metric.WithDescription("Durable mutation idempotency outcomes"), metric.WithUnit("{result}")))
 	rateLimitDecisions := mustInstrument(meter.Int64Counter("bondexchange.request.rate_limit.count", metric.WithDescription("Authenticated request rate-limit decisions"), metric.WithUnit("{decision}")))
-	streamedOfferCount := mustInstrument(meter.Int64Histogram("bondexchange.stream.offer.count", metric.WithDescription("Offers written by a completed active-offer stream"), metric.WithUnit("{offer}")))
+	rateLimitDuration := mustInstrument(meter.Float64Histogram("bondexchange.request.rate_limit.duration", metric.WithDescription("Authenticated request admission duration"), metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5)))
+	streamedOfferCount := mustInstrument(meter.Int64Histogram("bondexchange.stream.offer.count", metric.WithDescription("Offers written by a completed active-offer stream"), metric.WithUnit("{offer}"), metric.WithExplicitBucketBoundaries(0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000)))
 	return &recorder{
 		tracer: tracerProvider.Tracer(scopeName), operations: operations, operationDuration: operationDuration,
-		rateFetches: rateFetches, rateFetchDuration: rateFetchDuration, rateCacheResults: rateCacheResults,
-		observationAge: observationAge, eventDeliveries: eventDeliveries, eventDuration: eventDuration, eventPublisherCount: eventPublisherCount,
+		authentications: authentications, authDuration: authDuration,
+		rateFetchAttempts: rateFetchAttempts, rateFetchWorkUnits: rateFetchWorkUnits, rateFetchSkips: rateFetchSkips,
+		rateFetchDuration: rateFetchDuration, rateCacheResults: rateCacheResults,
+		observationAge: observationAge, observationResults: observationResults,
+		eventDeliveries: eventDeliveries, eventDuration: eventDuration, eventStages: eventStages, eventPublisherCount: eventPublisherCount,
 		databaseRetries: databaseRetries, idempotencyResults: idempotencyResults,
-		rateLimitDecisions: rateLimitDecisions, streamedOfferCount: streamedOfferCount,
+		rateLimitDecisions: rateLimitDecisions, rateLimitDuration: rateLimitDuration, streamedOfferCount: streamedOfferCount,
 	}
 }
 
@@ -329,13 +347,17 @@ func End(span trace.Span, errorClass string) {
 
 func BeginOperation(ctx context.Context, operation string) context.Context {
 	ctx, span := Start(ctx, "bondexchange.operation "+operation, attribute.String("bondexchange.operation", operation))
-	return context.WithValue(ctx, operationStateKey{}, operationState{started: time.Now(), span: span})
+	return context.WithValue(ctx, operationStateKey{}, &operationState{started: time.Now(), span: span})
 }
 
 func CompleteOperation(ctx context.Context, operation string, outcome string, errorCode string, streamedOffers int64) {
-	state, found := ctx.Value(operationStateKey{}).(operationState)
+	state, found := ctx.Value(operationStateKey{}).(*operationState)
 	elapsed := time.Duration(0)
-	if found {
+	if !found {
+		RecordOperation(ctx, operation, outcome, errorCode, elapsed, streamedOffers)
+		return
+	}
+	if state.completed.CompareAndSwap(false, true) {
 		elapsed = time.Since(state.started)
 		state.span.SetAttributes(attribute.String("outcome", outcome))
 		if errorCode != "" {
@@ -345,8 +367,21 @@ func CompleteOperation(ctx context.Context, operation string, outcome string, er
 			state.span.SetStatus(codes.Error, errorCode)
 		}
 		state.span.End()
+		RecordOperation(ctx, operation, outcome, errorCode, elapsed, streamedOffers)
 	}
-	RecordOperation(ctx, operation, outcome, errorCode, elapsed, streamedOffers)
+}
+
+func CompleteOperationOnPanic(ctx context.Context, operation string, streamedOffers func() int64) {
+	recovered := recover()
+	if recovered == nil {
+		return
+	}
+	count := int64(-1)
+	if streamedOffers != nil {
+		count = streamedOffers()
+	}
+	CompleteOperation(ctx, operation, "failed", "Internal", count)
+	panic(recovered)
 }
 
 func RecordOperation(ctx context.Context, operation string, outcome string, errorCode string, elapsed time.Duration, streamedOffers int64) {
@@ -366,14 +401,38 @@ func RecordOperation(ctx context.Context, operation string, outcome string, erro
 	}
 }
 
+func RecordAuthentication(ctx context.Context, operation string, outcome string, stage string, elapsed time.Duration) {
+	current := active.Load()
+	if current == nil {
+		return
+	}
+	options := metric.WithAttributes(
+		attribute.String("bondexchange.operation", operation),
+		attribute.String("outcome", outcome),
+		attribute.String("stage", stage),
+	)
+	current.authentications.Add(ctx, 1, options)
+	current.authDuration.Record(ctx, elapsed.Seconds(), options)
+}
+
 func RecordRateFetch(ctx context.Context, kind string, outcome string, units int, elapsed time.Duration) {
 	current := active.Load()
 	if current == nil {
 		return
 	}
 	options := metric.WithAttributes(attribute.String("fetch.kind", kind), attribute.String("outcome", outcome))
-	current.rateFetches.Add(ctx, int64(units), options)
+	current.rateFetchAttempts.Add(ctx, 1, options)
+	current.rateFetchWorkUnits.Add(ctx, int64(units), options)
 	current.rateFetchDuration.Record(ctx, elapsed.Seconds(), options)
+}
+
+func RecordRateFetchSkip(ctx context.Context, kind string, outcome string) {
+	if current := active.Load(); current != nil {
+		current.rateFetchSkips.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("fetch.kind", kind),
+			attribute.String("outcome", outcome),
+		))
+	}
 }
 
 func RecordRateCache(ctx context.Context, outcome string) {
@@ -385,6 +444,12 @@ func RecordRateCache(ctx context.Context, outcome string) {
 func RecordObservationAge(ctx context.Context, age time.Duration) {
 	if current := active.Load(); current != nil {
 		current.observationAge.Record(ctx, age.Seconds())
+	}
+}
+
+func RecordObservationValidation(ctx context.Context, outcome string) {
+	if current := active.Load(); current != nil {
+		current.observationResults.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
 	}
 }
 
@@ -402,15 +467,27 @@ func RecordEventDelivery(ctx context.Context, outcome string, errorClass string,
 	current.eventDuration.Record(ctx, elapsed.Seconds(), options)
 }
 
+func RecordEventStage(ctx context.Context, stage string, outcome string) {
+	if current := active.Load(); current != nil {
+		current.eventStages.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("stage", stage),
+			attribute.String("outcome", outcome),
+		))
+	}
+}
+
 func RecordEventPublisherCount(ctx context.Context, count int) {
 	if current := active.Load(); current != nil {
 		current.eventPublisherCount.Record(ctx, int64(count))
 	}
 }
 
-func RecordDatabaseRetry(ctx context.Context, operation string) {
+func RecordDatabaseRetry(ctx context.Context, operation string, reason string) {
 	if current := active.Load(); current != nil {
-		current.databaseRetries.Add(ctx, 1, metric.WithAttributes(attribute.String("db.operation.name", operation)))
+		current.databaseRetries.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("bondexchange.operation", operation),
+			attribute.String("reason", reason),
+		))
 	}
 }
 
@@ -423,12 +500,14 @@ func RecordIdempotency(ctx context.Context, operation string, outcome string) {
 	}
 }
 
-func RecordRateLimit(ctx context.Context, operation string, outcome string) {
+func RecordRateLimit(ctx context.Context, operation string, outcome string, elapsed time.Duration) {
 	if current := active.Load(); current != nil {
-		current.rateLimitDecisions.Add(ctx, 1, metric.WithAttributes(
+		options := metric.WithAttributes(
 			attribute.String("bondexchange.operation", operation),
 			attribute.String("outcome", outcome),
-		))
+		)
+		current.rateLimitDecisions.Add(ctx, 1, options)
+		current.rateLimitDuration.Record(ctx, elapsed.Seconds(), options)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -46,14 +47,18 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 	CompleteOperation(ctx, "purchases.buy", "rejected", "Unavailable", -1)
 	_, failedSpan := Start(context.Background(), "dependency.call", attribute.String("bounded", "value"))
 	End(failedSpan, "dependency_error")
+	RecordAuthentication(ctx, "purchases.buy", "succeeded", "complete", 10*time.Millisecond)
 	RecordRateFetch(ctx, "latest", "succeeded", 2, 25*time.Millisecond)
+	RecordRateFetchSkip(ctx, "latest", "rate_limited")
 	RecordRateCache(ctx, "hit")
 	RecordObservationAge(ctx, 24*time.Hour)
+	RecordObservationValidation(ctx, "accepted")
 	RecordEventDelivery(ctx, "failed", "publisher_timeout", time.Second)
+	RecordEventStage(ctx, "publish", "error")
 	RecordEventPublisherCount(ctx, 2)
-	RecordDatabaseRetry(ctx, "transaction")
+	RecordDatabaseRetry(ctx, "purchases.buy", "serialization_failure")
 	RecordIdempotency(ctx, "purchases.buy", "replayed")
-	RecordRateLimit(ctx, "purchases.buy", "rejected")
+	RecordRateLimit(ctx, "purchases.buy", "rejected", 5*time.Millisecond)
 
 	ended := spanRecorder.Ended()
 	if len(ended) != 3 {
@@ -79,19 +84,94 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
+		"bondexchange.authentication.count",
+		"bondexchange.authentication.duration",
 		"bondexchange.database.transaction.retry",
 		"bondexchange.event.delivery.count",
 		"bondexchange.event.delivery.duration",
 		"bondexchange.event.publisher.configured",
+		"bondexchange.event.stage.count",
 		"bondexchange.idempotency.result",
 		"bondexchange.operation.count",
 		"bondexchange.operation.duration",
 		"bondexchange.rate.cache.result",
-		"bondexchange.rate.fetch.count",
+		"bondexchange.rate.fetch.attempt.count",
 		"bondexchange.rate.fetch.duration",
+		"bondexchange.rate.fetch.skip.count",
+		"bondexchange.rate.fetch.work_unit.count",
 		"bondexchange.rate.observation.age",
+		"bondexchange.rate.observation.validation.count",
 		"bondexchange.request.rate_limit.count",
+		"bondexchange.request.rate_limit.duration",
 		"bondexchange.stream.offer.count",
+	}
+	type metadata struct {
+		description string
+		unit        string
+	}
+	wantMetadata := map[string]metadata{
+		"bondexchange.authentication.count":              {"Federated operation authentication results", "{authentication}"},
+		"bondexchange.authentication.duration":           {"Federated operation authentication duration", "s"},
+		"bondexchange.database.transaction.retry":        {"Retryable PostgreSQL transaction failures", "{retry}"},
+		"bondexchange.event.delivery.count":              {"Integration-event delivery attempts", "{attempt}"},
+		"bondexchange.event.delivery.duration":           {"Integration-event delivery attempt duration", "s"},
+		"bondexchange.event.publisher.configured":        {"Configured integration-event publishers", "{publisher}"},
+		"bondexchange.event.stage.count":                 {"Integration-event processing stage results", "{result}"},
+		"bondexchange.idempotency.result":                {"Durable mutation idempotency outcomes", "{result}"},
+		"bondexchange.operation.count":                   {"Completed application operations", "{operation}"},
+		"bondexchange.operation.duration":                {"Application operation duration", "s"},
+		"bondexchange.rate.cache.result":                 {"Exchange-rate cache resolution outcomes", "{result}"},
+		"bondexchange.rate.fetch.attempt.count":          {"Exchange-rate provider requests", "{attempt}"},
+		"bondexchange.rate.fetch.duration":               {"Exchange-rate provider request duration", "s"},
+		"bondexchange.rate.fetch.skip.count":             {"Exchange-rate provider requests skipped before transport", "{skip}"},
+		"bondexchange.rate.fetch.work_unit.count":        {"Exchange-rate work units included in provider requests", "{work_unit}"},
+		"bondexchange.rate.observation.age":              {"Age of an exchange-rate observation accepted by intake", "s"},
+		"bondexchange.rate.observation.validation.count": {"Exchange-rate observation validation results", "{validation}"},
+		"bondexchange.request.rate_limit.count":          {"Authenticated request rate-limit decisions", "{decision}"},
+		"bondexchange.request.rate_limit.duration":       {"Authenticated request admission duration", "s"},
+		"bondexchange.stream.offer.count":                {"Offers written by a completed active-offer stream", "{offer}"},
+	}
+	durationBounds := []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 10}
+	shortDurationBounds := []float64{0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5}
+	wantBounds := map[string][]float64{
+		"bondexchange.authentication.duration":     shortDurationBounds,
+		"bondexchange.operation.duration":          durationBounds,
+		"bondexchange.rate.fetch.duration":         durationBounds,
+		"bondexchange.rate.observation.age":        {0, 3600, 21600, 43200, 86400, 172800, 259200, 345600, 432000, 518400, 604800},
+		"bondexchange.event.delivery.duration":     durationBounds,
+		"bondexchange.request.rate_limit.duration": shortDurationBounds,
+		"bondexchange.stream.offer.count":          {0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000},
+	}
+	wantSums := map[string]int64{
+		"bondexchange.authentication.count":              1,
+		"bondexchange.database.transaction.retry":        1,
+		"bondexchange.event.delivery.count":              1,
+		"bondexchange.event.stage.count":                 1,
+		"bondexchange.idempotency.result":                1,
+		"bondexchange.operation.count":                   2,
+		"bondexchange.rate.cache.result":                 1,
+		"bondexchange.rate.fetch.attempt.count":          1,
+		"bondexchange.rate.fetch.skip.count":             1,
+		"bondexchange.rate.fetch.work_unit.count":        2,
+		"bondexchange.rate.observation.validation.count": 1,
+		"bondexchange.request.rate_limit.count":          1,
+	}
+	wantHistogramCount := map[string]uint64{
+		"bondexchange.authentication.duration":     1,
+		"bondexchange.operation.duration":          2,
+		"bondexchange.rate.fetch.duration":         1,
+		"bondexchange.rate.observation.age":        1,
+		"bondexchange.event.delivery.duration":     1,
+		"bondexchange.request.rate_limit.duration": 1,
+		"bondexchange.stream.offer.count":          1,
+	}
+	wantHistogramSum := map[string]float64{
+		"bondexchange.authentication.duration":     0.01,
+		"bondexchange.rate.fetch.duration":         0.025,
+		"bondexchange.rate.observation.age":        86400,
+		"bondexchange.event.delivery.duration":     1,
+		"bondexchange.request.rate_limit.duration": 0.005,
+		"bondexchange.stream.offer.count":          3,
 	}
 	var got []string
 	allowedAttribute := map[attribute.Key]bool{
@@ -99,7 +179,8 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 		"outcome":                true,
 		"error.type":             true,
 		"fetch.kind":             true,
-		"db.operation.name":      true,
+		"stage":                  true,
+		"reason":                 true,
 	}
 	assertBounded := func(set attribute.Set) {
 		t.Helper()
@@ -115,22 +196,58 @@ func TestRecorderEmitsBoundedSpansAndMetrics(t *testing.T) {
 	for _, scope := range collected.ScopeMetrics {
 		for _, item := range scope.Metrics {
 			got = append(got, item.Name)
+			if metadata := wantMetadata[item.Name]; item.Description != metadata.description || item.Unit != metadata.unit {
+				t.Fatalf("metric %s metadata = %q %q, want %q %q", item.Name, item.Description, item.Unit, metadata.description, metadata.unit)
+			}
 			switch data := item.Data.(type) {
 			case metricdata.Sum[int64]:
+				var sum int64
 				for _, point := range data.DataPoints {
 					assertBounded(point.Attributes)
+					sum += point.Value
+				}
+				if sum != wantSums[item.Name] {
+					t.Fatalf("metric %s sum = %d, want %d", item.Name, sum, wantSums[item.Name])
 				}
 			case metricdata.Histogram[int64]:
+				var count uint64
+				var sum int64
 				for _, point := range data.DataPoints {
 					assertBounded(point.Attributes)
+					if !slices.Equal(point.Bounds, wantBounds[item.Name]) {
+						t.Fatalf("metric %s bounds = %v, want %v", item.Name, point.Bounds, wantBounds[item.Name])
+					}
+					count += point.Count
+					sum += point.Sum
+				}
+				if count != wantHistogramCount[item.Name] || math.Abs(float64(sum)-wantHistogramSum[item.Name]) > 1e-9 {
+					t.Fatalf("metric %s count/sum = %d/%d", item.Name, count, sum)
 				}
 			case metricdata.Histogram[float64]:
+				var count uint64
+				var sum float64
 				for _, point := range data.DataPoints {
 					assertBounded(point.Attributes)
+					if !slices.Equal(point.Bounds, wantBounds[item.Name]) {
+						t.Fatalf("metric %s bounds = %v, want %v", item.Name, point.Bounds, wantBounds[item.Name])
+					}
+					count += point.Count
+					sum += point.Sum
+				}
+				if count != wantHistogramCount[item.Name] {
+					t.Fatalf("metric %s count = %d, want %d", item.Name, count, wantHistogramCount[item.Name])
+				}
+				if expected, exists := wantHistogramSum[item.Name]; exists && math.Abs(sum-expected) > 1e-9 {
+					t.Fatalf("metric %s sum = %f, want %f", item.Name, sum, expected)
 				}
 			case metricdata.Gauge[int64]:
+				var values []int64
 				for _, point := range data.DataPoints {
 					assertBounded(point.Attributes)
+					values = append(values, point.Value)
+				}
+				if !slices.Equal(values, []int64{2}) {
+					t.Fatalf("metric %s values = %v, want [2]", item.Name, values)
 				}
 			default:
 				t.Fatalf("unexpected metric aggregation %T", item.Data)
@@ -151,12 +268,74 @@ func TestNoRecorderIsANoopAndOperationWithoutStateStillRecords(t *testing.T) {
 	CompleteOperation(ctx, "health.read", "succeeded", "", -1)
 	RecordOperation(ctx, "health.read", "succeeded", "", 0, -1)
 	RecordRateFetch(ctx, "latest", "succeeded", 1, 0)
+	RecordRateFetchSkip(ctx, "latest", "rate_limited")
 	RecordRateCache(ctx, "hit")
 	RecordObservationAge(ctx, 0)
+	RecordObservationValidation(ctx, "accepted")
 	RecordEventDelivery(ctx, "delivered", "", 0)
+	RecordEventStage(ctx, "publish", "succeeded")
 	RecordEventPublisherCount(ctx, 0)
-	RecordDatabaseRetry(ctx, "transaction")
+	RecordDatabaseRetry(ctx, "purchases.buy", "deadlock")
 	RecordIdempotency(ctx, "purchases.buy", "replayed")
+	RecordAuthentication(ctx, "purchases.buy", "succeeded", "complete", 0)
+	RecordRateLimit(ctx, "purchases.buy", "allowed", 0)
+}
+
+func TestOperationPanicCompletesExactlyOnce(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	created := newRecorder(tracerProvider, meterProvider)
+	previous := active.Swap(created)
+	t.Cleanup(func() {
+		active.Store(previous)
+		_ = tracerProvider.Shutdown(context.Background())
+		_ = meterProvider.Shutdown(context.Background())
+	})
+
+	ctx := BeginOperation(context.Background(), "offers.list")
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		defer CompleteOperationOnPanic(ctx, "offers.list", func() int64 { return 2 })
+		panic("operation panic")
+	}()
+	if recovered != "operation panic" {
+		t.Fatalf("recovered panic = %#v", recovered)
+	}
+	CompleteOperation(ctx, "offers.list", "succeeded", "", 3)
+
+	ended := spanRecorder.Ended()
+	if len(ended) != 1 || ended[0].Status().Code != codes.Error {
+		t.Fatalf("panic spans = %#v", ended)
+	}
+	var collected metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range collected.ScopeMetrics {
+		for _, item := range scope.Metrics {
+			switch item.Name {
+			case "bondexchange.operation.count":
+				data, ok := item.Data.(metricdata.Sum[int64])
+				if !ok {
+					t.Fatalf("panic operation aggregation = %T", item.Data)
+				}
+				if len(data.DataPoints) != 1 || data.DataPoints[0].Value != 1 {
+					t.Fatalf("panic operation count = %#v", data.DataPoints)
+				}
+			case "bondexchange.stream.offer.count":
+				data, ok := item.Data.(metricdata.Histogram[int64])
+				if !ok {
+					t.Fatalf("panic stream aggregation = %T", item.Data)
+				}
+				if len(data.DataPoints) != 1 || data.DataPoints[0].Count != 1 || data.DataPoints[0].Sum != 2 {
+					t.Fatalf("panic stream count = %#v", data.DataPoints)
+				}
+			}
+		}
+	}
 }
 
 func TestCorrelatingHandlerAddsOnlyTraceMetadata(t *testing.T) {

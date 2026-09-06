@@ -96,9 +96,9 @@ func (service *Service) QuoteSaleOffer(
 	observation := observations[0]
 	now := service.config.Now().UTC()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	if observation.SeriesID != FIXSeriesID || observation.Base != string(USD) || observation.Quote != string(exchange.MXN) ||
-		!observation.Value.IsPositive() || observation.Stale || observation.RevisionID == "" || observation.Date.IsZero() ||
-		observation.Date.After(today) || today.Sub(observation.Date) > service.config.MaxObservationAge {
+	validation := observationValidationOutcome(observation, today, service.config.MaxObservationAge)
+	telemetry.RecordObservationValidation(ctx, validation)
+	if validation != "accepted" {
 		return Quote{}, ErrExchangeRateUnavailable
 	}
 	telemetry.RecordObservationAge(ctx, today.Sub(observation.Date))
@@ -114,6 +114,26 @@ func (service *Service) QuoteSaleOffer(
 		RateObservedOn: observation.Date,
 		ExpiresAt:      now.Add(service.config.QuoteTTL),
 	})
+}
+
+func observationValidationOutcome(observation exchangerates.Observation, today time.Time, maximumAge time.Duration) string {
+	switch {
+	case observation.SeriesID != FIXSeriesID,
+		observation.Base != string(USD),
+		observation.Quote != string(exchange.MXN),
+		!observation.Value.IsPositive(),
+		observation.RevisionID == "",
+		observation.Date.IsZero():
+		return "invalid"
+	case observation.Stale:
+		return "stale"
+	case observation.Date.After(today):
+		return "future"
+	case today.Sub(observation.Date) > maximumAge:
+		return "over_age"
+	default:
+		return "accepted"
+	}
 }
 
 func (service *Service) CreateSaleOffer(

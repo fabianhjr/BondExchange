@@ -4,7 +4,7 @@ This system-level failure mode and effects analysis (FMEA) covers the Bond
 Exchange domain, API, authentication, request admission and authorization, PostgreSQL persistence,
 integration-event delivery, Banxico SIE ingestion, runtime and telemetry
 composition, and verification workflow. It evaluates the repository as
-implemented on 2026-09-05. It does not assert that the disposable demo is
+implemented on 2026-09-06. It does not assert that the disposable demo is
 production-ready or that deployment-owned controls exist.
 
 The FMEA is a prioritization aid, not a quantitative prediction, security
@@ -159,8 +159,10 @@ production-readiness decision.
   boundary. The full-server REST journey also retries a buy with a freshly
   signed assertion and verifies identity minimization; structured security logs
   record safe decision metadata and correlate it with application-owned REST,
-  gRPC, authentication, and database spans. Bounded operation metrics exclude
-  audit and request identifiers. In the TLA+ model, authorization is a view over
+  gRPC, authentication, and database spans. Bounded operation, authentication,
+  and idempotency-decision metrics exclude audit and request identifiers and
+  distinguish claim, replay, conflict, and storage-error paths. In the TLA+
+  model, authorization is a view over
   append-only grant, revocation, suspension, and reinstatement facts rather than
   a constant set, so `NewClaimsAreAuthorizedWhenClaimed` requires a revocation
   to take effect on the next claim, `EffectivePermissionsMatchAuthorizationFacts`
@@ -266,8 +268,9 @@ production-readiness decision.
   not guarantee fair or complete service. A
   generated REST workload records latency, errors, and status distributions for
   populated offer books, but has no production threshold. Standard HTTP/gRPC
-  metrics, pgx pool metrics, and a bounded emitted-offer histogram expose
-  request and stream pressure when OTLP is configured.
+  metrics with bounded routes, pgx pool metrics, policy-aligned latency
+  histograms, and a bounded emitted-offer histogram expose request and stream
+  pressure when OTLP is configured.
   `TestStreamActiveOffersReleasesConnectionsOnEveryExit` proves that a stream
   releases its connection, snapshot, and rows on normal completion, on an
   abandoning reader, and on mid-stream cancellation, repeating each exit past
@@ -354,8 +357,10 @@ production-readiness decision.
   minimal reference with the successful operation result. Per-destination
   delivery state, leases, error classes, and an authenticated manual recovery
   operation support bounded retries. Metrics expose that zero publishers are
-  configured and classify claimed attempts, but no current destination or
-  continuously monitored shared backlog detects an undelivered event.
+  configured and classify scan, claim, load, publish, delivery-state, and
+  claimed-attempt outcomes, including failures before a claim, but no current
+  destination or continuously monitored shared backlog detects an undelivered
+  event.
 - **Action:** Deploy a reviewed destination and authenticated transport,
   backlog monitoring, payload approval, recovery ownership and runbook, and
   tested retry behavior; alternatively accept database-only retention in an
@@ -376,8 +381,8 @@ production-readiness decision.
   deduplication key, independently of its source reference. UUIDv4 delivery
   leases prevent concurrent
   intentional sends, but cannot resolve an ambiguous external acknowledgement.
-  Delivery spans and bounded outcome/error-class metrics are ready for a future
-  publisher but have no consumer-side evidence.
+  Delivery spans and bounded stage/outcome/error-class metrics are ready for a
+  future publisher but have no consumer-side evidence.
 - **Action:** Make idempotent consumer handling by event UUID an
   acceptance criterion for every destination; exercise acknowledgement-loss
   and replay tests and monitor duplicate outcomes before enabling it.
@@ -402,9 +407,11 @@ production-readiness decision.
   seven days, and persists the rate and resulting quote before acceptance.
   Strict SIE parsing, exact decimal persistence, focused rejection tests, the
   full-server USD journey, and immutable provenance make the selected inputs
-  detectable after the fact. Rate cache/fetch outcomes, provider latency, and
-  accepted observation age are now emitted without financial terms or dynamic
-  identifiers. A later correction does not mutate an accepted quote.
+  detectable after the fact. Separate provider-request and work-unit metrics,
+  provider latency and safe outcome classes, cache/skip outcomes, bounded
+  observation-validation results, and accepted observation age are emitted
+  without financial terms or dynamic identifiers. A later correction does not
+  mutate an accepted quote.
 - **Action:** Before production, assign rate-policy ownership, confirm the
   seven-day ceiling against bank holidays and applicable trading rules, alert
   on stale/over-age rejection and corrections affecting unexpired quotes, and
@@ -559,8 +566,9 @@ production-readiness decision.
 - **Current controls and detection:** The quote endpoint returns a specific
   unavailable status and never creates an offer without an accepted rate.
   Provider leases, stale fallback metadata, cooldowns, timeouts, durable cache,
-  and exact quote replay bound upstream work. Rate fetch/cache outcome metrics,
-  provider spans, and accepted-observation age improve diagnosis when exported.
+  and exact quote replay bound upstream work. Rate request, work-unit, skip,
+  cache, safe provider-outcome, and observation-validation metrics plus provider
+  spans and accepted-observation age improve diagnosis when exported.
   The dependency is composed only
   into intake, so the core has no rate call on create-MXN, list, or buy paths.
 - **Action:** Define an availability objective and alerts for quote rejection,
@@ -655,10 +663,12 @@ production-readiness decision.
   missing alert and retention ownership.
 - **Current controls and detection:** The application owns one native OTLP
   pipeline with bounded queues and shutdown flush, uses stable route and metric
-  dimensions, keeps Banxico outside the propagation domain, and logs safe
+  dimensions plus unit-appropriate histogram boundaries, keeps Banxico outside
+  the propagation domain, and logs safe
   exporter error types without failing business traffic. Deterministic tests
-  inspect spans, metric labels, log correlation, OTLP/HTTP export, secret
-  exclusion, and both REST and gRPC propagation. Devenv pins and validates a
+  inspect spans, metric metadata, values, boundaries and labels, recovered-panic
+  completion, log correlation, OTLP/HTTP export, secret exclusion, and both
+  REST and gRPC propagation and metric dimensions. Devenv pins and validates a
   loopback collector. There is no protected production backend, collector
   self-alert, delivery SLO, clock evidence, or tested retention and access
   policy, so scores are not reduced.
@@ -693,8 +703,10 @@ production-readiness decision.
   attempts through separate pools and require exactly 100 admissions, prove
   independent principals and next-window reset, and transport tests verify
   application work is skipped plus gRPC/REST retry contracts. A bounded
-  decision metric and protected security log expose rejection and error
-  outcomes, but no production backend, threshold, or contention SLO exists.
+  decision counter, admission-duration histogram, and protected security log
+  expose rejection, error, and coordination-latency outcomes, but no production
+  backend, threshold, representative contention measurement, or contention SLO
+  exists.
 - **Action:** Measure admission-query and row-lock latency under representative
   multi-principal and hot-principal workloads; alert on coordination errors,
   unexpected rejection rates, pool saturation, and lock waits; retain

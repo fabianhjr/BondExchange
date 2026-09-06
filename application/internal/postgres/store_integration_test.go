@@ -1138,13 +1138,13 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 	}
 	canceledContext, cancelRetry := context.WithCancel(context.Background())
 	cancelRetry()
-	if _, err := retryTransaction(canceledContext, func() (string, error) {
+	if _, err := retryTransaction(canceledContext, exchange.OperationBuy, func() (string, error) {
 		return "", &pgconn.PgError{Code: "40001"}
 	}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled retryTransaction() error = %v", err)
 	}
 	attempts := 0
-	value, err := retryTransaction(context.Background(), func() (string, error) {
+	value, err := retryTransaction(context.Background(), exchange.OperationBuy, func() (string, error) {
 		attempts++
 		if attempts == 1 {
 			return "", &pgconn.PgError{Code: "40001"}
@@ -1155,7 +1155,7 @@ func TestOperationErrorMappingsAndCanceledRetry(t *testing.T) {
 		t.Fatalf("retryTransaction() = %q, %v after %d attempts", value, err, attempts)
 	}
 	attempts = 0
-	_, err = retryTransaction(context.Background(), func() (string, error) {
+	_, err = retryTransaction(context.Background(), exchange.OperationBuy, func() (string, error) {
 		attempts++
 		return "", &pgconn.PgError{Code: "40001"}
 	})

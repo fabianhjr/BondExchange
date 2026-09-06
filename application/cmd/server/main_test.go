@@ -8,6 +8,8 @@ import (
 	bondexchangev1 "github.com/fabianhjr/BondExchange/application/gen/go/bondexchange/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -28,9 +30,19 @@ func (healthServer) CheckHealth(context.Context, *bondexchangev1.CheckHealthRequ
 func TestGRPCServerCreatesPropagatedServerSpan(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	previousTracer := otel.GetTracerProvider()
+	previousMeter := otel.GetMeterProvider()
 	otel.SetTracerProvider(provider)
+	otel.SetMeterProvider(meterProvider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousTracer)
+		otel.SetMeterProvider(previousMeter)
+		_ = provider.Shutdown(context.Background())
+		_ = meterProvider.Shutdown(context.Background())
+	})
 
 	listener := bufconn.Listen(1024 * 1024)
 	server := newGRPCServer(healthServer{})
@@ -52,13 +64,43 @@ func TestGRPCServerCreatesPropagatedServerSpan(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	serverSpanFound := false
 	for _, span := range spanRecorder.Ended() {
 		if span.SpanKind() == trace.SpanKindServer {
 			if span.SpanContext().TraceID().String() != "01000000000000000000000000000000" {
 				t.Fatalf("gRPC trace ID = %s", span.SpanContext().TraceID())
 			}
-			return
+			serverSpanFound = true
 		}
 	}
-	t.Fatal("gRPC server span was not recorded")
+	if !serverSpanFound {
+		t.Fatal("gRPC server span was not recorded")
+	}
+	var collected metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatal(err)
+	}
+	metricFound := false
+	for _, scope := range collected.ScopeMetrics {
+		for _, item := range scope.Metrics {
+			if item.Name != "rpc.server.call.duration" {
+				continue
+			}
+			histogram, ok := item.Data.(metricdata.Histogram[float64])
+			if !ok || len(histogram.DataPoints) != 1 || histogram.DataPoints[0].Count != 1 {
+				t.Fatalf("gRPC duration metric = %#v", item.Data)
+			}
+			attributes := histogram.DataPoints[0].Attributes
+			method, methodFound := attributes.Value("rpc.method")
+			statusCode, statusFound := attributes.Value("rpc.response.status_code")
+			if !methodFound || method.AsString() != "bondexchange.v1.BondExchangeService/CheckHealth" ||
+				!statusFound || statusCode.AsString() != "OK" {
+				t.Fatalf("gRPC duration attributes = %v", attributes.ToSlice())
+			}
+			metricFound = true
+		}
+	}
+	if !metricFound {
+		t.Fatal("gRPC server duration metric was not recorded")
+	}
 }

@@ -32,7 +32,10 @@ REST and the outbound Banxico client, `otelgrpc` for the native gRPC server, and
 `otelpgx` for pgx queries and pool statistics. The Banxico transport creates a
 child span but uses an empty propagator because that public provider is outside
 the service trace trust domain. Application helpers add bounded operation,
-stream, rate-cache, event-delivery, idempotency, and transaction-retry signals.
+authentication, admission, stream, rate-cache/provider/observation,
+event-delivery/stage, idempotency, and transaction-retry signals.
+[ADR-0029](0029-use-policy-aligned-operational-metrics.md) defines their
+operational taxonomy and histogram policy.
 The pure exchange domain remains independent of OpenTelemetry.
 
 Continue writing structured JSON logs to stdout. A handler adds trace ID, span

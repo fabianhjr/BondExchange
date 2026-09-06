@@ -15,12 +15,14 @@ const MaxSeriesPerRequest = 20
 var seriesIDPattern = regexp.MustCompile(`^[A-Z]{2}[0-9]{1,20}$`)
 
 var (
-	ErrInvalidSeries       = errors.New("exchange-rate series must have a canonical Banxico identifier and distinct ISO currency codes")
-	ErrInvalidDateRange    = errors.New("exchange-rate date range is invalid")
-	ErrInvalidObservation  = errors.New("exchange-rate observation is invalid")
-	ErrIncompleteResponse  = errors.New("SIE response did not contain a latest observation for every requested series")
-	ErrUpstreamUnavailable = errors.New("SIE API is unavailable")
-	ErrColdFetchInProgress = errors.New("exchange-rate data is not cached and another fetch is in progress")
+	ErrInvalidSeries           = errors.New("exchange-rate series must have a canonical Banxico identifier and distinct ISO currency codes")
+	ErrInvalidDateRange        = errors.New("exchange-rate date range is invalid")
+	ErrInvalidObservation      = errors.New("exchange-rate observation is invalid")
+	ErrIncompleteResponse      = errors.New("SIE response did not contain a latest observation for every requested series")
+	ErrUpstreamUnavailable     = errors.New("SIE API is unavailable")
+	ErrProviderAuthentication  = errors.New("exchange-rate provider authentication failed")
+	ErrProviderInvalidResponse = errors.New("exchange-rate provider response is invalid")
+	ErrColdFetchInProgress     = errors.New("exchange-rate data is not cached and another fetch is in progress")
 )
 
 type SeriesID string

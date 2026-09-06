@@ -112,13 +112,16 @@ func (authenticator *JWTAuthenticator) Authenticate(
 	canonicalRequest []byte,
 	idempotent bool,
 ) (result Result, resultErr error) {
+	started := time.Now()
+	stage := "metadata"
 	ctx, span := telemetry.Start(ctx, "authn.authenticate", attribute.String("bondexchange.operation", operation))
 	defer func() {
 		outcome := "succeeded"
 		if resultErr != nil {
 			outcome = "rejected"
 		}
-		span.SetAttributes(attribute.String("outcome", outcome))
+		span.SetAttributes(attribute.String("outcome", outcome), attribute.String("stage", stage))
+		telemetry.RecordAuthentication(ctx, operation, outcome, stage, time.Since(started))
 		span.End()
 	}()
 	rawAssertion, err := singleBearerToken(ctx)
@@ -130,6 +133,7 @@ func (authenticator *JWTAuthenticator) Authenticate(
 		return Result{}, err
 	}
 
+	stage = "assertion"
 	token, err := jwt.ParseSigned(rawAssertion, authenticator.config.Algorithms)
 	if err != nil || len(rawAssertion) > 16*1024 || len(token.Headers) != 1 || token.Headers[0].KeyID == "" {
 		return Result{}, exchange.ErrUnauthenticated
@@ -151,6 +155,7 @@ func (authenticator *JWTAuthenticator) Authenticate(
 		return Result{}, exchange.ErrUnauthenticated
 	}
 
+	stage = "principal_resolution"
 	principal, err := authenticator.resolver.ResolvePrincipal(ctx, standard.Issuer, standard.Subject)
 	if err != nil {
 		return Result{}, exchange.ErrUnauthenticated
@@ -160,6 +165,7 @@ func (authenticator *JWTAuthenticator) Authenticate(
 	principal.ClientID = operationClaim.ClientID
 	requestDigest := sha256.Sum256(canonicalRequest)
 	assertionDigest := sha256.Sum256([]byte(rawAssertion))
+	stage = "complete"
 	return Result{
 		AccessContext: exchange.AccessContext{
 			Principal:       principal,

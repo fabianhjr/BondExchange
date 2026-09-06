@@ -67,6 +67,7 @@ func (server *Server) QuoteSaleOffer(
 	request *bondexchangev1.QuoteSaleOfferRequest,
 ) (*bondexchangev1.QuoteSaleOfferResponse, error) {
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationQuoteSaleOffer)
+	defer telemetry.CompleteOperationOnPanic(ctx, exchange.OperationQuoteSaleOffer, nil)
 	authenticated, err := server.authenticate(ctx, exchange.OperationQuoteSaleOffer, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationQuoteSaleOffer, authenticatedAccess(authenticated), err)
@@ -104,6 +105,7 @@ func (server *Server) CreateSaleOffer(
 	request *bondexchangev1.CreateSaleOfferRequest,
 ) (*bondexchangev1.CreateSaleOfferResponse, error) {
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationCreateSaleOffer)
+	defer telemetry.CompleteOperationOnPanic(ctx, exchange.OperationCreateSaleOffer, nil)
 	authenticated, err := server.authenticate(ctx, exchange.OperationCreateSaleOffer, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationCreateSaleOffer, authenticatedAccess(authenticated), err)
@@ -145,6 +147,7 @@ func NewServer(
 
 func (server *Server) Buy(ctx context.Context, request *bondexchangev1.BuyRequest) (*bondexchangev1.BuyResponse, error) {
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationBuy)
+	defer telemetry.CompleteOperationOnPanic(ctx, exchange.OperationBuy, nil)
 	authenticated, err := server.authenticate(ctx, exchange.OperationBuy, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationBuy, authenticatedAccess(authenticated), err)
@@ -170,12 +173,15 @@ func (server *Server) ListActiveOffers(
 ) error {
 	ctx := stream.Context()
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationListActiveOffers)
+	var count uint64
+	defer telemetry.CompleteOperationOnPanic(ctx, exchange.OperationListActiveOffers, func() int64 {
+		return int64(count) //nolint:gosec // The count is bounded by successfully emitted Go values.
+	})
 	authenticated, err := server.authenticate(ctx, exchange.OperationListActiveOffers, request, false)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationListActiveOffers, authenticatedAccess(authenticated), err)
 		return transportError(err)
 	}
-	var count uint64
 	err = server.application.StreamActiveOffers(ctx, authenticated.AccessContext, request.GetBond(), func(offer exchange.SaleOffer) error {
 		if err := stream.Send(&bondexchangev1.ListActiveOffersResponse{
 			Event: &bondexchangev1.ListActiveOffersResponse_Offer{Offer: saleOfferToProto(offer)},
@@ -203,6 +209,7 @@ func (server *Server) ListActiveBondSeries(
 	_ *bondexchangev1.ListActiveBondSeriesRequest,
 ) (*bondexchangev1.ListActiveBondSeriesResponse, error) {
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationListBondSeries)
+	defer telemetry.CompleteOperationOnPanic(ctx, exchange.OperationListBondSeries, nil)
 	authenticated, err := server.authenticate(ctx, exchange.OperationListBondSeries, &bondexchangev1.ListActiveBondSeriesRequest{}, false)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationListBondSeries, authenticatedAccess(authenticated), err)
@@ -228,6 +235,7 @@ func (server *Server) CheckHealth(
 	_ *bondexchangev1.CheckHealthRequest,
 ) (*bondexchangev1.CheckHealthResponse, error) {
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationCheckHealth)
+	defer telemetry.CompleteOperationOnPanic(ctx, exchange.OperationCheckHealth, nil)
 	authenticated, err := server.authenticate(ctx, exchange.OperationCheckHealth, &bondexchangev1.CheckHealthRequest{}, false)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationCheckHealth, authenticatedAccess(authenticated), err)
@@ -251,6 +259,7 @@ func (server *Server) PublishPendingEvents(
 	request *bondexchangev1.PublishPendingEventsRequest,
 ) (*bondexchangev1.PublishPendingEventsResponse, error) {
 	ctx = telemetry.BeginOperation(ctx, exchange.OperationPublishPendingEvents)
+	defer telemetry.CompleteOperationOnPanic(ctx, exchange.OperationPublishPendingEvents, nil)
 	authenticated, err := server.authenticate(ctx, exchange.OperationPublishPendingEvents, request, true)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationPublishPendingEvents, authenticatedAccess(authenticated), err)
@@ -378,8 +387,9 @@ func (server *Server) authenticate(
 	if err != nil {
 		return authn.Result{}, err
 	}
+	started := time.Now()
 	if server.rateLimiter == nil {
-		telemetry.RecordRateLimit(ctx, operation, "error")
+		telemetry.RecordRateLimit(ctx, operation, "error", time.Since(started))
 		return authenticated, ratelimit.ErrUnavailable
 	}
 	if err := server.rateLimiter.AdmitRequest(ctx, authenticated.AccessContext.Principal.ID); err != nil {
@@ -387,10 +397,10 @@ func (server *Server) authenticate(
 		if errors.Is(err, ratelimit.ErrExceeded) {
 			outcome = "rejected"
 		}
-		telemetry.RecordRateLimit(ctx, operation, outcome)
+		telemetry.RecordRateLimit(ctx, operation, outcome, time.Since(started))
 		return authenticated, err
 	}
-	telemetry.RecordRateLimit(ctx, operation, "allowed")
+	telemetry.RecordRateLimit(ctx, operation, "allowed", time.Since(started))
 	return authenticated, nil
 }
 

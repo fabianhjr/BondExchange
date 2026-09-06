@@ -44,3 +44,4 @@ Alternatives considered sections.
 - [ADR-0026: Verify fact provenance and append-only history in TLA+](0026-verify-fact-provenance-and-append-only-history-in-tla.md)
 - [ADR-0027: Model contended buying and revocable authorization](0027-model-contended-buying-and-revocable-authorization.md)
 - [ADR-0028: Coordinate per-principal request rate limits in PostgreSQL](0028-coordinate-per-principal-request-rate-limits-in-postgresql.md)
+- [ADR-0029: Use policy-aligned operational metrics](0029-use-policy-aligned-operational-metrics.md)

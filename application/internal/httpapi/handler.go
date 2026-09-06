@@ -58,6 +58,9 @@ func instrumentHTTP(next http.Handler) http.Handler {
 	instrumented := otelhttp.NewHandler(
 		http.HandlerFunc(func(response http.ResponseWriter, sanitized *http.Request) {
 			trace.SpanFromContext(sanitized.Context()).SetAttributes(attribute.String("http.route", sanitized.URL.Path))
+			if labeler, found := otelhttp.LabelerFromContext(sanitized.Context()); found {
+				labeler.Add(attribute.String("http.route", sanitized.URL.Path))
+			}
 			original, ok := sanitized.Context().Value(originalRequestKey{}).(*http.Request)
 			if !ok {
 				next.ServeHTTP(response, sanitized)

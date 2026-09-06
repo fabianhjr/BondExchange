@@ -21,6 +21,8 @@ import (
 	"github.com/shopspring/decimal"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -54,9 +56,19 @@ type applicationStub struct {
 func TestHandlerCreatesStableHTTPRouteSpans(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	previousTracer := otel.GetTracerProvider()
+	previousMeter := otel.GetMeterProvider()
 	otel.SetTracerProvider(provider)
+	otel.SetMeterProvider(meterProvider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousTracer)
+		otel.SetMeterProvider(previousMeter)
+		_ = provider.Shutdown(context.Background())
+		_ = meterProvider.Shutdown(context.Background())
+	})
 	handler := newHandler(t, &applicationStub{}, healthStub{})
 
 	for index, path := range []string{"/healthz", "/users/01991a20-0000-7000-8000-000000000999"} {
@@ -103,6 +115,35 @@ func TestHandlerCreatesStableHTTPRouteSpans(t *testing.T) {
 	}
 	if routeTemplate("/buys") != "/buys" || routeTemplate("/buys/secret-id") != "unmatched" {
 		t.Fatal("route templates are not bounded")
+	}
+	var collected metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatal(err)
+	}
+	metricRoutes := make(map[string]bool)
+	for _, scope := range collected.ScopeMetrics {
+		for _, item := range scope.Metrics {
+			if item.Name != "http.server.request.duration" {
+				continue
+			}
+			histogram, ok := item.Data.(metricdata.Histogram[float64])
+			if !ok {
+				t.Fatalf("HTTP duration aggregation = %T", item.Data)
+			}
+			for _, point := range histogram.DataPoints {
+				for _, value := range point.Attributes.ToSlice() {
+					if strings.Contains(value.Value.String(), "super-secret") || strings.Contains(value.Value.String(), "01991a20") {
+						t.Fatalf("HTTP metric leaked sensitive or dynamic input in %q=%q", value.Key, value.Value.String())
+					}
+					if value.Key == "http.route" {
+						metricRoutes[value.Value.AsString()] = true
+					}
+				}
+			}
+		}
+	}
+	if !metricRoutes["/healthz"] || !metricRoutes["unmatched"] || len(metricRoutes) != 2 {
+		t.Fatalf("HTTP metric routes = %v", metricRoutes)
 	}
 }
 
