@@ -490,7 +490,16 @@ production-readiness decision.
 - **Causes:** A raw Go test invocation can skip PostgreSQL; server composition
   has limited direct failure-path tests; and current coverage metrics exclude
   `application/cmd/`. Scheduled scanning now bounds disclosure-to-confirmation
-  time, but a scan cannot detect a defect class it does not analyze.
+  time, but a scan cannot detect a defect class it does not analyze. A gate can
+  also report success without exercising its subject: Gremlins reads a mutant's
+  verdict from the exit status of the test command it runs, so a configuration
+  that fails before reaching a test scores every mutant as killed, and a diff
+  whose paths do not match the module scores nothing at all. The
+  `unleash.test-cpu` setting did exactly the first until
+  [ADR-0031](adr/0031-enable-every-mutant-operator-and-verify-the-harness.md),
+  and this analysis credited the resulting efficacy as evidence. Mutation
+  efficacy is now scored per change on the lines that change touched; a mutant
+  on an untouched line is re-scored weekly rather than on every change.
 - **Current controls and detection:** `devenv test` composes formatting, static
   analysis, API generation checks, migration, archival and lifecycle checks,
   demo smoke, readable full-server REST scenarios, a generated load check, race
@@ -514,7 +523,17 @@ production-readiness decision.
   mutation gates measure them; `application/cmd/server` retains only wiring. A
   dedicated observability gate validates collector configuration, OTLP
   export/flush, propagation, bounded labels and routes, and credential
-  exclusion; a focused command test covers instrumented gRPC composition.
+  exclusion; a focused command test covers instrumented gRPC composition. The
+  mutation gates run every mutant operator Gremlins supports: `go:mutation`
+  scores the lines each change touched at 95 percent, and the scheduled
+  `go:mutation-full` scores the whole module at 90 percent every week that
+  `application/` or `db/` changed, opening or updating one tracking issue on
+  failure. `go:mutation-harness` runs that same configuration, through the same
+  wrapper, in both modes against a throwaway repository with one mutation that
+  must survive and one that must be killed, so neither gate can report an
+  efficacy it did not measure. Each run is bounded as a whole by `timeout` in
+  addition to Gremlins' per-mutant budget, so a hung mutant fails the gate with
+  a message instead of exhausting the job.
 - **Action:** Keep remediation evidence with the response ownership recorded in
   `SECURITY.md` and `.github/CODEOWNERS`. Detection improves from 8 to 6 on the
   implemented scan cadence and reporting path; severity and occurrence are
@@ -522,10 +541,23 @@ production-readiness decision.
   because the composition wiring that remains in the command package is still
   measured by the demo smoke, integration scenarios, and a focused gRPC test.
   Re-score again once the schedule has operational history, and note that GitHub
-  suspends scheduled workflows in an idle repository.
+  suspends scheduled workflows in an idle repository. Detection stays at 6 after
+  [ADR-0031](adr/0031-enable-every-mutant-operator-and-verify-the-harness.md):
+  the mutation evidence this score already credited is now produced by a run
+  that compiles and tests each mutant, over a larger operator set, rather than
+  being an artifact of a test command that failed before starting. Do not lower
+  it further while F-031 leaves part of the score resting on timeouts rather
+  than assertions, and while a regression on a line no change touches is found
+  by the weekly run rather than by the gate on the change that caused it.
+  Raise it if the first measured whole-module results in F-032 are not closed:
+  until they are, this control's credit rests on a threshold the module does
+  not currently meet.
 - **Traceability:** [F-015](../FRICTIONS.md#f-015--the-default-contributor-path-can-silently-reduce-test-coverage-p3),
+  [F-031](../FRICTIONS.md#f-031--a-timed-out-mutant-is-credited-as-killed-without-evidence-p3),
+  [F-032](../FRICTIONS.md#f-032--the-module-does-not-meet-the-whole-module-mutation-threshold-p2),
   [ADR-0013](adr/0013-require-95-percent-test-quality-gates.md),
-  and [ADR-0021](adr/0021-schedule-security-scanning-and-name-a-response-owner.md).
+  [ADR-0021](adr/0021-schedule-security-scanning-and-name-a-response-owner.md),
+  and [ADR-0031](adr/0031-enable-every-mutant-operator-and-verify-the-harness.md).
 
 ### FM-015 — Dependency failure causes restart churn
 

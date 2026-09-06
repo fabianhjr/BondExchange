@@ -116,14 +116,21 @@ jobs:
           path: .artifacts/observability-test.json
           if-no-files-found: ignore
 
+  # `go:mutation` mutates only the lines this change touched. A whole-module
+  # run takes hours, so `.github/workflows/scheduled-mutation.yml` covers the
+  # lines no recent change touched.
   mutation:
-    name: Mutation efficacy (minimum 95%)
+    name: Mutation efficacy on changed lines (minimum 95%)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:
+      # Gremlins resolves the changed lines with `git diff --merge-base`, which
+      # needs the base commit and the history that reaches it.
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
@@ -137,6 +144,27 @@ jobs:
 
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
+
+      # A pull request is measured against its base branch. A push is measured
+      # against the commit the branch previously pointed at, so the merged
+      # change is scored once more on the branch it landed on. A manual run has
+      # neither, and falls back to the previous commit.
+      - name: Resolve the mutation diff reference
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          EMPTY: "0000000000000000000000000000000000000000"
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            reference="origin/$BASE_REF"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "$EMPTY" ] &&
+            git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then
+            reference="$BEFORE"
+          else
+            reference="HEAD^"
+          fi
+          echo "Measuring mutation efficacy against $reference"
+          echo "BOND_EXCHANGE_MUTATION_DIFF_REF=$reference" >> "$GITHUB_ENV"
 
       - name: Run mutation gate
         env:

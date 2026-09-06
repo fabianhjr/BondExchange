@@ -131,7 +131,12 @@
   shared branch. `dev:check` enforces this.
 - Make a gate fail when a dependency it needs is missing. A task that skips its
   own subject and reports success is worse than an absent task, because the
-  documentation will credit it as evidence.
+  documentation will credit it as evidence. The same applies to a gate that
+  runs but measures nothing: where a tool infers its own subject, prove it
+  still reports a failure it is supposed to catch.
+- A task that is deliberately outside the `devenv test` graph, such as a
+  scheduled long-running run, must still have a named automatic caller and be
+  recorded as an intentional omission in the README.
 - Pin an external source that verification reads, and check the pin. External
   standards and specifications belong in `third_party/` as submodules recorded
   at a specific commit, never as a contributor-local path or an unreproducible

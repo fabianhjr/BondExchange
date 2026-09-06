@@ -44,6 +44,13 @@ mutation gate being tightened by this decision.
   F-016, which the register no longer carries.
 - A 95 percent aggregate result does not imply that every function or branch is
   covered, so review remains responsible for risk-based test selection.
+- The mutation half of this decision was later found to be unmeasured.
+  [ADR-0031](0031-enable-every-mutant-operator-and-verify-the-harness.md)
+  records that the configured `test-cpu` setting made Gremlins score every
+  mutant as killed without running a test, enables the operators this record
+  left unexamined, and splits the 95 percent threshold onto the lines a change
+  touches, with a weekly whole-module run at 90 percent. The coverage half is
+  unaffected.
 
 ## Alternatives considered
 

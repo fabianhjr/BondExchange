@@ -13,7 +13,7 @@ configurable integration load task passed for this review, so there is no known
 failing quality gate; the items below are gaps that the current gates either
 accept or do not cover.
 
-F-025 through F-030 were added by a source review on 2026-09-06 that read the
+F-025 through F-029 were added by a source review on 2026-09-06 that read the
 implementation without re-running the gates. Each cites the code it describes;
 none has been reproduced by an executed test, which is itself part of what
 those entries report.
@@ -402,21 +402,55 @@ those entries report.
   scenario, including contention on one quote, and its report is retained
   alongside the existing profiles.
 
-### F-030 — The mutation gate's operator set is not recorded (P3)
 
-- **Evidence:** `application/.gremlins.yaml` disables `invert-logical`,
-  `invert-assignments`, `invert-bitwise`, `invert-bwassign`,
-  `invert-loopctrl`, and `remove-self-assignments`. ADR-0013 records that the
-  `mutant-coverage` threshold stays disabled and weighs enabling it as an
-  alternative, but says nothing about which mutation operators run.
-  `invert-logical` mutates `&&` and `||`, which is the shape of the guard
-  chains in `internal/authn/authenticator.go` and of the nine-clause
-  observation check in `internal/offerintake/service.go`.
-- **Impact:** The 95 percent efficacy figure is measured over a reduced
-  operator set, and the operator most relevant to this repository's
-  authentication and rate-validation logic is not among those measured. The
-  gate is credited as detection evidence under FM-014 without that
-  qualification.
-- **Complete when:** `invert-logical` is enabled and the threshold still holds,
-  or ADR-0013 records the excluded operators and the reason with the same
-  reasoning it already applies to `mutant-coverage`.
+### F-031 — A timed-out mutant is credited as killed without evidence (P3)
+
+- **Evidence:** Gremlins drops a timed-out mutant from both sides of its
+  efficacy ratio. `nix/go-mutation.sh` instead counts it as killed, because a
+  mutant that stops the suite from terminating has been detected: the
+  unbounded retry loop in
+  [`application/internal/exchangerates/service.go`](application/internal/exchangerates/service.go)
+  and the self-assignment in `index += 2` in
+  [`application/internal/rpcapi/server.go`](application/internal/rpcapi/server.go)
+  both produce mutants that hang rather than fail. What the gate cannot
+  distinguish is a mutant that never terminates from one that merely exceeded
+  its budget, which is `unleash.timeout-coefficient` times a coverage run
+  measured with a warm build cache and without recompiling the mutated package.
+  The gate fails only when timed-out mutants exceed 30 percent of the tested
+  population.
+- **Impact:** On a colder cache, a slower or more contended machine, or a
+  package that grows heavier to compile, mutants can cross the budget and be
+  credited as killed on the strength of a timeout rather than a failing
+  assertion. Up to 30 percent of a reported efficacy can rest on that credit
+  before any gate objects. The unbounded loop that produces most of these
+  timeouts is itself [F-027](#f-027--no-operation-has-a-server-side-deadline-p2).
+- **Complete when:** A timeout is attributed rather than assumed — the mutants
+  that cannot terminate are identified, so that a timeout outside that set
+  fails the run instead of counting as a kill — or the operations under test
+  carry deadlines, so that a mutant which breaks a loop's exit condition fails
+  the suite rather than hanging it.
+
+### F-032 — The module does not meet the whole-module mutation threshold (P2)
+
+- **Evidence:** Until
+  [ADR-0031](docs/adr/0031-enable-every-mutant-operator-and-verify-the-harness.md)
+  the mutation gate scored every mutant as killed without running a test, so no
+  measurement of this module existed. With the harness repaired, a whole-module
+  run scores below the 90 percent `go:mutation-full` threshold. Survivors
+  concentrate in
+  [`application/internal/eventing/dispatcher.go`](application/internal/eventing/dispatcher.go)
+  and [`application/internal/authn/authenticator.go`](application/internal/authn/authenticator.go),
+  and the operators that expose them are the ones that had been disabled:
+  `invert-logical` survives on the guard chains in `NewJWTAuthenticator`, where
+  a single predicate is asserted through one of its operands.
+- **Impact:** A mutant that survives is a change to behavior that no test
+  observes. Authentication configuration validation and event-delivery
+  branching are therefore covered by statements without being covered by
+  assertions, while [`docs/FMEA.md`](docs/FMEA.md) credits mutation efficacy as
+  a detection control under FM-014. The scheduled run reports this as a
+  tracking issue every week until it is closed, so the gap is visible rather
+  than absorbed by a lowered threshold.
+- **Complete when:** The surviving mutants are killed by tests that assert the
+  behavior each one changes, and `go:mutation-full` passes at its configured
+  threshold — or an ADR records which survivors are equivalent mutants and the
+  threshold is set with that reasoning stated.
