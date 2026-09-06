@@ -453,8 +453,7 @@ func transportError(err error) error {
 	case errors.Is(err, exchange.ErrOfferUnavailable),
 		errors.Is(err, exchange.ErrBondNotFound):
 		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, exchange.ErrBuyerNotFound),
-		errors.Is(err, exchange.ErrSellerNotFound):
+	case errors.Is(err, exchange.ErrSellerNotFound):
 		return status.Error(codes.Internal, "internal identity consistency error")
 	case errors.Is(err, exchange.ErrOfferAlreadyExists):
 		return status.Error(codes.AlreadyExists, err.Error())

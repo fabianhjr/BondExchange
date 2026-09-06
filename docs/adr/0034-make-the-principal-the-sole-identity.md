@@ -1,6 +1,6 @@
 # ADR-0034: Make the principal the sole identity
 
-- Status: Accepted
+- Status: Accepted; transition completed and its tooling removed 2026-09-07
 - Date: 2026-09-06
 
 ## Context
@@ -69,9 +69,9 @@ already accepted for removal would have reintroduced exactly the evidence
 lifecycle that decision closes.
 
 The contract migration must not be applied while any writer still names
-`bond_exchange.users`. The `db:principal-contract-readiness` gate reports the
+`bond_exchange.users`. The `db:principal-contract-readiness` gate reported the
 database side of that condition; retirement of the previous application
-binaries and of direct-SQL writers must be shown by release evidence, as for
+binaries and of direct-SQL writers had to be shown by release evidence, as for
 the UUID and canonical-MXN contractions.
 
 The Go domain type is renamed `exchange.PrincipalID`. `ParseUserID` and
@@ -79,12 +79,41 @@ The Go domain type is renamed `exchange.PrincipalID`. `ParseUserID` and
 so the gRPC arm mapping that error to `InvalidArgument` was unreachable. The
 buy classifier no longer distinguishes a buyer that is not a principal, because
 the validated foreign key makes that state unrepresentable; `ErrBuyerNotFound`
-and `ErrSellerNotFound` and their durable codes are retained so that
-`operation_results` rows written before this change still replay.
+and its durable code were retained at first so that `operation_results` rows
+written before this change still replayed.
 
 The TLA+ constant `Users` is renamed `Principals`. The model's meaning does not
 change — one identity set was always what it described — and TLC reports the
 same state counts for every configured instance.
+
+### Transition completed
+
+The rolling window has since closed, and everything that existed only to cross
+it is removed:
+
+- `classifyCreateSaleOfferError` no longer accepts the old
+  `sale_offers_seller_uuid_fkey` name alongside the principal-referencing one.
+  Only one of those constraints can exist in a contracted schema.
+- `db:principal-contract-readiness`, its script, and its `dev:ci` entry are
+  removed. Its pre-contraction checks describe a state that no longer occurs,
+  and `TestPrincipalIsTheSoleIdentityTable` already re-checks the contracted
+  shape — the table's absence, both validated foreign keys, the generated
+  default, and the rejection of a non-principal seller — on every run. This
+  follows the precedent
+  [ADR-0033](0033-retire-legacy-identifier-evidence-and-transition-tooling.md)
+  set for the UUID transition's gates.
+- `ErrBuyerNotFound` and the `buyer_not_found` rejection code are removed.
+  Migration `20260907000000` first proves that no retained `operation_results`
+  row records the code and then forbids it, so removing the decode cannot
+  change how any stored rejection replays. That order matters: an exact retry
+  replays a stored rejection verbatim, so deleting the decode while such a row
+  existed would have quietly downgraded a recorded rejection to an
+  unrecognized-code error. The migration refuses instead, leaving an operator
+  whose history still carries the code on a binary that understands it.
+
+`ErrSellerNotFound` stays. It is still produced when an insert violates
+`sale_offers_seller_principal_fkey`, which is defense in depth against an
+alternate writer rather than a reachable path for API traffic.
 
 This decision does not introduce beneficial ownership. It removes a table that
 could not express it. Should affiliation between distinct principals become a
@@ -102,11 +131,14 @@ restoration of `users`.
 - `users_are_append_only` is withdrawn as guarantee evidence; the identity
   facts it covered are now covered by `principals_are_append_only`.
 - F-023 is withdrawn. Its second concern — that distinct principals may share a
-  beneficial owner — is not resolved by this decision and is tracked as F-031.
-- A deployment that applies the contract migration before retiring the previous
-  binaries breaks those instances at their next buy, because `buyQuery` named
-  `bond_exchange.users`. The readiness gate and the release evidence in
-  [`db/README.md`](../../db/README.md) exist for that ordering.
+  beneficial owner — is not resolved by this decision, and F-002 already tracks
+  it, so no replacement identifier was minted.
+- A deployment that applied the contract migration before retiring the previous
+  binaries broke those instances at their next buy, because `buyQuery` named
+  `bond_exchange.users`. That ordering hazard is spent once the transition
+  completes, and the gate that guarded it is removed with it.
+- The service records six durable rejection codes rather than seven. A database
+  constraint, not a convention, keeps the retired one from reappearing.
 
 ## Alternatives considered
 

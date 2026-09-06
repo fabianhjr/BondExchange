@@ -49,6 +49,7 @@ one is missing from this table.
 | 20260906020000 | [`validate_principal_identity.sql`](migrations/20260906020000_validate_principal_identity.sql) | Validation of those keys against retained history. |
 | 20260906030000 | [`contract_user_identity.sql`](migrations/20260906030000_contract_user_identity.sql) | Removal of the separate user identity table (contract). |
 | 20260906120000 | [`retire_legacy_identifier_archive.sql`](migrations/20260906120000_retire_legacy_identifier_archive.sql) | Accepted retirement of expired pre-UUID identifier evidence. |
+| 20260907000000 | [`retire_buyer_not_found_code.sql`](migrations/20260907000000_retire_buyer_not_found_code.sql) | Retirement of the `buyer_not_found` rejection code. |
 
 ## Identity and keys
 
@@ -78,19 +79,15 @@ The schema previously had a second table, `bond_exchange.users`. After the UUID
 contraction it held one column — its own `uuid_id` — and `principals.uuid_id`
 was both that table's primary key and a foreign key to it, so the relationship
 was one-to-one and a principal could not exist without a user row. The only
-state it could represent was an allocated identity that can never authenticate,
-sell, or buy.
-[ADR-0034](../docs/adr/0034-make-the-principal-the-sole-identity.md) removes it
-in three migrations: an expand that adds the principal-referencing keys
-`NOT VALID` and gives `principals.uuid_id` its own default, a validation that
-proves the retained history conforms, and a contract that drops the
-user-referencing keys and the table.
-
-An identity allocated in `users` that no principal covers is the only value the
-table holds that dropping it would discard, so the contract migration refuses
-rather than discarding it. `users` is append-only, so the lossless resolution is
-to append the missing principal fact and link the identity; the migration does
-not do that on the operator's behalf.
+state it could represent was an allocated identity that could never
+authenticate, sell, or buy.
+[ADR-0034](../docs/adr/0034-make-the-principal-the-sole-identity.md) removed it
+in three migrations — an expand that added the principal-referencing keys
+`NOT VALID` and gave `principals.uuid_id` its own default, a validation that
+proved the retained history conformed, and a contract that dropped the
+user-referencing keys and the table — and the transition has since completed.
+Migration `20260907000000` retired `buyer_not_found`, the last rejection code
+that only the two-table split could produce.
 
 Expressing beneficial ownership — one legal person behind several principals —
 is a separate concern that this shape never supported, because a primary key
@@ -372,29 +369,8 @@ canonical terms, and any still-active legacy offer without seller-accepted MXN
 terms. It is part of `dev:ci`, so its behavior is exercised locally and in
 continuous integration against a disposable migrated database.
 
-Before contracting the separate user identity table against an existing
-database, run:
-
-```console
-DATABASE_URL=... devenv tasks run db:principal-contract-readiness
-```
-
-That gate refuses any sale offer or purchase attributed to an identity that is
-not a principal, refuses any allocated identity that no principal covers,
-requires `principals.uuid_id` to generate its own identity, and — while
-`bond_exchange.users` still exists — requires both principal-referencing foreign
-keys to be present and validated. It is part of `dev:ci` and runs in both the
-pre-contraction and post-contraction states.
-
-The contract migration must not be applied while any writer still names
-`bond_exchange.users`. The previously deployed application named it in its buy
-query, so applying the contraction first breaks those instances at their next
-purchase.
-
-Database checks cannot prove reader or writer retirement. Release evidence must
-also show that sanctioned canonical-MXN compatibility-view readers are drained
-and that every binary and direct-SQL writer naming `bond_exchange.users` is
-retired with its credentials revoked.
+Database checks cannot prove reader retirement. Release evidence must also show
+that sanctioned canonical-MXN compatibility-view readers are drained.
 
 ## Disposable lifecycles and the demo seed
 

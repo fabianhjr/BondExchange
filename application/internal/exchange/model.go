@@ -23,7 +23,6 @@ var (
 	ErrInvalidBondSeries   = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
 	ErrInvalidPrice        = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
 	ErrInvalidCurrencyCode = errors.New("currency code must contain exactly three uppercase ASCII letters")
-	ErrBuyerNotFound       = errors.New("buyer is not a known principal")
 	ErrSellerNotFound      = errors.New("seller is not a known principal")
 	ErrBondNotFound        = errors.New("bond series does not exist")
 	ErrOfferAlreadyExists  = errors.New("sale-offer ID already exists")

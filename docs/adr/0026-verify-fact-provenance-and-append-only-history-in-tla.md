@@ -81,10 +81,11 @@ is what F-018 is about.
 
 This decision originally recorded a second conflation: the model's identity set
 covered both `principals` and `users`, so it could not represent the mismatch
-behind `buyer_not_found` and `seller_not_found`.
+behind the `buyer_not_found` and `seller_not_found` rejections.
 [ADR-0034](0034-make-the-principal-the-sole-identity.md) removed `users`, so
-the set — now named `Principals` — maps to one table and that mismatch is no
-longer representable in the schema either.
+the set — now named `Principals` — maps to one table, that mismatch is no
+longer representable in the schema either, and `buyer_not_found` has since been
+retired.
 
 ## Alternatives considered
 
