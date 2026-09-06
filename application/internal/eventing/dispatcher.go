@@ -127,13 +127,13 @@ func (dispatcher *Dispatcher) publishOne(
 	ref SourceRef,
 	force bool,
 ) (bool, bool, error) {
-	leaseToken, err := newLeaseToken()
+	leaseNonce, err := newLeaseNonce()
 	if err != nil {
 		telemetry.RecordEventStage(ctx, "claim", "error")
 		return false, false, err
 	}
 	attempt, claimed, err := dispatcher.store.ClaimEvent(
-		ctx, destinationID, ref, leaseToken, dispatcher.leasePeriod, force,
+		ctx, destinationID, ref, leaseNonce, dispatcher.leasePeriod, force,
 	)
 	if err != nil {
 		telemetry.RecordEventStage(ctx, "claim", "error")
@@ -165,7 +165,7 @@ func (dispatcher *Dispatcher) publishOne(
 		telemetry.RecordEventStage(deliveryContext, "load", "error")
 	}
 	if err == nil {
-		if err := dispatcher.store.MarkEventDelivered(ctx, destinationID, ref, leaseToken); err != nil {
+		if err := dispatcher.store.MarkEventDelivered(ctx, destinationID, ref, leaseNonce); err != nil {
 			telemetry.RecordEventStage(deliveryContext, "mark_delivered", "error")
 			telemetry.RecordEventDelivery(deliveryContext, "failed", "mark_delivery_error", time.Since(started))
 			telemetry.End(span, "mark_delivery_error")
@@ -189,7 +189,7 @@ func (dispatcher *Dispatcher) publishOne(
 		ctx,
 		destinationID,
 		ref,
-		leaseToken,
+		leaseNonce,
 		errorClass,
 		retryDelay(attempt, ref),
 	); markErr != nil {
@@ -238,9 +238,9 @@ func retryDelay(attempt int, ref SourceRef) time.Duration {
 	return delay
 }
 
-func newLeaseToken() (string, error) {
-	token, err := uuid.NewRandom()
-	return token.String(), err
+func newLeaseNonce() (string, error) {
+	nonce, err := uuid.NewRandom()
+	return nonce.String(), err
 }
 
 func (dispatcher *Dispatcher) destinationIDs() []string {

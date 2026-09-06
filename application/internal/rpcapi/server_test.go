@@ -25,6 +25,15 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
+const (
+	testPrincipalID      = exchange.UserID("01991a20-0000-7000-8000-000000000001")
+	testSellerID         = exchange.UserID("01991a20-0000-7000-8000-000000000002")
+	testBuyerID          = exchange.UserID("01991a20-0000-7000-8000-000000000003")
+	testOfferID          = exchange.OfferID("01991a20-0000-7000-8000-000000000101")
+	testOtherOfferID     = exchange.OfferID("01991a20-0000-7000-8000-000000000102")
+	testIdempotencyNonce = "41db1265-8bc1-4ab3-992f-885799a4af1d"
+)
+
 type applicationStub struct {
 	purchase       exchange.Purchase
 	buyErr         error
@@ -132,11 +141,11 @@ func (stub authenticatorStub) Authenticate(_ context.Context, operation string, 
 		return authn.Result{}, stub.err
 	}
 	result := authn.Result{AccessContext: exchange.AccessContext{
-		Principal: exchange.Principal{ID: "principal-1", ClientID: "client-1"},
+		Principal: exchange.Principal{ID: testPrincipalID, ClientID: "client-1"},
 		Operation: operation,
 	}}
 	if idempotent {
-		result.IdempotencyKey = "idempotency-key-1"
+		result.IdempotencyKey = testIdempotencyNonce
 	}
 	return result, nil
 }
@@ -171,18 +180,18 @@ func TestGRPCServer(t *testing.T) {
 	application := &applicationStub{
 		purchase: exchange.Purchase{
 			Offer: exchange.SaleOffer{
-				ID:         "offer-1",
-				SellerID:   "seller-1",
+				ID:         testOfferID,
+				SellerID:   testSellerID,
 				BondSeries: "BND1",
 				Price:      decimal.RequireFromString("100.25"),
 				Currency:   "MXN",
 			},
-			BuyerID:  "buyer-1",
+			BuyerID:  testBuyerID,
 			BoughtAt: boughtAt,
 		},
 		created: exchange.SaleOffer{
-			ID:         "offer-2",
-			SellerID:   "seller-1",
+			ID:         testOtherOfferID,
+			SellerID:   testSellerID,
 			BondSeries: "BND1",
 			Price:      decimal.RequireFromString("99.75"),
 			Currency:   "MXN",
@@ -196,18 +205,18 @@ func TestGRPCServer(t *testing.T) {
 			RateObservedOn: boughtAt,
 			ExpiresAt:      boughtAt.Add(5 * time.Minute),
 		},
-		offers: []exchange.SaleOffer{{ID: "offer-2"}},
+		offers: []exchange.SaleOffer{{ID: testOtherOfferID}},
 		series: []exchange.BondSeries{"BND1", "GOV1"},
 	}
 	client := newClient(t, testServer(application, healthStub{}))
 
 	purchase, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{
-		SaleOfferId: "offer-1",
+		SaleOfferId: string(testOfferID),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if application.buyOffer != "offer-1" {
+	if application.buyOffer != string(testOfferID) {
 		t.Fatalf("application received offer %q", application.buyOffer)
 	}
 	if purchase.GetOffer().GetPrice() != "100.25" {
@@ -234,7 +243,7 @@ func TestGRPCServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.GetOffer().GetId() != "offer-2" || created.GetOffer().GetPrice() != "99.75" {
+	if created.GetOffer().GetId() != string(testOtherOfferID) || created.GetOffer().GetPrice() != "99.75" {
 		t.Fatalf("created offer = %v", created)
 	}
 	if application.createBond != "bnd1" || application.createPrice != "99.75" ||
@@ -247,7 +256,7 @@ func TestGRPCServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstOffer, err := offers.Recv()
-	if err != nil || firstOffer.GetOffer().GetId() != "offer-2" {
+	if err != nil || firstOffer.GetOffer().GetId() != string(testOtherOfferID) {
 		t.Fatalf("first stream event = %v, %v", firstOffer, err)
 	}
 	complete, err := offers.Recv()
@@ -389,7 +398,7 @@ func TestGRPCNilAuthenticatorStreamFailuresAndTraceLogging(t *testing.T) {
 	}
 
 	want := errors.New("send failed")
-	server = testServer(&applicationStub{offers: []exchange.SaleOffer{{ID: "offer"}}}, healthStub{})
+	server = testServer(&applicationStub{offers: []exchange.SaleOffer{{ID: testOfferID}}}, healthStub{})
 	if err := server.ListActiveOffers(&bondexchangev1.ListActiveOffersRequest{}, &listStreamStub{ctx: context.Background(), sendErr: want}); status.Code(err) != codes.Internal {
 		t.Fatalf("offer send error = %v", err)
 	}
@@ -418,7 +427,7 @@ func TestGRPCAuthenticationFailureIsGeneric(t *testing.T) {
 			t.Fatalf("authentication error = %v", err)
 		}
 	}
-	_, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{SaleOfferId: "offer-1"})
+	_, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{SaleOfferId: string(testOfferID)})
 	assertUnauthenticated(err)
 	_, err = client.CreateSaleOffer(context.Background(), &bondexchangev1.CreateSaleOfferRequest{})
 	assertUnauthenticated(err)
@@ -447,7 +456,7 @@ func TestGRPCRateLimitIsSharedAdmissionBeforeApplication(t *testing.T) {
 		authenticatorStub{},
 		rateLimiterStub{err: &ratelimit.ExceededError{RetryAfter: 23 * time.Second}},
 	))
-	_, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{SaleOfferId: "offer-1"})
+	_, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{SaleOfferId: string(testOfferID)})
 	if status.Code(err) != codes.ResourceExhausted || status.Convert(err).Message() != ratelimit.ErrExceeded.Error() {
 		t.Fatalf("rate-limit error = %v", err)
 	}

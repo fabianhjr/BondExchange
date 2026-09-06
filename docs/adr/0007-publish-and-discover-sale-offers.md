@@ -69,7 +69,7 @@ discovery as derived reads rather than transport or SQL behavior in the model.
 - Offer creation preserves stateless servers and append-only facts. Clients
   retain the returned UUIDv7 rather than selecting a resource identity.
 - The UUID migration provides the database default, constraints, UUID view,
-  relationship graph, and `(bond_series, uuid_id)` index for this behavior.
+  relationship graph, and `(bond_uuid, uuid_id)` index for this behavior.
 
 ## Alternatives considered
 

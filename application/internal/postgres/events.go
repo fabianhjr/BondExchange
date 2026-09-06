@@ -127,7 +127,7 @@ func (store *Store) ClaimEvent(
 	ctx context.Context,
 	destinationID string,
 	ref eventing.SourceRef,
-	leaseToken string,
+	leaseNonce string,
 	leaseDuration time.Duration,
 	force bool,
 ) (int, bool, error) {
@@ -152,7 +152,7 @@ WHERE bond_exchange.integration_event_deliveries.delivered_at IS NULL
     $6
     OR bond_exchange.integration_event_deliveries.next_attempt_at <= transaction_timestamp()
   )
-RETURNING attempt_count`, destinationID, ref.TableName, ref.ID, leaseToken, leaseDuration.Microseconds(), force).Scan(&attempt)
+RETURNING attempt_count`, destinationID, ref.TableName, ref.ID, leaseNonce, leaseDuration.Microseconds(), force).Scan(&attempt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, nil
 	}
@@ -163,7 +163,7 @@ func (store *Store) MarkEventDelivered(
 	ctx context.Context,
 	destinationID string,
 	ref eventing.SourceRef,
-	leaseToken string,
+	leaseNonce string,
 ) error {
 	result, err := store.pool.Exec(ctx, `
 UPDATE bond_exchange.integration_event_deliveries
@@ -178,7 +178,7 @@ WHERE destination_id = $1
     WHERE table_name = $2 AND source_uuid = $3
   )
   AND lease_nonce = $4
-  AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseToken)
+  AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseNonce)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (store *Store) MarkEventFailed(
 	ctx context.Context,
 	destinationID string,
 	ref eventing.SourceRef,
-	leaseToken string,
+	leaseNonce string,
 	errorClass string,
 	retryAfter time.Duration,
 ) error {
@@ -209,7 +209,7 @@ WHERE destination_id = $1
     WHERE table_name = $2 AND source_uuid = $3
   )
   AND lease_nonce = $4
-  AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseToken, retryAfter.Microseconds(), errorClass)
+  AND delivered_at IS NULL`, destinationID, ref.TableName, ref.ID, leaseNonce, retryAfter.Microseconds(), errorClass)
 	if err != nil {
 		return err
 	}

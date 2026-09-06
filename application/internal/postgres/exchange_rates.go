@@ -54,7 +54,7 @@ WHERE work_key = $1`, unit.Key, unit.FetchTo, unit.Permanent).Scan(&state.Ready,
 func (store *Store) Claim(
 	ctx context.Context,
 	units []exchangerates.WorkUnit,
-	leaseToken string,
+	leaseNonce string,
 	leaseDuration time.Duration,
 	force bool,
 ) ([]exchangerates.WorkUnit, error) {
@@ -112,7 +112,7 @@ WHERE work_key = $1
   ))
 RETURNING work_key`,
 			unit.Key,
-			leaseToken,
+			leaseNonce,
 			leaseDuration.Microseconds(),
 			unit.Series.ID,
 			unit.Series.Base,
@@ -138,7 +138,7 @@ RETURNING work_key`,
 
 func (store *Store) Complete(
 	ctx context.Context,
-	leaseToken string,
+	leaseNonce string,
 	units []exchangerates.WorkUnit,
 	request exchangerates.FetchRequest,
 	result exchangerates.FetchResult,
@@ -157,7 +157,7 @@ func (store *Store) Complete(
 		if err := tx.QueryRow(ctx, `
 SELECT lease_nonce = $2
 FROM bond_exchange.sie_exchange_rate_fetch_coordination
-WHERE work_key = $1`, unit.Key, leaseToken).Scan(&owned); err != nil {
+WHERE work_key = $1`, unit.Key, leaseNonce).Scan(&owned); err != nil {
 			return err
 		}
 		if !owned {
@@ -243,7 +243,7 @@ SET
   lease_until = NULL,
   next_attempt_at = transaction_timestamp(),
   last_error_class = NULL
-WHERE work_key = $1 AND lease_nonce = $2`, unit.Key, leaseToken, coveredUntil, freshMicros)
+WHERE work_key = $1 AND lease_nonce = $2`, unit.Key, leaseNonce, coveredUntil, freshMicros)
 		if err != nil {
 			return err
 		}
@@ -256,7 +256,7 @@ WHERE work_key = $1 AND lease_nonce = $2`, unit.Key, leaseToken, coveredUntil, f
 
 func (store *Store) Fail(
 	ctx context.Context,
-	leaseToken string,
+	leaseNonce string,
 	units []exchangerates.WorkUnit,
 	errorClass string,
 	retryAfter time.Duration,
@@ -269,7 +269,7 @@ SET
   lease_until = NULL,
   next_attempt_at = transaction_timestamp() + ($3 * interval '1 microsecond'),
   last_error_class = $4
-WHERE work_key = $1 AND lease_nonce = $2`, unit.Key, leaseToken, retryAfter.Microseconds(), errorClass)
+WHERE work_key = $1 AND lease_nonce = $2`, unit.Key, leaseNonce, retryAfter.Microseconds(), errorClass)
 		if err != nil {
 			return err
 		}

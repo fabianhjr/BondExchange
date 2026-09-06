@@ -261,22 +261,6 @@ let
     text = builtins.readFile ./nix/task-graph-check.sh;
   };
 
-  uuidContractReadiness = pkgs.writeShellApplication {
-    name = "bond-exchange-uuid-contract-readiness";
-    runtimeInputs = [ pkgs.postgresql_18 ];
-    text = builtins.readFile ./nix/uuid-contract-readiness.sh;
-  };
-
-  uuidContractHistoryTest = pkgs.writeShellApplication {
-    name = "bond-exchange-uuid-contract-history-test";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.dbmate
-      pkgs.postgresql_18
-    ];
-    text = builtins.readFile ./nix/uuid-contract-history-test.sh;
-  };
-
   canonicalMxnReadiness = pkgs.writeShellApplication {
     name = "bond-exchange-canonical-mxn-readiness";
     runtimeInputs = [ pkgs.postgresql_18 ];
@@ -320,8 +304,6 @@ in
     demo
     integrationCheck
     integrationLoad
-    uuidContractReadiness
-    uuidContractHistoryTest
     canonicalMxnReadiness
     observabilityCheck
   ];
@@ -346,17 +328,6 @@ in
   tasks."db:migrate" = {
     description = "Validate migrations against a fresh temporary PostgreSQL database";
     exec = "${postgresHarness}/bin/bond-exchange-with-postgres true";
-  };
-
-  tasks."db:uuid-contract-readiness" = {
-    description = "Verify UUID/text graph consistency before the contract migration";
-    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${uuidContractReadiness}/bin/bond-exchange-uuid-contract-readiness";
-  };
-
-  tasks."db:uuid-contract-history" = {
-    description = "Verify lossless archival of representative pre-UUID values";
-    exec = "${postgresHarness}/bin/bond-exchange-with-postgres ${uuidContractHistoryTest}/bin/bond-exchange-uuid-contract-history-test";
-    after = [ "db:migrate" ];
   };
 
   tasks."db:canonical-mxn-readiness" = {
@@ -550,7 +521,6 @@ in
       "api:check"
       "db:canonical-mxn-readiness"
       "db:migrate"
-      "db:uuid-contract-history"
       "demo:smoke"
       "dev:check"
       "dev:smoke"

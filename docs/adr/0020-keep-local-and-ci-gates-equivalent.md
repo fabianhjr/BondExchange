@@ -3,6 +3,11 @@
 - Status: Accepted
 - Date: 2026-09-04
 
+ADR-0033 later removed `db:uuid-contract-history` after the accepted retention
+period for its subject data elapsed. References to that gate below describe the
+state when this decision was accepted; the aggregate-equivalence rule remains
+in force.
+
 ## Context
 
 `devenv test` runs every task that names `devenv:enterTest` in its `before`

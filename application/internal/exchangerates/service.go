@@ -221,11 +221,11 @@ func (service *Service) resolve(ctx context.Context, units []WorkUnit) error {
 			return nil
 		}
 		telemetry.RecordRateCache(ctx, "miss")
-		leaseToken, err := newLeaseToken()
+		leaseNonce, err := newLeaseNonce()
 		if err != nil {
 			return err
 		}
-		claimed, err := service.store.Claim(ctx, pending, leaseToken, service.config.LeaseFor, false)
+		claimed, err := service.store.Claim(ctx, pending, leaseNonce, service.config.LeaseFor, false)
 		if err != nil {
 			return err
 		}
@@ -239,7 +239,7 @@ func (service *Service) resolve(ctx context.Context, units []WorkUnit) error {
 			}
 			continue
 		}
-		if err := service.fetchClaimed(ctx, leaseToken, claimed); err != nil {
+		if err := service.fetchClaimed(ctx, leaseNonce, claimed); err != nil {
 			return err
 		}
 	}
@@ -267,11 +267,11 @@ func (service *Service) resolveForced(ctx context.Context, units []WorkUnit) err
 		if len(remaining) == 0 {
 			return nil
 		}
-		leaseToken, err := newLeaseToken()
+		leaseNonce, err := newLeaseNonce()
 		if err != nil {
 			return err
 		}
-		claimed, err := service.store.Claim(ctx, remaining, leaseToken, service.config.LeaseFor, true)
+		claimed, err := service.store.Claim(ctx, remaining, leaseNonce, service.config.LeaseFor, true)
 		if err != nil {
 			return err
 		}
@@ -281,14 +281,14 @@ func (service *Service) resolveForced(ctx context.Context, units []WorkUnit) err
 			}
 			continue
 		}
-		if err := service.fetchClaimed(ctx, leaseToken, claimed); err != nil {
+		if err := service.fetchClaimed(ctx, leaseNonce, claimed); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, units []WorkUnit) error {
+func (service *Service) fetchClaimed(ctx context.Context, leaseNonce string, units []WorkUnit) error {
 	blockedUntil, err := service.store.ProviderBlockedUntil(ctx)
 	if err != nil {
 		return err
@@ -296,7 +296,7 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 	if blockedUntil.After(service.config.Now()) {
 		telemetry.RecordRateFetchSkip(ctx, fetchKindName(units), "rate_limited")
 		delay := blockedUntil.Sub(service.config.Now())
-		if failErr := service.store.Fail(ctx, leaseToken, units, "provider_rate_limited", delay); failErr != nil {
+		if failErr := service.store.Fail(ctx, leaseNonce, units, "provider_rate_limited", delay); failErr != nil {
 			return failErr
 		}
 		return &RateLimitError{RetryAt: blockedUntil}
@@ -320,7 +320,7 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 		if fetchErr == nil {
 			telemetry.RecordRateFetch(fetchContext, kind, "succeeded", len(batch), time.Since(started))
 			telemetry.End(span, "")
-			if err := service.store.Complete(ctx, leaseToken, batch, request, result, service.config.FreshFor); err != nil {
+			if err := service.store.Complete(ctx, leaseNonce, batch, request, result, service.config.FreshFor); err != nil {
 				return err
 			}
 			continue
@@ -342,7 +342,7 @@ func (service *Service) fetchClaimed(ctx context.Context, leaseToken string, uni
 		if blockErr != nil {
 			return blockErr
 		}
-		if err := service.store.Fail(ctx, leaseToken, remainingUnits(batches[index:]), errorClass, delay); err != nil {
+		if err := service.store.Fail(ctx, leaseNonce, remainingUnits(batches[index:]), errorClass, delay); err != nil {
 			return err
 		}
 		return fetchErr
@@ -465,7 +465,7 @@ func requireLatestObservations(request FetchRequest, result FetchResult) error {
 	return nil
 }
 
-func newLeaseToken() (string, error) {
-	token, err := uuid.NewRandom()
-	return token.String(), err
+func newLeaseNonce() (string, error) {
+	nonce, err := uuid.NewRandom()
+	return nonce.String(), err
 }

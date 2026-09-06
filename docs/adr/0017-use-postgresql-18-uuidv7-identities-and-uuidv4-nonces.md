@@ -1,6 +1,6 @@
 # ADR-0017: Use PostgreSQL 18, UUIDv7 identities, and UUIDv4 nonces
 
-- Status: Accepted; compatibility period completed by ADR-0018
+- Status: Accepted; compatibility period completed by ADR-0018 and retained evidence retired by ADR-0033
 - Date: 2026-09-04
 
 ## Context

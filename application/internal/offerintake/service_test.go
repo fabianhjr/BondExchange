@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	testSellerID = exchange.UserID("01991a20-0000-7000-8000-000000000001")
-	testQuoteID  = QuoteID("01991a20-0000-7000-8000-000000000099")
-	testNonce    = "41db1265-8bc1-4ab3-992f-885799a4af1d"
+	testSellerID   = exchange.UserID("01991a20-0000-7000-8000-000000000001")
+	testQuoteID    = QuoteID("01991a20-0000-7000-8000-000000000099")
+	testOfferID    = exchange.OfferID("01991a20-0000-7000-8000-000000000101")
+	testPurchaseID = exchange.PurchaseID("01991a20-0000-7000-8000-000000000201")
+	testNonce      = "41db1265-8bc1-4ab3-992f-885799a4af1d"
 )
 
 type exchangeStub struct {
@@ -325,8 +327,8 @@ func TestOfferIntakeRejectsInvalidCreateInputsAndDelegatesCoreOperations(t *test
 	repository := &repositoryStub{}
 	coreErr := errors.New("core failed")
 	core := exchangeStub{
-		purchase: exchange.Purchase{ID: "purchase"},
-		offers:   []exchange.SaleOffer{{ID: "offer"}},
+		purchase: exchange.Purchase{ID: testPurchaseID},
+		offers:   []exchange.SaleOffer{{ID: testOfferID}},
 		series:   []exchange.BondSeries{"BND"},
 	}
 	service, err := NewService(core, &ratesStub{}, repository, Config{})
@@ -356,8 +358,8 @@ func TestOfferIntakeRejectsInvalidCreateInputsAndDelegatesCoreOperations(t *test
 		})
 	}
 
-	purchase, err := service.Buy(context.Background(), exchange.AccessContext{}, "key", "offer")
-	if err != nil || purchase.ID != "purchase" {
+	purchase, err := service.Buy(context.Background(), exchange.AccessContext{}, testNonce, string(testOfferID))
+	if err != nil || purchase.ID != testPurchaseID {
 		t.Fatalf("Buy() = %#v, %v", purchase, err)
 	}
 	var offers []exchange.SaleOffer
@@ -373,7 +375,7 @@ func TestOfferIntakeRejectsInvalidCreateInputsAndDelegatesCoreOperations(t *test
 	}
 
 	service, _ = NewService(exchangeStub{err: coreErr}, &ratesStub{}, repository, Config{})
-	if _, err := service.Buy(context.Background(), exchange.AccessContext{}, "key", "offer"); !errors.Is(err, coreErr) {
+	if _, err := service.Buy(context.Background(), exchange.AccessContext{}, testNonce, string(testOfferID)); !errors.Is(err, coreErr) {
 		t.Fatalf("Buy() error = %v", err)
 	}
 	if err := service.StreamActiveOffers(context.Background(), exchange.AccessContext{}, "BND", func(exchange.SaleOffer) error { return nil }); !errors.Is(err, coreErr) {
