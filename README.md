@@ -221,13 +221,13 @@ itself to the test gate, because such a task would run locally and never in CI
 
 ## How LLMs were used
 
-GPT-5.6 Sol and Opus 5 was used during the development of this system.
+GPT-5.6 Sol and Opus 5 were used during the development of this system.
 
 The priority from the get go to make the system as well tested as possible to
 reduce human review effort. This allowed LLM to self direct and correct as much
 as possible without human supervision.
 
-Given that some suboptimal results were commited during iterations,
+Given that some suboptimal results were committed during iterations,
 in particular in the DB scheme there were two issues during development:
 
 - The tables used a text id primary key (which was later migrated over to
@@ -239,7 +239,7 @@ in particular in the DB scheme there were two issues during development:
 Additionally there was an issue with gremlins around a rough-edge were it was
 erroneously reporting a 100% score due to an argument issue rather than an
 error message and an invalid score which let the LLMs / PRs merge with an
-infiror than intended score.
+inferior than intended score.
 
 ## Two more weeks
 
