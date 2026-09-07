@@ -218,3 +218,43 @@ integration runs the same two tasks as separately visible jobs, so the local and
 CI gates cover the same work. `dev:check` fails when any other task attaches
 itself to the test gate, because such a task would run locally and never in CI
 ([ADR-0020](docs/adr/0020-keep-local-and-ci-gates-equivalent.md)).
+
+## How LLMs were used
+
+GPT-5.6 Sol and Opus 5 was used during the development of this system.
+
+The priority from the get go to make the system as well tested as possible to
+reduce human review effort. This allowed LLM to self direct and correct as much
+as possible without human supervision.
+
+Given that some suboptimal results were commited during iterations,
+in particular in the DB scheme there were two issues during development:
+
+- The tables used a text id primary key (which was later migrated over to
+  UUIDv7 keys)
+- A user table with just a primary key was left after the initial
+  RBAC authorization development which created a new principals table (user
+  table was deprecated and removed later)
+
+Additionally there was an issue with gremlins around a rough-edge were it was
+erroneously reporting a 100% score due to an argument issue rather than an
+error message and an invalid score which let the LLMs / PRs merge with an
+infiror than intended score.
+
+## Two more weeks
+
+I believe that a real system would benefit from developing towards a real
+settlement system and balance tracking/controls.
+
+Additional time would also help to increase mutation testing score back
+towards the > 90% target
+
+For a more long term running system the append only database design would
+require automatic data deletion/pruning after the retention period for the
+transactions and would benefit greatly from some horizontal scaling technique
+like sharding or cold storage of historical transactions.
+
+## Concurrency Proof
+
+This guarantee is described in https://github.com/fabianhjr/BondExchange/blob/main/docs/guarantees.md#g-001--at-most-one-buyer-acquires-a-sale-offer
+The TL;DR is that the DB scheme is designed as append only and there is a uniqueness constraint on purchasing a sale offer.
