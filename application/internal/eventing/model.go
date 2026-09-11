@@ -39,14 +39,18 @@ type SaleOfferCreated struct {
 	BondSeries   string `json:"bond_series"`
 	Price        string `json:"price"`
 	CurrencyCode string `json:"currency_code"`
+	Quantity     int32  `json:"quantity,omitempty"`
 }
 
 type PurchaseRecorded struct {
-	SaleOfferID  string    `json:"sale_offer_id"`
-	BondSeries   string    `json:"bond_series"`
-	Price        string    `json:"price"`
-	CurrencyCode string    `json:"currency_code"`
-	BoughtAt     time.Time `json:"bought_at"`
+	SaleOfferID       string    `json:"sale_offer_id"`
+	BondSeries        string    `json:"bond_series"`
+	Price             string    `json:"price"`
+	CurrencyCode      string    `json:"currency_code"`
+	BoughtAt          time.Time `json:"bought_at"`
+	Quantity          int32     `json:"quantity,omitempty"`
+	RemainingOfferID  string    `json:"remaining_offer_id,omitempty"`
+	RemainingQuantity int32     `json:"remaining_quantity,omitempty"`
 }
 
 type Publisher interface {

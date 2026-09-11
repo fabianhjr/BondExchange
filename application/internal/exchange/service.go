@@ -5,7 +5,7 @@ import (
 )
 
 type Store interface {
-	Buy(ctx context.Context, operation MutationContext, offerID OfferID) (Purchase, error)
+	Buy(ctx context.Context, operation MutationContext, offerID OfferID, quantity *Quantity) (Purchase, error)
 	CreateSaleOffer(ctx context.Context, operation MutationContext, offer SaleOffer) (SaleOffer, error)
 	StreamActiveOffers(
 		ctx context.Context,
@@ -24,7 +24,7 @@ func NewService(store Store) *Service {
 	return &Service{store: store}
 }
 
-func (service *Service) Buy(ctx context.Context, access AccessContext, idempotencyKey string, offer string) (Purchase, error) {
+func (service *Service) Buy(ctx context.Context, access AccessContext, idempotencyKey string, offer string, quantity *int32) (Purchase, error) {
 	if access.Operation != OperationBuy || access.Principal.ID == "" {
 		return Purchase{}, ErrInvalidOperation
 	}
@@ -35,7 +35,11 @@ func (service *Service) Buy(ctx context.Context, access AccessContext, idempoten
 	if err != nil {
 		return Purchase{}, err
 	}
-	return service.store.Buy(ctx, MutationContext{AccessContext: access, IdempotencyKey: idempotencyKey}, offerID)
+	requested, err := ParseOptionalQuantity(quantity)
+	if err != nil {
+		return Purchase{}, err
+	}
+	return service.store.Buy(ctx, MutationContext{AccessContext: access, IdempotencyKey: idempotencyKey}, offerID, requested)
 }
 
 func (service *Service) CreateSaleOffer(
@@ -45,8 +49,9 @@ func (service *Service) CreateSaleOffer(
 	bond string,
 	price string,
 	currency string,
+	quantity *int32,
 ) (SaleOffer, error) {
-	operation, offer, err := PrepareSaleOffer(access, idempotencyKey, bond, price, currency)
+	operation, offer, err := PrepareSaleOffer(access, idempotencyKey, bond, price, currency, quantity)
 	if err != nil {
 		return SaleOffer{}, err
 	}
@@ -62,6 +67,7 @@ func PrepareSaleOffer(
 	bond string,
 	price string,
 	currency string,
+	quantity *int32,
 ) (MutationContext, SaleOffer, error) {
 	if access.Operation != OperationCreateSaleOffer || access.Principal.ID == "" {
 		return MutationContext{}, SaleOffer{}, ErrInvalidOperation
@@ -81,6 +87,10 @@ func PrepareSaleOffer(
 	if err != nil || currencyCode != MXN {
 		return MutationContext{}, SaleOffer{}, ErrInvalidCurrencyCode
 	}
+	offerQuantity, err := ParseOfferQuantity(quantity)
+	if err != nil {
+		return MutationContext{}, SaleOffer{}, err
+	}
 	return MutationContext{
 			AccessContext:  access,
 			IdempotencyKey: idempotencyKey,
@@ -89,6 +99,7 @@ func PrepareSaleOffer(
 			BondSeries: bondSeries,
 			Price:      offerPrice,
 			Currency:   currencyCode,
+			Quantity:   offerQuantity,
 		}, nil
 }
 

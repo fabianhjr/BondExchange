@@ -13,6 +13,7 @@ import (
 type storeStub struct {
 	buyBuyer     PrincipalID
 	buyOffer     OfferID
+	buyQuantity  *Quantity
 	buyValue     Purchase
 	buyError     error
 	createdInput SaleOffer
@@ -32,10 +33,11 @@ const (
 	testNonce       = "41db1265-8bc1-4ab3-992f-885799a4af1d"
 )
 
-func (store *storeStub) Buy(_ context.Context, operation MutationContext, offer OfferID) (Purchase, error) {
+func (store *storeStub) Buy(_ context.Context, operation MutationContext, offer OfferID, quantity *Quantity) (Purchase, error) {
 	store.operation = operation.AccessContext
 	store.buyBuyer = operation.Principal.ID
 	store.buyOffer = offer
+	store.buyQuantity = quantity
 	return store.buyValue, store.buyError
 }
 
@@ -85,19 +87,27 @@ func TestServiceBuy(t *testing.T) {
 
 	expected := Purchase{BuyerID: testPrincipalID, BoughtAt: time.Unix(1, 0)}
 	store := &storeStub{buyValue: expected}
-	actual, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID)
+	actual, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID, nil)
 	if err != nil || !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("Buy() = %#v, %v", actual, err)
 	}
 	if store.buyBuyer != testPrincipalID || store.buyOffer != testOfferID {
 		t.Fatalf("store received buyer %q and offer %q", store.buyBuyer, store.buyOffer)
 	}
+	requested := int32(3)
+	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID, &requested); err != nil || store.buyQuantity == nil || *store.buyQuantity != 3 {
+		t.Fatalf("explicit quantity passed to store as %v, error %v", store.buyQuantity, err)
+	}
+	invalid := int32(0)
+	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID, &invalid); !errors.Is(err, ErrInvalidQuantity) {
+		t.Fatalf("Buy() invalid quantity error = %v", err)
+	}
 
 	store.buyError = ErrOfferUnavailable
-	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID); !errors.Is(err, ErrOfferUnavailable) {
+	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, testOfferID, nil); !errors.Is(err, ErrOfferUnavailable) {
 		t.Fatalf("Buy() store error = %v", err)
 	}
-	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, ""); !errors.Is(err, ErrInvalidOfferID) {
+	if _, err := NewService(store).Buy(context.Background(), testAccess(OperationBuy), testNonce, "", nil); !errors.Is(err, ErrInvalidOfferID) {
 		t.Fatalf("Buy() offer error = %v", err)
 	}
 }
@@ -105,7 +115,7 @@ func TestServiceBuy(t *testing.T) {
 func TestServiceCreateSaleOffer(t *testing.T) {
 	t.Parallel()
 
-	expected := SaleOffer{ID: testOfferID, SellerID: testPrincipalID, BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "MXN"}
+	expected := SaleOffer{ID: testOfferID, SellerID: testPrincipalID, BondSeries: "BND", Price: decimal.RequireFromString("100.25"), Currency: "MXN", Quantity: 1}
 	store := &storeStub{createdValue: expected}
 	created, err := NewService(store).CreateSaleOffer(
 		context.Background(),
@@ -114,6 +124,7 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 		"bnd",
 		"100.25",
 		"MXN",
+		nil,
 	)
 	if err != nil || !reflect.DeepEqual(created, expected) {
 		t.Fatalf("CreateSaleOffer() = %#v, %v", created, err)
@@ -125,9 +136,12 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 		store.createdInput.Currency != "MXN" {
 		t.Fatalf("store received %#v", store.createdInput)
 	}
+	if store.createdInput.Quantity != 1 {
+		t.Fatalf("default offer quantity = %d", store.createdInput.Quantity)
+	}
 
 	store.createError = ErrOfferAlreadyExists
-	if _, err := NewService(store).CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), testNonce, "BND", "1", "MXN"); !errors.Is(err, ErrOfferAlreadyExists) {
+	if _, err := NewService(store).CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), testNonce, "BND", "1", "MXN", nil); !errors.Is(err, ErrOfferAlreadyExists) {
 		t.Fatalf("CreateSaleOffer() store error = %v", err)
 	}
 
@@ -151,6 +165,7 @@ func TestServiceCreateSaleOffer(t *testing.T) {
 				test.bond,
 				test.price,
 				test.currency,
+				nil,
 			)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("CreateSaleOffer() error = %v, want %v", err, test.want)
@@ -207,16 +222,16 @@ func TestServiceRejectsInvalidOperationContextAndIdempotency(t *testing.T) {
 	t.Parallel()
 	service := NewService(&storeStub{})
 	invalid := testAccess("other.operation")
-	if _, err := service.Buy(context.Background(), invalid, testNonce, testOfferID); !errors.Is(err, ErrInvalidOperation) {
+	if _, err := service.Buy(context.Background(), invalid, testNonce, testOfferID, nil); !errors.Is(err, ErrInvalidOperation) {
 		t.Fatalf("Buy() operation error = %v", err)
 	}
-	if _, err := service.Buy(context.Background(), testAccess(OperationBuy), "short", testOfferID); !errors.Is(err, ErrInvalidIdempotencyKey) {
+	if _, err := service.Buy(context.Background(), testAccess(OperationBuy), "short", testOfferID, nil); !errors.Is(err, ErrInvalidIdempotencyKey) {
 		t.Fatalf("Buy() idempotency error = %v", err)
 	}
-	if _, err := service.CreateSaleOffer(context.Background(), invalid, testNonce, "BND", "1", "USD"); !errors.Is(err, ErrInvalidOperation) {
+	if _, err := service.CreateSaleOffer(context.Background(), invalid, testNonce, "BND", "1", "USD", nil); !errors.Is(err, ErrInvalidOperation) {
 		t.Fatalf("CreateSaleOffer() operation error = %v", err)
 	}
-	if _, err := service.CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), "short", "BND", "1", "USD"); !errors.Is(err, ErrInvalidIdempotencyKey) {
+	if _, err := service.CreateSaleOffer(context.Background(), testAccess(OperationCreateSaleOffer), "short", "BND", "1", "USD", nil); !errors.Is(err, ErrInvalidIdempotencyKey) {
 		t.Fatalf("CreateSaleOffer() idempotency error = %v", err)
 	}
 	if err := service.StreamActiveOffers(context.Background(), invalid, "BND", func(SaleOffer) error { return nil }); !errors.Is(err, ErrInvalidOperation) {

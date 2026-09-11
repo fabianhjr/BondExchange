@@ -425,6 +425,9 @@ message BuyRequest {
   reserved "buyer_id";
   // Canonical UUIDv7 returned by the service when the offer was created.
   string sale_offer_id = 2;
+  // Positive quantity to reserve. Omission reserves the entire quantity that
+  // remains in this offer's partial-purchase lineage.
+  optional int32 quantity = 3;
 }
 
 message CreateSaleOfferRequest {
@@ -442,6 +445,9 @@ message CreateSaleOfferRequest {
   string currency_code = 5;
   // Required for USD submissions and forbidden for MXN submissions.
   string conversion_quote_id = 6;
+  // Positive quantity offered at the unit price. Omission preserves the
+  // original API behavior by publishing one unit.
+  optional int32 quantity = 7;
 }
 
 message QuoteSaleOfferRequest {
@@ -552,17 +558,21 @@ message SaleOffer {
   // Exact decimal monetary amount encoded as a string.
   string price = 4;
   string currency_code = 5;
+  // Available units at the offer's unit price.
+  int32 quantity = 6;
 }
 
 message BuyResponse {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    json_schema: {required: ["offer", "bought_at"]}
+    json_schema: {required: ["offer", "bought_at", "quantity"]}
   };
 
   SaleOffer offer = 1;
   reserved 2;
   reserved "buyer_id";
   google.protobuf.Timestamp bought_at = 3;
+  // Units reserved from the returned immutable offer segment.
+  int32 quantity = 4;
 }
 
 // Error is the REST error response. Native gRPC callers receive the equivalent status code and message.

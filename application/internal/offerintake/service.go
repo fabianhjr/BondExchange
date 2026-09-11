@@ -11,7 +11,7 @@ import (
 )
 
 type Exchange interface {
-	Buy(context.Context, exchange.AccessContext, string, string) (exchange.Purchase, error)
+	Buy(context.Context, exchange.AccessContext, string, string, *int32) (exchange.Purchase, error)
 	StreamActiveOffers(context.Context, exchange.AccessContext, string, func(exchange.SaleOffer) error) error
 	ActiveBondSeries(context.Context, exchange.AccessContext) ([]exchange.BondSeries, error)
 }
@@ -144,6 +144,7 @@ func (service *Service) CreateSaleOffer(
 	price string,
 	currency string,
 	quoteID string,
+	quantity *int32,
 ) (exchange.SaleOffer, error) {
 	ctx, span := telemetry.Start(ctx, "offer_intake.create")
 	defer span.End()
@@ -162,6 +163,10 @@ func (service *Service) CreateSaleOffer(
 		return exchange.SaleOffer{}, err
 	}
 	currencyCode, err := exchange.ParseCurrencyCode(currency)
+	if err != nil {
+		return exchange.SaleOffer{}, err
+	}
+	offerQuantity, err := exchange.ParseOfferQuantity(quantity)
 	if err != nil {
 		return exchange.SaleOffer{}, err
 	}
@@ -186,12 +191,12 @@ func (service *Service) CreateSaleOffer(
 		AccessContext: access, IdempotencyKey: idempotencyKey,
 	}, Submission{
 		BondSeries: bondSeries, Price: submittedPrice,
-		Currency: currencyCode, QuoteID: parsedQuoteID,
+		Currency: currencyCode, QuoteID: parsedQuoteID, Quantity: offerQuantity,
 	})
 }
 
-func (service *Service) Buy(ctx context.Context, access exchange.AccessContext, key, offer string) (exchange.Purchase, error) {
-	return service.exchange.Buy(ctx, access, key, offer)
+func (service *Service) Buy(ctx context.Context, access exchange.AccessContext, key, offer string, quantity *int32) (exchange.Purchase, error) {
+	return service.exchange.Buy(ctx, access, key, offer, quantity)
 }
 
 func (service *Service) StreamActiveOffers(ctx context.Context, access exchange.AccessContext, bond string, yield func(exchange.SaleOffer) error) error {

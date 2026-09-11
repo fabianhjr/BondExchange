@@ -34,6 +34,7 @@ type Application interface {
 		access exchange.AccessContext,
 		idempotencyKey string,
 		offer string,
+		quantity *int32,
 	) (exchange.Purchase, error)
 	CreateSaleOffer(
 		ctx context.Context,
@@ -43,6 +44,7 @@ type Application interface {
 		price string,
 		currency string,
 		quoteID string,
+		quantity *int32,
 	) (exchange.SaleOffer, error)
 	QuoteSaleOffer(
 		ctx context.Context,
@@ -119,6 +121,7 @@ func (server *Server) CreateSaleOffer(
 		request.GetPrice(),
 		request.GetCurrencyCode(),
 		request.GetConversionQuoteId(),
+		request.Quantity,
 	)
 	if err != nil {
 		logSecurityOperation(ctx, exchange.OperationCreateSaleOffer, &authenticated.AccessContext, err)
@@ -158,6 +161,7 @@ func (server *Server) Buy(ctx context.Context, request *bondexchangev1.BuyReques
 		authenticated.AccessContext,
 		authenticated.IdempotencyKey,
 		request.GetSaleOfferId(),
+		request.Quantity,
 	)
 	if err != nil {
 		if errors.Is(err, exchange.ErrSelfTradeProhibited) {
@@ -361,6 +365,7 @@ func purchaseToProto(purchase exchange.Purchase) *bondexchangev1.BuyResponse {
 	return &bondexchangev1.BuyResponse{
 		Offer:    saleOfferToProto(purchase.Offer),
 		BoughtAt: timestamppb.New(purchase.BoughtAt),
+		Quantity: int32(purchase.Quantity),
 	}
 }
 
@@ -370,6 +375,7 @@ func saleOfferToProto(offer exchange.SaleOffer) *bondexchangev1.SaleOffer {
 		BondSeries:   string(offer.BondSeries),
 		Price:        offer.Price.String(),
 		CurrencyCode: string(offer.Currency),
+		Quantity:     int32(offer.Quantity),
 	}
 }
 
@@ -439,6 +445,7 @@ func transportError(err error) error {
 		errors.Is(err, exchange.ErrInvalidBondSeries),
 		errors.Is(err, exchange.ErrInvalidPrice),
 		errors.Is(err, exchange.ErrInvalidCurrencyCode),
+		errors.Is(err, exchange.ErrInvalidQuantity),
 		errors.Is(err, exchange.ErrInvalidIdempotencyKey),
 		errors.Is(err, exchange.ErrInvalidOperation),
 		errors.Is(err, offerintake.ErrUnsupportedSubmissionCurrency),
@@ -446,7 +453,8 @@ func transportError(err error) error {
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, offerintake.ErrConversionQuoteRequired),
 		errors.Is(err, offerintake.ErrConversionQuoteUnavailable),
-		errors.Is(err, exchange.ErrSelfTradeProhibited):
+		errors.Is(err, exchange.ErrSelfTradeProhibited),
+		errors.Is(err, exchange.ErrInsufficientQuantity):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, offerintake.ErrExchangeRateUnavailable):
 		return status.Error(codes.Unavailable, err.Error())

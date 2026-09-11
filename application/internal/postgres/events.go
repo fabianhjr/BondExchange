@@ -22,7 +22,7 @@ WHERE table_name = $1 AND source_uuid = $2`, ref.TableName, ref.ID).Scan(&envelo
 	if err != nil {
 		return eventing.Envelope{}, err
 	}
-	if version != 1 && version != 2 {
+	if version != 1 && version != 2 && version != 3 {
 		return eventing.Envelope{}, eventing.ErrUnsupportedEvent
 	}
 
@@ -41,7 +41,8 @@ SELECT offer.uuid_id, bond.series, offer.price::text, offer.currency_code
 FROM bond_exchange.sale_offers AS offer
 JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
 WHERE offer.uuid_id = $1`
-		if version == 2 {
+		switch version {
+		case 2:
 			query = `
 SELECT offer.uuid_id, bond.series, canonical.price::text, canonical.currency_code
 FROM bond_exchange.sale_offers AS offer
@@ -49,13 +50,21 @@ JOIN bond_exchange.sale_offer_canonical_terms AS canonical
   ON canonical.sale_offer_uuid = offer.uuid_id
 JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
 WHERE offer.uuid_id = $1`
+		case 3:
+			query = `
+SELECT offer.uuid_id, bond.series, canonical.price::text, canonical.currency_code,
+       offer.quantity
+FROM bond_exchange.sale_offers AS offer
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = offer.uuid_id
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid
+WHERE offer.uuid_id = $1`
 		}
-		err = store.pool.QueryRow(ctx, query, ref.ID).Scan(
-			&payload.ID,
-			&payload.BondSeries,
-			&priceText,
-			&payload.CurrencyCode,
-		)
+		destinations := []any{&payload.ID, &payload.BondSeries, &priceText, &payload.CurrencyCode}
+		if version == 3 {
+			destinations = append(destinations, &payload.Quantity)
+		}
+		err = store.pool.QueryRow(ctx, query, ref.ID).Scan(destinations...)
 		if err == nil {
 			price, parseErr := exchange.ParsePrice(priceText)
 			if parseErr != nil {
@@ -81,7 +90,8 @@ JOIN bond_exchange.sale_offers AS sale_offer
 JOIN bond_exchange.bonds AS bond
   ON bond.uuid_id = sale_offer.bond_uuid
 WHERE purchase.uuid_id = $1`
-		if version == 2 {
+		switch version {
+		case 2:
 			query = `
 SELECT
   purchase.sale_offer_uuid,
@@ -97,14 +107,38 @@ JOIN bond_exchange.sale_offer_canonical_terms AS canonical
 JOIN bond_exchange.bonds AS bond
   ON bond.uuid_id = sale_offer.bond_uuid
 WHERE purchase.uuid_id = $1`
+		case 3:
+			query = `
+SELECT
+  purchase.sale_offer_uuid,
+  bond.series,
+  canonical.price::text,
+  canonical.currency_code,
+  purchase.bought_at,
+  purchase.quantity,
+  residual.uuid_id,
+  residual.quantity
+FROM bond_exchange.purchases AS purchase
+JOIN bond_exchange.sale_offers AS sale_offer
+  ON sale_offer.uuid_id = purchase.sale_offer_uuid
+JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+  ON canonical.sale_offer_uuid = sale_offer.uuid_id
+JOIN bond_exchange.bonds AS bond ON bond.uuid_id = sale_offer.bond_uuid
+LEFT JOIN bond_exchange.sale_offers AS residual
+  ON residual.partial_purchase_provenance = purchase.uuid_id
+WHERE purchase.uuid_id = $1`
 		}
-		err = store.pool.QueryRow(ctx, query, ref.ID).Scan(
-			&payload.SaleOfferID,
-			&payload.BondSeries,
-			&priceText,
-			&payload.CurrencyCode,
-			&payload.BoughtAt,
-		)
+		destinations := []any{&payload.SaleOfferID, &payload.BondSeries, &priceText, &payload.CurrencyCode, &payload.BoughtAt}
+		var remainingOfferID *string
+		var remainingQuantity *int32
+		if version == 3 {
+			destinations = append(destinations, &payload.Quantity, &remainingOfferID, &remainingQuantity)
+		}
+		err = store.pool.QueryRow(ctx, query, ref.ID).Scan(destinations...)
+		if err == nil && remainingOfferID != nil && remainingQuantity != nil {
+			payload.RemainingOfferID = *remainingOfferID
+			payload.RemainingQuantity = *remainingQuantity
+		}
 		if err == nil {
 			price, parseErr := exchange.ParsePrice(priceText)
 			if parseErr != nil {

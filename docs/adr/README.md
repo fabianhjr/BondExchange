@@ -51,3 +51,4 @@ Alternatives considered sections.
 - [ADR-0033: Retire legacy identifier evidence and transition tooling](0033-retire-legacy-identifier-evidence-and-transition-tooling.md)
 - [ADR-0034: Make the principal the sole identity](0034-make-the-principal-the-sole-identity.md)
 - [ADR-0035: Vendor the minimal ASVS baseline](0035-vendor-the-minimal-asvs-baseline.md)
+- [ADR-0036: Represent partial fills as residual-offer lineages](0036-represent-partial-fills-as-residual-offer-lineages.md)

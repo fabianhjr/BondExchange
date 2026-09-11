@@ -8,10 +8,9 @@ disposable demo: P1 blocks a credible production use, P2 is a material
 correctness, security, operability, or scaling concern, and P3 primarily
 affects maintainability or contributor experience.
 
-The repository was reviewed on 2026-09-06. `devenv test` and the default
-configurable integration load task passed for this review, so there is no known
-failing quality gate; the items below are gaps that the current gates either
-accept or do not cover.
+The repository was reviewed on 2026-09-11. The focused partial-fill database,
+Go, API, and TLA+ gates passed during the review; the items below are gaps those
+gates either accept or do not cover.
 
 F-025 through F-029 were added by a source review on 2026-09-06 that read the
 implementation without re-running the gates. Each cites the code it describes;
@@ -22,13 +21,15 @@ those entries report.
 
 ### F-001 — Buying stops at an immutable reservation (P1)
 
-- **Evidence:** `Buy` appends one purchase fact per sale offer. The root
+- **Evidence:** `Buy` appends one purchase fact per immutable offer segment;
+  a partial purchase appends a residual segment for the unreserved quantity. The root
   README, database documentation, security profile, and TLA+ model explicitly
   leave payment, custody, ownership transfer, finality, cancellation, expiry,
   and settlement outside the system.
 - **Impact:** A successful `Buy` response can be mistaken for a completed
-  securities transaction even though no downstream lifecycle exists. An offer
-  also cannot return to the active book.
+  securities transaction even though no downstream lifecycle exists. A
+  purchased segment cannot return to the active book; only the automatically
+  derived residual remains tradable.
 - **Complete when:** The intended lifecycle and terminology are decided in an
   ADR, represented by append-only facts, reflected in the API and TLA+ model,
   and covered by migration, concurrency, and recovery tests.
@@ -39,9 +40,9 @@ those entries report.
   now prohibits a principal from buying an offer attributed to the same
   internal UUID. Go, PostgreSQL, TLA+, principal-specific discovery, negative
   tests, durable rejection records, and a bounded metric enforce that rule.
-  The model still intentionally has no balances, holdings, eligibility,
-  beneficial-owner relationships, partial fills, matching engine, price bands,
-  or price/time priority.
+  The model now includes quantity-conserving partial fills, but still
+  intentionally has no balances, holdings, eligibility, beneficial-owner
+  relationships, matching engine, price bands, or price/time priority.
   [ADR-0034](docs/adr/0034-make-the-principal-the-sole-identity.md) makes the
   principal the sole identity, so `principals` is now the only identity a rule
   could group: there is no owner table, and expressing one legal person behind
@@ -117,6 +118,7 @@ those entries report.
 - **Evidence:** Operation claims/results, RBAC facts, domain facts, Banxico SIE
   response imports and exchange-rate revisions, minimal integration-event
   references, and per-destination delivery records grow without deletion.
+  Each partial fill adds a purchase, a residual offer, and canonical terms.
   ADR-0033 removed expired pre-UUID identifier evidence, but it did not define
   a lifecycle for these retained records.
   [`docs/security/ASVS.md`](docs/security/ASVS.md) leaves
@@ -326,9 +328,10 @@ those entries report.
 
 ### F-022 — Marketplace and authorization behavior are model-checked separately (P3)
 
-- **Evidence:** [`spec/tla/README.md`](spec/tla/README.md) documents three TLC
-  instances. `BondExchange.cfg` explores contention between buyers with
-  authorization fixed, and `BondExchangeAuthorization.cfg` explores grants,
+- **Evidence:** [`spec/tla/README.md`](spec/tla/README.md) documents four TLC
+  instances. `BondExchange.cfg` explores whole-offer contention,
+  `BondExchangePartialFills.cfg` explores quantity-conserving residual
+  contention, and `BondExchangeAuthorization.cfg` explores grants,
   revocations, and suspensions over a single-offer market. A first attempt at
   one combined instance exceeded four million distinct states at depth six
   without terminating, so the concerns were separated to keep `spec:check`
@@ -353,14 +356,14 @@ those entries report.
   state separates the two, and `NewClaimsAreAuthorizedWhenClaimed` cannot fail
   for a check performed before the mutation. Active-offer listing and
   bond-series discovery require `offers.list` but have no modeled action.
-  `offer_unavailable` and `self_trade_prohibited` are the two rejections the
-  model produces, while the service also records `seller_not_found`,
+  `offer_unavailable`, `self_trade_prohibited`, and `insufficient_quantity` are
+  the three rejections the model produces, while the service also records `seller_not_found`,
   `bond_not_found`, `offer_already_exists`, and `conversion_quote_unavailable`.
 - **Impact:** [`docs/FMEA.md`](docs/FMEA.md) credits the model as a detection
   control for FM-004, whose named causes include RBAC evaluated outside the
   mutation transaction. That cause is currently detected by Go and PostgreSQL
-  tests alone. Revoked or suspended read access, and four of the six durable
-  rejection outcomes, are likewise unverified by TLC.
+  tests alone. Revoked or suspended read access and the application-boundary
+  rejection outcomes are likewise unverified by TLC.
 - **Complete when:** Authorization is evaluated in a step the model can
   separate from the claim it authorizes, read operations that require a
   permission are represented, and every recorded rejection outcome is

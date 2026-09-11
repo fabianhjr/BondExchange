@@ -233,11 +233,11 @@ WHERE quote.uuid_id = $1
 		err = tx.QueryRow(ctx, `
 WITH inserted_offer AS (
   INSERT INTO bond_exchange.sale_offers
-    (seller_uuid, bond_uuid, price, currency_code)
-  SELECT $1, bond.uuid_id, $3::numeric, 'MXN'
+    (seller_uuid, bond_uuid, price, currency_code, quantity)
+  SELECT $1, bond.uuid_id, $3::numeric, 'MXN', $7
   FROM bond_exchange.bonds AS bond
   WHERE bond.series = $2
-  RETURNING uuid_id, seller_uuid, bond_uuid
+  RETURNING uuid_id, seller_uuid, bond_uuid, quantity
 ), inserted_terms AS (
   INSERT INTO bond_exchange.sale_offer_canonical_terms
     (sale_offer_uuid, price, currency_code)
@@ -250,7 +250,7 @@ WITH inserted_offer AS (
   RETURNING sale_offer_uuid
 )
 SELECT offer.uuid_id, offer.seller_uuid, bond.series,
-       terms.price::text, terms.currency_code
+       terms.price::text, terms.currency_code, offer.quantity
 FROM inserted_offer AS offer
 JOIN inserted_terms AS terms ON terms.sale_offer_uuid = offer.uuid_id
 JOIN inserted_submission AS source ON source.sale_offer_uuid = offer.uuid_id
@@ -261,7 +261,8 @@ JOIN bond_exchange.bonds AS bond ON bond.uuid_id = offer.bond_uuid`,
 			submission.Price.String(),
 			submission.Currency,
 			quoteID,
-		).Scan(&created.ID, &created.SellerID, &created.BondSeries, &priceText, &created.Currency)
+			int32(submission.Quantity),
+		).Scan(&created.ID, &created.SellerID, &created.BondSeries, &priceText, &created.Currency, &created.Quantity)
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err := recordOperationRejection(ctx, tx, claimID, "bond_not_found"); err != nil {
 				return exchange.SaleOffer{}, err

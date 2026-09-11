@@ -34,16 +34,23 @@ Init ==
 PublishNext ==
   \E seller \in Principals, client \in Clients, key \in IdempotencyKeys,
      requestDigest \in RequestDigests, bond \in Bonds,
-     offerId \in SaleOfferIds, price \in Prices :
-       CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price)
+     offerId \in SaleOfferIds, price \in Prices, quantity \in Quantities :
+       CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price, quantity)
 
 BuyNext ==
   \/ \E buyer \in Principals, client \in Clients, key \in IdempotencyKeys,
-        requestDigest \in RequestDigests, offerId \in SaleOfferIds :
-          ClaimBuy(buyer, client, key, requestDigest, offerId)
-  \/ \E pending \in inFlightBuys : CommitBuy(pending)
+        requestDigest \in RequestDigests, offerId \in SaleOfferIds,
+        quantity \in Quantities \cup {AllRemaining} :
+          ClaimBuy(buyer, client, key, requestDigest, offerId, quantity)
+  \/ \E pending \in inFlightBuys : CommitFullBuy(pending)
+  \/ \E pending \in inFlightBuys : CommitContendedResidualBuy(pending)
+  \/ \E pending \in inFlightBuys, residualId \in SaleOfferIds :
+       CommitPartialBuy(pending, residualId)
+  \/ \E pending \in inFlightBuys, residual \in publishedOffers :
+       AdvanceBuyToResidual(pending, residual)
   \/ \E pending \in inFlightBuys : RejectBuy(pending)
   \/ \E pending \in inFlightBuys : RejectSelfBuy(pending)
+  \/ \E pending \in inFlightBuys : RejectInsufficientQuantity(pending)
 
 RetryNext ==
   \E scope \in ClaimScopes, requestDigest \in RequestDigests :
@@ -67,6 +74,25 @@ MarketplaceNext ==
   \/ BuyNext
   \/ RetryNext
 
+PublishWholeNext ==
+  \E seller \in Principals, client \in Clients, key \in IdempotencyKeys,
+     requestDigest \in RequestDigests, bond \in Bonds,
+     offerId \in SaleOfferIds, price \in Prices :
+       CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price, 1)
+
+BuyWholeNext ==
+  \/ \E buyer \in Principals, client \in Clients, key \in IdempotencyKeys,
+        requestDigest \in RequestDigests, offerId \in SaleOfferIds :
+          ClaimBuy(buyer, client, key, requestDigest, offerId, AllRemaining)
+  \/ \E pending \in inFlightBuys : CommitFullBuy(pending)
+  \/ \E pending \in inFlightBuys : RejectBuy(pending)
+  \/ \E pending \in inFlightBuys : RejectSelfBuy(pending)
+
+WholeMarketplaceNext ==
+  \/ PublishWholeNext
+  \/ BuyWholeNext
+  \/ RetryNext
+
 Next ==
   \/ MarketplaceNext
   \/ AuthorizationNext
@@ -85,11 +111,15 @@ Spec == Init /\ [][Next]_vars
 
 \* Exclusivity, provenance, append-only history, and idempotent retries
 \* under a fixed authorization state.
-MarketplaceSpec == Init /\ [][MarketplaceNext]_vars
+MarketplaceSpec == Init /\ [][WholeMarketplaceNext]_vars
+
+\* Quantity conservation and advancing a contended request through the
+\* residual chain are checked in their own deliberately small instance.
+PartialFillSpec == Init /\ [][MarketplaceNext]_vars
 
 \* Grants, revocations, suspensions, and reinstatements interleaved with
 \* marketplace operations, over a deliberately small market.
-AuthorizationSpec == Spec
+AuthorizationSpec == Init /\ [][WholeMarketplaceNext \/ AuthorizationNext]_vars
 
 (***************************************************************************)
 (* Weak fairness on buy resolution only. Nothing requires an offer to be   *)
@@ -106,6 +136,11 @@ THEOREM MarketplaceSpec => []AtMostOnePurchasePerOffer
 THEOREM MarketplaceSpec => []NoSelfPurchases
 THEOREM MarketplaceSpec => []EveryFactHasASucceededOperation
 THEOREM MarketplaceSpec => FactsAreAppendOnly
+THEOREM PartialFillSpec => []AtMostOnePurchasePerOffer
+THEOREM PartialFillSpec => []AtMostOneResidualPerPurchase
+THEOREM PartialFillSpec => []PurchaseQuantitiesDoNotExceedOffers
+THEOREM PartialFillSpec => []ResidualsConserveQuantityAndTerms
+THEOREM PartialFillSpec => []PartialPurchasesHaveExactlyOneResidual
 THEOREM AuthorizationSpec => []EffectivePermissionsMatchAuthorizationFacts
 THEOREM AuthorizationSpec => NewClaimsAreAuthorizedWhenClaimed
 THEOREM FairSpec => EveryInFlightBuyIsResolved

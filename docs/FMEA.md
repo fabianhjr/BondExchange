@@ -4,7 +4,7 @@ This system-level failure mode and effects analysis (FMEA) covers the Bond
 Exchange domain, API, authentication, request admission and authorization, PostgreSQL persistence,
 integration-event delivery, Banxico SIE ingestion, runtime and telemetry
 composition, and verification workflow. It evaluates the repository as
-implemented on 2026-09-06. It does not assert that the disposable demo is
+implemented on 2026-09-11. It does not assert that the disposable demo is
 production-ready or that deployment-owned controls exist.
 
 The FMEA is a prioritization aid, not a quantitative prediction, security
@@ -51,7 +51,7 @@ production-readiness decision.
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
 | FM-001 | A binding reservation is treated as a settled securities transaction. | 10 | 7 | 8 | 560 | High | Product/domain | Open |
 | FM-002 | Unsupported market-integrity behavior is accepted as valid trading. | 9 | 5 | 9 | 405 | High | Product/domain | Partially controlled; policy open |
-| FM-003 | More than one buyer acquires the same offer. | 9 | 2 | 2 | 36 | Monitored; severity review | Domain/data | Controlled |
+| FM-003 | More than one buyer acquires the same immutable offer segment. | 9 | 2 | 2 | 36 | Monitored; severity review | Domain/data | Controlled |
 | FM-004 | An unauthorized, altered, or replayed operation changes domain state. | 10 | 2 | 3 | 60 | Monitored; severity review | Security/data | Controlled |
 | FM-005 | Direct or alternate writers append facts outside domain constraints. | 8 | 4 | 6 | 192 | Medium | Data/security | Open |
 | FM-006 | Unbounded immutable history exhausts storage or degrades queries. | 8 | 6 | 7 | 336 | High | Data/operations | Open |
@@ -71,6 +71,7 @@ production-readiness decision.
 | FM-020 | Legacy non-MXN offers are hidden by the new binary or still served by an old binary during rollout. | 8 | 5 | 4 | 160 | Medium | Release/product | Open disposition |
 | FM-021 | Telemetry is silently lost, unsafe, misleading, or unavailable during an incident. | 8 | 5 | 7 | 280 | High | Platform/operations | Open deployment control |
 | FM-022 | Per-principal request admission is bypassed, falsely rejects traffic, or creates database contention. | 7 | 3 | 5 | 105 | Medium | API/data/operations | Application-controlled; monitoring open |
+| FM-023 | A partial-fill lineage loses, duplicates, or misattributes quantity. | 9 | 2 | 2 | 36 | Monitored; severity review | Domain/data | Controlled |
 
 ## Detailed analysis
 
@@ -94,7 +95,7 @@ production-readiness decision.
 - **Traceability:** [F-001](../FRICTIONS.md#f-001--buying-stops-at-an-immutable-reservation-p1),
   [database behavior](../db/README.md),
   [formal domain](../spec/tla/README.md), and the reservation boundary stated by
-  [G-001](guarantees.md#g-001--at-most-one-buyer-acquires-a-sale-offer).
+  [G-001](guarantees.md#g-001--at-most-one-buyer-acquires-an-immutable-offer-segment).
 
 ### FM-002 — Unsupported market-integrity behavior
 
@@ -104,7 +105,7 @@ production-readiness decision.
 - **Effects:** Manipulative, unfunded, or otherwise invalid activity can look
   like a valid reservation, undermining business and audit conclusions.
 - **Causes:** Balances, holdings, eligibility, beneficial-owner relationships,
-  partial fills, matching, price bands, and price/time priority are
+  matching, price bands, and price/time priority are
   intentionally out of scope.
 - **Current controls and detection:** Same-identity self-trading is prohibited
   by principal-specific discovery, Go transaction logic, a PostgreSQL insert
@@ -122,19 +123,21 @@ production-readiness decision.
   [G-002](guarantees.md#g-002--nobody-buys-their-own-sale-offer), and
   [formal-model scope](../spec/tla/README.md#behavior).
 
-### FM-003 — Double acquisition of one offer
+### FM-003 — Double acquisition of one offer segment
 
 - **Function and failure:** Concurrent requests create more than one purchase
-  fact for one sale offer.
+  fact for one immutable sale-offer segment.
 - **Effects:** Conflicting buyers appear to hold the same exclusive
   reservation, causing a severe integrity failure and ambiguous recovery.
 - **Causes:** Cross-instance races, retry races, or loss of database uniqueness
   and transactional checks.
 - **Current controls and detection:** Each purchase has a UUIDv7 primary key,
-  while `purchases.sale_offer_uuid` is unique; each authorization decision and insert occurs in one PostgreSQL
-  transaction; the losing request reports the offer unavailable. Integration
-  tests exercise store-level concurrency, and a generated full-server workload
-  requires exactly one success when independent buys contend for one offer. The
+  while `purchases.sale_offer_uuid` is unique; each authorization decision and
+  insert occurs in one PostgreSQL transaction. A conflicting partial request
+  retries against the winner's residual rather than purchasing the same
+  segment. Integration tests exercise store-level concurrency, and a generated
+  full-server workload requires exactly one success when whole-remainder buys
+  contend for one offer. The
   TLA+ model claims a binding order before resolving it, so two authorized
   buyers can hold simultaneous claims against one offer; `AtMostOnePurchasePerOffer`
   is therefore a property of the resolution rule rather than of an atomic
@@ -150,7 +153,7 @@ production-readiness decision.
   [ADR-0027](adr/0027-model-contended-buying-and-revocable-authorization.md),
   [database behavior](../db/README.md),
   [TLA+ verification](../spec/tla/README.md#verification), and
-  [G-001](guarantees.md#g-001--at-most-one-buyer-acquires-a-sale-offer).
+  [G-001](guarantees.md#g-001--at-most-one-buyer-acquires-an-immutable-offer-segment).
 
 ### FM-004 — Unauthorized, altered, or replayed mutation
 
@@ -226,7 +229,10 @@ production-readiness decision.
   have been contracted. `sale_offers.currency_code` now requires `^[A-Z]{3}$`,
   canonical terms require MXN, and submission provenance requires MXN or USD.
   A purchase trigger rejects a buyer UUID equal to the referenced offer's
-  seller UUID, and a direct-SQL integration test pins that control.
+  seller UUID. Quantity and deferred residual-lineage triggers reject
+  non-positive or oversized purchases, missing or forked residuals, quantity
+  loss, and changed inherited terms. Direct-SQL integration tests pin those
+  controls.
   `TestStorageConstraintsMatchDomainValidation` compares each Go validation rule
   against a direct SQL insert and fails on a disagreement in either direction,
   so constraint drift is detected rather than discovered. The constraint was
@@ -268,7 +274,8 @@ production-readiness decision.
 - **Causes:** The repository defines no capacity, retention, partitioning,
   protected-backup, or erasure policy for the retained facts. ADR-0033 retired
   expired pre-UUID identifier evidence, but that bounded decision does not
-  establish a lifecycle for the remaining records.
+  establish a lifecycle for the remaining records. Every partial fill adds a
+  purchase plus a residual offer and canonical terms.
 - **Current controls and detection:** Purpose-built indexes exist for current
   queries and the schema preserves provenance. Native pgx pool metrics and
   query spans expose per-instance pressure when OTLP is configured. No
@@ -800,6 +807,42 @@ production-readiness decision.
   [F-011](../FRICTIONS.md#f-011--the-production-deployment-boundary-is-unspecified-p1),
   [observability contract](observability.md), and
   [G-011](guarantees.md#g-011--at-most-100-requests-per-principal-per-minute).
+
+### FM-023 — Partial-fill lineage loses or duplicates quantity
+
+- **Function and failure:** A partial purchase creates no residual, more than
+  one residual, an incorrectly sized residual, or a residual with changed
+  seller or offer terms; alternatively concurrent buyers reserve more than the
+  original lineage quantity.
+- **Effects:** Reservations can disappear, be duplicated, or refer to altered
+  terms, creating a severe transaction-integrity failure and ambiguous manual
+  recovery in append-only history.
+- **Causes:** Incorrect remainder arithmetic, a purchase and residual committed
+  in separate transactions, alternate-writer drift, a conflict classified from
+  a stale serializable snapshot, or failure to follow an ancestor's residual.
+- **Current controls and detection:** Positive quantity checks and a pre-insert
+  purchase trigger reject invalid or oversized purchases. Deferred constraint
+  triggers require exactly one residual for each partial purchase, none for a
+  full purchase, exact subtraction, and inherited seller, bond, raw terms, and
+  canonical MXN terms. Unique purchase and residual-provenance keys serialize
+  each segment and prevent forks. The adapter writes all facts and the operation
+  result atomically, rolls back a stale snapshot, and retries from the original
+  ID. A PostgreSQL integration test races compatible partial buys and verifies
+  two successes, distinct segments, total quantity, the active remainder,
+  insufficient quantity, and backward-compatible whole-remainder completion.
+  TLC checks segment exclusivity, residual cardinality and provenance, quantity
+  bounds and conservation, term inheritance, and append-only history in a
+  dedicated reachable instance. Event version 3 is reconstructed and checked
+  from the committed source facts.
+- **Action:** Preserve the deferred constraints, serializable retry, dedicated
+  TLC instance, and concurrent integration test whenever allocation behavior
+  changes. Add production retry-exhaustion and lineage-depth telemetry before
+  making an availability claim under sustained hot-offer contention. Severity
+  remains subject to explicit review even with low residual occurrence and
+  detection scores.
+- **Traceability:** [ADR-0036](adr/0036-represent-partial-fills-as-residual-offer-lineages.md),
+  [database behavior](../db/README.md), [formal-model verification](../spec/tla/README.md#verification),
+  and [G-017](guarantees.md#g-017--partial-fills-conserve-quantity-and-compatible-contenders-succeed).
 
 ## Maintenance and review procedure
 

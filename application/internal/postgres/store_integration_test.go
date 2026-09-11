@@ -73,7 +73,7 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 		go func(buyer exchange.PrincipalID) {
 			defer waitGroup.Done()
 			<-start
-			purchase, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, "buy-request-key-"+string(buyer), string(offer)), offer)
+			purchase, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, "buy-request-key-"+string(buyer), string(offer)), offer, nil)
 			if err != nil {
 				errorsChannel <- err
 				return
@@ -120,6 +120,134 @@ func TestConcurrentBuyRecordsOneBuyer(t *testing.T) {
 	}
 	if purchaseCount != 1 || offerCount != 1 || activeCount != 0 {
 		t.Fatalf("purchase, offer, active counts = %d, %d, %d", purchaseCount, offerCount, activeCount)
+	}
+}
+
+func TestConcurrentPartialBuysFollowTheResidualLineage(t *testing.T) {
+	pool := openTestPool(t)
+	store := NewStore(pool)
+	ctx := context.Background()
+	seller := insertPrincipal(t, pool)
+	bond := insertBond(t, pool)
+	offer := insertOfferWithQuantity(t, pool, seller, bond, 10)
+	buyers := []exchange.PrincipalID{insertPrincipal(t, pool), insertPrincipal(t, pool)}
+	quantities := []exchange.Quantity{3, 4}
+
+	results := make(chan exchange.Purchase, len(buyers))
+	errorsChannel := make(chan error, len(buyers))
+	start := make(chan struct{})
+	var waitGroup sync.WaitGroup
+	for index, buyer := range buyers {
+		waitGroup.Add(1)
+		go func(buyer exchange.PrincipalID, quantity exchange.Quantity) {
+			defer waitGroup.Done()
+			<-start
+			purchase, err := store.Buy(
+				ctx,
+				mutation(buyer, exchange.OperationBuy, "partial-buy-"+string(buyer), fmt.Sprintf("%s:%d", offer, quantity)),
+				offer,
+				&quantity,
+			)
+			if err != nil {
+				errorsChannel <- err
+				return
+			}
+			results <- purchase
+		}(buyer, quantities[index])
+	}
+	close(start)
+	waitGroup.Wait()
+	close(results)
+	close(errorsChannel)
+
+	for err := range errorsChannel {
+		t.Errorf("concurrent partial Buy() error = %v", err)
+	}
+	purchases := make([]exchange.Purchase, 0, len(buyers))
+	for purchase := range results {
+		purchases = append(purchases, purchase)
+	}
+	if len(purchases) != 2 {
+		t.Fatalf("successful partial buys = %d, want 2", len(purchases))
+	}
+	if purchases[0].Offer.ID == purchases[1].Offer.ID {
+		t.Fatalf("partial purchases consumed the same immutable segment: %#v", purchases)
+	}
+
+	var purchaseCount, purchasedQuantity, offerCount, remainingQuantity int
+	if err := pool.QueryRow(ctx, `
+WITH RECURSIVE lineage AS (
+  SELECT uuid_id, quantity FROM bond_exchange.sale_offers WHERE uuid_id = $1
+  UNION ALL
+  SELECT residual.uuid_id, residual.quantity
+  FROM lineage AS parent
+  JOIN bond_exchange.purchases AS purchase ON purchase.sale_offer_uuid = parent.uuid_id
+  JOIN bond_exchange.sale_offers AS residual ON residual.partial_purchase_provenance = purchase.uuid_id
+)
+SELECT
+  (SELECT count(*) FROM bond_exchange.purchases AS purchase
+   JOIN lineage ON lineage.uuid_id = purchase.sale_offer_uuid),
+  (SELECT sum(purchase.quantity) FROM bond_exchange.purchases AS purchase
+   JOIN lineage ON lineage.uuid_id = purchase.sale_offer_uuid),
+  (SELECT count(*) FROM lineage),
+  (SELECT quantity FROM lineage AS candidate
+   WHERE NOT EXISTS (
+     SELECT 1 FROM bond_exchange.purchases AS purchase WHERE purchase.sale_offer_uuid = candidate.uuid_id
+   ))`, offer).Scan(&purchaseCount, &purchasedQuantity, &offerCount, &remainingQuantity); err != nil {
+		t.Fatal(err)
+	}
+	if purchaseCount != 2 || purchasedQuantity != 7 || offerCount != 3 || remainingQuantity != 3 {
+		t.Fatalf("lineage facts = purchases %d/%d, offers %d, remaining %d", purchaseCount, purchasedQuantity, offerCount, remainingQuantity)
+	}
+
+	tooLarge := exchange.Quantity(4)
+	if _, err := store.Buy(ctx, mutation(insertPrincipal(t, pool), exchange.OperationBuy, uniqueID(t, "insufficient"), "four remaining"), offer, &tooLarge); !errors.Is(err, exchange.ErrInsufficientQuantity) {
+		t.Fatalf("oversubscribed lineage Buy() error = %v", err)
+	}
+	finalBuyer := insertPrincipal(t, pool)
+	finalPurchase, err := store.Buy(ctx, mutation(finalBuyer, exchange.OperationBuy, uniqueID(t, "final"), "all remaining"), offer, nil)
+	if err != nil || finalPurchase.Quantity != 3 {
+		t.Fatalf("final whole-lineage Buy() = %#v, %v", finalPurchase, err)
+	}
+}
+
+func TestPurchaseQuantityConstraintsPreserveOldWholeOfferWriters(t *testing.T) {
+	pool := openTestPool(t)
+	ctx := context.Background()
+	seller := insertPrincipal(t, pool)
+	bond := insertBond(t, pool)
+	buyer := insertPrincipal(t, pool)
+	offer := insertOfferWithQuantity(t, pool, seller, bond, 5)
+
+	var purchasedQuantity int
+	if err := pool.QueryRow(ctx, `
+INSERT INTO bond_exchange.purchases (sale_offer_uuid, buyer_uuid)
+VALUES ($1, $2)
+RETURNING quantity`, offer, buyer).Scan(&purchasedQuantity); err != nil {
+		t.Fatalf("old-writer whole purchase: %v", err)
+	}
+	if purchasedQuantity != 5 {
+		t.Fatalf("old-writer purchase quantity = %d, want 5", purchasedQuantity)
+	}
+
+	for _, test := range []struct {
+		name       string
+		quantity   int
+		constraint string
+	}{
+		{name: "non-positive", quantity: 0, constraint: "purchases_quantity_positive"},
+		{name: "larger than offer", quantity: 6, constraint: "purchases_quantity_within_offer"},
+	} {
+		candidate := insertOfferWithQuantity(t, pool, seller, bond, 5)
+		t.Run(test.name, func(t *testing.T) {
+			_, err := pool.Exec(ctx, `
+INSERT INTO bond_exchange.purchases (sale_offer_uuid, buyer_uuid, quantity)
+VALUES ($1, $2, $3)`, candidate, buyer, test.quantity)
+			var databaseError *pgconn.PgError
+			if !errors.As(err, &databaseError) || databaseError.ConstraintName != test.constraint {
+				t.Fatalf("direct purchase error = %v, want %s", err, test.constraint)
+			}
+		})
 	}
 }
 
@@ -207,7 +335,7 @@ func TestBuyRejectsMissingOffer(t *testing.T) {
 
 	buyer := insertPrincipal(t, pool)
 	missing := exchange.OfferID(uniqueUUIDv7(t))
-	if _, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(missing)), missing); !errors.Is(err, exchange.ErrOfferUnavailable) {
+	if _, err := store.Buy(ctx, mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(missing)), missing, nil); !errors.Is(err, exchange.ErrOfferUnavailable) {
 		t.Fatalf("missing offer error = %v", err)
 	}
 }
@@ -222,7 +350,7 @@ func TestSelfTradeIsRejectedAndReplayed(t *testing.T) {
 	operation := mutation(seller, exchange.OperationBuy, uniqueID(t, "self-buy"), string(offer))
 
 	for attempt := 0; attempt < 2; attempt++ {
-		if _, err := store.Buy(ctx, operation, offer); !errors.Is(err, exchange.ErrSelfTradeProhibited) {
+		if _, err := store.Buy(ctx, operation, offer, nil); !errors.Is(err, exchange.ErrSelfTradeProhibited) {
 			t.Fatalf("self-trade attempt %d error = %v", attempt+1, err)
 		}
 	}
@@ -263,6 +391,7 @@ func TestCreateSaleOffer(t *testing.T) {
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("99.125"),
 		Currency:   "MXN",
+		Quantity:   1,
 	}
 
 	operation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "create"), string(bond)+offer.Price.String())
@@ -391,6 +520,7 @@ RETURNING uuid_id`, importID, observedOn).Scan(&observationID); err != nil {
 	submission := offerintake.Submission{
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("97.125"), Currency: offerintake.USD, QuoteID: quote.ID,
+		Quantity: 1,
 	}
 	createOperation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "usd-create"), "accepted quote "+string(quote.ID))
 	created, err := store.CreateSaleOfferFromSubmission(ctx, createOperation, submission)
@@ -453,7 +583,7 @@ WHERE offer.uuid_id = $1`, created.ID).Scan(
 	direct, err := store.CreateSaleOfferFromSubmission(
 		ctx,
 		mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "mxn-create"), "MXN 101.25"),
-		offerintake.Submission{BondSeries: bond, Price: decimal.RequireFromString("101.25"), Currency: exchange.MXN},
+		offerintake.Submission{BondSeries: bond, Price: decimal.RequireFromString("101.25"), Currency: exchange.MXN, Quantity: 1},
 	)
 	if err != nil || direct.Currency != exchange.MXN || !direct.Price.Equal(decimal.RequireFromString("101.25")) {
 		t.Fatalf("direct MXN submission = %#v, %v", direct, err)
@@ -552,6 +682,7 @@ func TestConcurrentCreateSaleOfferGeneratesDistinctIDs(t *testing.T) {
 		BondSeries: insertBond(t, pool),
 		Price:      decimal.RequireFromString("100.25"),
 		Currency:   "MXN",
+		Quantity:   1,
 	}
 
 	const competitors = 8
@@ -608,10 +739,10 @@ func TestActiveOffersAndBondSeries(t *testing.T) {
 	inactiveBond := insertBond(t, pool)
 	inactiveOffer := insertOffer(t, pool, seller, inactiveBond)
 	buyer := insertPrincipal(t, pool)
-	if _, err := store.Buy(context.Background(), mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(first)), first); err != nil {
+	if _, err := store.Buy(context.Background(), mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(first)), first, nil); err != nil {
 		t.Fatalf("buy first offer: %v", err)
 	}
-	if _, err := store.Buy(context.Background(), mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(inactiveOffer)), inactiveOffer); err != nil {
+	if _, err := store.Buy(context.Background(), mutation(buyer, exchange.OperationBuy, uniqueID(t, "buy"), string(inactiveOffer)), inactiveOffer, nil); err != nil {
 		t.Fatalf("buy inactive-bond offer: %v", err)
 	}
 
@@ -689,7 +820,7 @@ func TestMutationIdempotencyReplaysResultAndRejectsKeyReuse(t *testing.T) {
 	bond := insertBond(t, pool)
 	offer := exchange.SaleOffer{
 		SellerID: seller, BondSeries: bond,
-		Price: decimal.RequireFromString("101.25"), Currency: "MXN",
+		Price: decimal.RequireFromString("101.25"), Currency: "MXN", Quantity: 1,
 	}
 	// The nonce is derived from this label, and the counts below match on the
 	// nonce alone rather than on the principal that claimed it. A fixed label
@@ -742,6 +873,7 @@ func TestSuccessfulMutationsRecordMinimalIntegrationEventReferences(t *testing.T
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("101.25"),
 		Currency:   "MXN",
+		Quantity:   3,
 	}
 	createOperation := mutation(seller, exchange.OperationCreateSaleOffer, uniqueID(t, "event-create"), "event offer")
 	created, err := store.CreateSaleOffer(context.Background(), createOperation, offer)
@@ -751,10 +883,12 @@ func TestSuccessfulMutationsRecordMinimalIntegrationEventReferences(t *testing.T
 	if _, err := store.CreateSaleOffer(context.Background(), createOperation, offer); err != nil {
 		t.Fatalf("idempotent create replay: %v", err)
 	}
+	partialQuantity := exchange.Quantity(1)
 	purchase, err := store.Buy(
 		context.Background(),
 		mutation(buyer, exchange.OperationBuy, uniqueID(t, "event-buy"), string(created.ID)),
 		created.ID,
+		&partialQuantity,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -788,8 +922,8 @@ WHERE table_schema = 'bond_exchange'
 		t.Fatal(err)
 	}
 	createdPayload, ok := createdEvent.Data.(eventing.SaleOfferCreated)
-	if !ok || createdEvent.Type != eventing.TypeSaleOfferCreated || createdPayload.ID != string(created.ID) ||
-		createdPayload.Price != "101.25" {
+	if !ok || createdEvent.Type != eventing.TypeSaleOfferCreated || createdEvent.SchemaVersion != 3 ||
+		createdPayload.ID != string(created.ID) || createdPayload.Price != "101.25" || createdPayload.Quantity != 3 {
 		t.Fatalf("created event = %#v", createdEvent)
 	}
 	if _, err := exchange.ParseOfferID(createdEvent.ID); err != nil {
@@ -803,8 +937,9 @@ WHERE table_schema = 'bond_exchange'
 		t.Fatal(err)
 	}
 	purchasePayload, ok := purchaseEvent.Data.(eventing.PurchaseRecorded)
-	if !ok || purchaseEvent.Type != eventing.TypePurchaseRecorded || purchasePayload.SaleOfferID != string(created.ID) ||
-		purchasePayload.BoughtAt.IsZero() {
+	if !ok || purchaseEvent.Type != eventing.TypePurchaseRecorded || purchaseEvent.SchemaVersion != 3 ||
+		purchasePayload.SaleOfferID != string(created.ID) || purchasePayload.BoughtAt.IsZero() ||
+		purchasePayload.Quantity != 1 || purchasePayload.RemainingOfferID == "" || purchasePayload.RemainingQuantity != 2 {
 		t.Fatalf("purchase event = %#v", purchaseEvent)
 	}
 	if _, err := exchange.ParseOfferID(purchaseEvent.ID); err != nil || purchaseEvent.ID == createdEvent.ID {
@@ -822,6 +957,7 @@ func TestIntegrationEventDeliveryIsLeasedAndDeduplicated(t *testing.T) {
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("99.5"),
 		Currency:   "MXN",
+		Quantity:   1,
 	}
 	created, err := store.CreateSaleOffer(
 		context.Background(),
@@ -868,6 +1004,7 @@ func TestIntegrationEventLeaseCoordinatesOverlappingAttempts(t *testing.T) {
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("97.25"),
 		Currency:   "MXN",
+		Quantity:   1,
 	}
 	created, err := store.CreateSaleOffer(
 		context.Background(),
@@ -919,6 +1056,7 @@ func TestManualIntegrationEventRecoveryRetriesFailedDelivery(t *testing.T) {
 		BondSeries: bond,
 		Price:      decimal.RequireFromString("98.75"),
 		Currency:   "MXN",
+		Quantity:   1,
 	}
 	created, err := store.CreateSaleOffer(
 		context.Background(),
@@ -991,7 +1129,7 @@ func TestLoadEventRejectsUnsupportedVersionAndMissingReference(t *testing.T) {
 	offer := insertOffer(t, pool, seller, bond)
 	if _, err := pool.Exec(context.Background(), `
 		INSERT INTO bond_exchange.integration_events (table_name, source_uuid, schema_version, completed_at)
-		VALUES ('sale_offers', $1, 3, transaction_timestamp())`, offer); err != nil {
+		VALUES ('sale_offers', $1, 4, transaction_timestamp())`, offer); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.LoadEvent(context.Background(), eventing.SourceRef{
@@ -1035,19 +1173,19 @@ func TestBuyIdempotencyReplaysOriginalBinding(t *testing.T) {
 	offer := insertOffer(t, pool, seller, bond)
 	operation := mutation(buyer, exchange.OperationBuy, "stable-buy-key-0001", string(offer))
 
-	first, err := store.Buy(context.Background(), operation, offer)
+	first, err := store.Buy(context.Background(), operation, offer, nil)
 	if err != nil {
 		t.Fatalf("first Buy() error = %v", err)
 	}
 	retry := operation
 	retry.AssertionDigest = sha256.Sum256([]byte("fresh assertion"))
-	second, err := store.Buy(context.Background(), retry, offer)
+	second, err := store.Buy(context.Background(), retry, offer, nil)
 	if err != nil || second.BuyerID != first.BuyerID || second.Offer.ID != first.Offer.ID || !second.BoughtAt.Equal(first.BoughtAt) {
 		t.Fatalf("retried Buy() = %#v, %v; want %#v", second, err, first)
 	}
 	conflict := retry
 	conflict.RequestDigest = sha256.Sum256([]byte("different request"))
-	if _, err := store.Buy(context.Background(), conflict, offer); !errors.Is(err, exchange.ErrIdempotencyConflict) {
+	if _, err := store.Buy(context.Background(), conflict, offer, nil); !errors.Is(err, exchange.ErrIdempotencyConflict) {
 		t.Fatalf("conflicting Buy() error = %v", err)
 	}
 }
@@ -1080,7 +1218,7 @@ VALUES ($1, $2, 'integration test')`, grantID, principal); err != nil {
 	if _, err := pool.Exec(ctx, `UPDATE bond_exchange.principal_role_grants SET reason = reason WHERE uuid_id = $1`, grantID); err == nil {
 		t.Fatal("append-only role grant accepted UPDATE")
 	}
-	if _, err := store.Buy(ctx, mutation(principal, exchange.OperationBuy, "revoked-buy-key-001", "offer"), "offer"); !errors.Is(err, exchange.ErrPermissionDenied) {
+	if _, err := store.Buy(ctx, mutation(principal, exchange.OperationBuy, "revoked-buy-key-001", "offer"), "offer", nil); !errors.Is(err, exchange.ErrPermissionDenied) {
 		t.Fatalf("Buy() after revocation error = %v", err)
 	}
 	if _, err := store.CreateSaleOffer(ctx, mutation(principal, exchange.OperationCreateSaleOffer, "revoked-create-key-1", "offer"), exchange.SaleOffer{}); !errors.Is(err, exchange.ErrPermissionDenied) {
@@ -1538,7 +1676,7 @@ func TestStoreReturnsConnectionErrors(t *testing.T) {
 	if err := store.AdmitRequest(ctx, "reader"); !errors.Is(err, ratelimit.ErrUnavailable) {
 		t.Fatalf("AdmitRequest() error = %v", err)
 	}
-	if _, err := store.Buy(ctx, mutation("buyer", exchange.OperationBuy, "idempotency-key-1", "offer"), "offer"); err == nil {
+	if _, err := store.Buy(ctx, mutation("buyer", exchange.OperationBuy, "idempotency-key-1", "offer"), "offer", nil); err == nil {
 		t.Fatal("Buy() succeeded with closed pool")
 	}
 	if _, err := store.CreateSaleOffer(ctx, mutation("seller", exchange.OperationCreateSaleOffer, "idempotency-key-1", "offer"), exchange.SaleOffer{}); err == nil {
@@ -2011,13 +2149,24 @@ func insertOffer(
 	bond exchange.BondSeries,
 ) exchange.OfferID {
 	t.Helper()
+	return insertOfferWithQuantity(t, pool, seller, bond, 1)
+}
+
+func insertOfferWithQuantity(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	seller exchange.PrincipalID,
+	bond exchange.BondSeries,
+	quantity exchange.Quantity,
+) exchange.OfferID {
+	t.Helper()
 	var id exchange.OfferID
 	if err := pool.QueryRow(
 		context.Background(),
 		`WITH inserted_offer AS (
 		   INSERT INTO bond_exchange.sale_offers
-		     (seller_uuid, bond_uuid, price, currency_code)
-		   SELECT $1, uuid_id, 100.25, 'MXN'
+		     (seller_uuid, bond_uuid, price, currency_code, quantity)
+		   SELECT $1, uuid_id, 100.25, 'MXN', $3
 		   FROM bond_exchange.bonds WHERE series = $2
 		   RETURNING uuid_id
 		 ), inserted_terms AS (
@@ -2032,6 +2181,7 @@ func insertOffer(
 		 SELECT uuid_id FROM inserted_offer`,
 		seller,
 		bond,
+		int32(quantity),
 	).Scan(&id); err != nil {
 		t.Fatalf("insert offer: %v", err)
 	}

@@ -57,8 +57,10 @@ packages and accepts only MXN.
 The marketplace also rejects a buy when the authenticated buyer UUID equals
 the referenced offer's seller UUID. The PostgreSQL adapter filters the same
 principal's offers from discovery and treats the database trigger as the final
-authority for alternate writers. No balance, holding, quantity, beneficial
-owner, or matching state is inferred by this control.
+authority for alternate writers. Sale offers and purchases carry positive
+quantities. A partial purchase creates an immutable residual offer, and a
+contending buy against the original ID retries down that lineage. No balance,
+holding, beneficial-owner, or matching state is inferred by these controls.
 
 The RPC adapter admits every authenticated request through the PostgreSQL
 adapter before authorization or application work. One internal principal gets

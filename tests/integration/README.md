@@ -100,3 +100,10 @@ ephemeral private key are never written to the artifact directory.
 
 `Buy` records a binding reservation only. These tests do not demonstrate
 payment, custody, ownership transfer, or settlement.
+
+The contended load case omits quantity and therefore deliberately exercises
+the backward-compatible whole-remainder behavior. The PostgreSQL integration
+test `TestConcurrentPartialBuysFollowTheResidualLineage` covers the distinct
+partial-fill race: two quantities sent concurrently to one original offer must
+both succeed when their sum fits, consume distinct immutable segments, and
+leave the conserved remainder active.

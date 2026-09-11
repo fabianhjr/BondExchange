@@ -32,7 +32,8 @@ UUID keys. Business identifiers such as bond series, permission codes, role
 codes, work keys, provider keys, and destination IDs remain unique attributes,
 not primary keys. The SIE observation bigint remains a revision-order value,
 not an identity. A purchase has its own UUIDv7 identity while a separate unique
-constraint on its sale-offer UUID preserves one winner per offer.
+constraint on its sale-offer UUID preserves one winner per immutable offer
+segment. ADR-0036 later lets a partial winner create a new residual segment.
 
 PostgreSQL generates sale-offer IDs. `CreateSaleOffer` no longer accepts a
 caller-selected ID, and the API reserves the removed Proto field number and
@@ -77,8 +78,8 @@ backfill has been verified.
   protect buyer and seller identities.
 - The TLA+ domain behavior is unchanged: identity representation, SQL keys,
   nonce syntax, and PostgreSQL deployment are outside the model. The unique
-  purchase-per-offer invariant remains the database implementation of the
-  modeled exclusive buy.
+  purchase-per-segment invariant remains the database implementation of the
+  modeled exclusive lineage step.
 
 ## Alternatives considered
 

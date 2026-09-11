@@ -5,6 +5,10 @@ ADR-0030 later adds a second modeled buy rejection,
 from the buyer. The claim-and-resolve and authorization decisions here remain
 accepted.
 
+ADR-0036 later refines buy resolution with quantities: full and partial commit,
+advance to a residual, and `insufficient_quantity`. The claim-and-resolve shape
+and one-purchase-per-immutable-segment invariant remain accepted.
+
 - Status: Accepted
 - Date: 2026-09-05
 
@@ -77,10 +81,10 @@ was never enabled.
 
 The marketplace and authorization state spaces multiply. One instance
 containing both is either intractable or too small to reach the interesting
-interleavings, so `spec:check` checks three instances — marketplace,
-authorization, and liveness — each with constants sized for the failures it
-must be able to distinguish. Every action is reachable in the instance that
-checks it, and the coverage gate enforces that.
+interleavings, so `spec:check` checks separate whole-marketplace, partial-fill,
+authorization, and liveness instances, each with constants sized for the
+failures it must be able to distinguish. Every action is reachable in the
+instance that checks it, and the coverage gate enforces that.
 
 Each property was confirmed to fail against a deliberately defective
 specification before being adopted. Weakening the exclusivity guard, dropping a
@@ -102,8 +106,8 @@ The model gains revocation semantics but not the timing of an authorization
 check. `ClaimBuy` evaluates permission and appends the claim in one step, which
 matches the service and leaves no reachable state between them, so
 `NewClaimsAreAuthorizedWhenClaimed` cannot fail for a check performed before the
-mutation transaction — a cause FM-004 names. Read operations and five of the six
-recorded rejection outcomes are likewise unrepresented. The specification README
+mutation transaction — a cause FM-004 names. Read operations and several
+application-boundary rejection outcomes are likewise unrepresented. The specification README
 states these boundaries under "What a passing check does not establish", and
 F-024 tracks closing them or reassigning the credit to the tests that cover
 them.

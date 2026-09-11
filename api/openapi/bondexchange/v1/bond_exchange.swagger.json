@@ -414,6 +414,11 @@
         "sale_offer_id": {
           "type": "string",
           "description": "Canonical UUIDv7 returned by the service when the offer was created."
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Positive quantity to reserve. Omission reserves the entire quantity that\nremains in this offer's partial-purchase lineage."
         }
       },
       "required": [
@@ -429,11 +434,17 @@
         "bought_at": {
           "type": "string",
           "format": "date-time"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Units reserved from the returned immutable offer segment."
         }
       },
       "required": [
         "offer",
-        "bought_at"
+        "bought_at",
+        "quantity"
       ]
     },
     "bondexchange.v1.CheckHealthResponse": {
@@ -465,6 +476,11 @@
         "conversion_quote_id": {
           "type": "string",
           "description": "Required for USD submissions and forbidden for MXN submissions."
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Positive quantity offered at the unit price. Omission preserves the\noriginal API behavior by publishing one unit."
         }
       },
       "required": [
@@ -646,6 +662,11 @@
         },
         "currency_code": {
           "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Available units at the offer's unit price."
         }
       },
       "required": [

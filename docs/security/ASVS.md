@@ -83,6 +83,12 @@ custody, ownership transfer, finality, cancellation, expiry, and all other
 settlement semantics remain explicitly pending; this change does not implement
 or model them.
 
+Offers and purchases carry positive quantities. Partial fills are represented
+as append-only residual offers whose database-checked provenance conserves the
+parent quantity and terms. Compatible cross-instance buyers can both succeed
+by advancing through that lineage; this does not add balances, holdings,
+eligibility, funding, or settlement controls.
+
 The same internal UUID cannot be both the buyer and the referenced offer's
 seller. Principal-specific discovery omits those offers, the application
 records a durable `self_trade_prohibited` rejection for direct attempts, and a
@@ -132,6 +138,8 @@ Successful offer creation and buying atomically record an integration event
 UUIDv7 plus only its immutable source-table name, source UUID, schema version, and completion
 time. Versioned loaders reconstruct minimized payloads in memory and do not
 include buyer, seller, assertion, issuer-subject, request, or credential data.
+Schema version 3 adds only offer/purchase quantity and the residual offer ID and
+quantity; versions 1 and 2 remain readable.
 Publication occurs after commit, is at least once, and uses per-destination
 UUIDv4 lease nonces. Publisher failures and panics are contained and cannot
 change a committed domain result. Consumers must deduplicate by event UUID.
@@ -170,6 +178,7 @@ credentials, and dynamic resource identifiers.
 | AD-10 | Domain, RBAC, and operation facts are append-only; response minimization protects user identity. | Audit records cannot satisfy erasure semantics without a future legal and architectural decision. |
 | AD-11 | The application owns OpenTelemetry trace/metric instrumentation and OTLP lifecycle; JSON security logs correlate with active spans. | Collector routing, protected storage, access, alerting, retention, and production sampling remain deployment concerns. |
 | AD-12 | Expected domain failures stay detailed unless detail would enable identity or credential enumeration. | Authentication and authorization failures are generic; unexpected failures never expose database, token, or stack details. |
+| AD-13 | A partial fill appends a purchase and exactly one immutable residual offer; the original offer ID remains the lineage entry point. | Long partial-fill chains increase immutable storage and may require transaction retries under contention. |
 | AD-13 | Runtime gRPC reflection is absent; clients use a versioned descriptor set. | Operators lose live discovery and must select an artifact matching the deployed API. |
 | AD-14 | Integration events persist only immutable source references and use immediate best-effort delivery with explicit manual recovery. | Source loaders must remain compatible for the retention period, delivery is at least once, and pending events can remain indefinitely without operator action. |
 | AD-15 | Banxico SIE responses and exact exchange-rate revisions are durable; PostgreSQL leases and cooldowns coordinate on-demand fetches. | Durable provenance grows over time, stale latest values are possible during refresh failures, and a crash before import commit can cause a repeated upstream request. |

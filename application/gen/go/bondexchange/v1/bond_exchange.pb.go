@@ -27,7 +27,10 @@ const (
 type BuyRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical UUIDv7 returned by the service when the offer was created.
-	SaleOfferId   string `protobuf:"bytes,2,opt,name=sale_offer_id,json=saleOfferId,proto3" json:"sale_offer_id,omitempty"`
+	SaleOfferId string `protobuf:"bytes,2,opt,name=sale_offer_id,json=saleOfferId,proto3" json:"sale_offer_id,omitempty"`
+	// Positive quantity to reserve. Omission reserves the entire quantity that
+	// remains in this offer's partial-purchase lineage.
+	Quantity      *int32 `protobuf:"varint,3,opt,name=quantity,proto3,oneof" json:"quantity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -69,6 +72,13 @@ func (x *BuyRequest) GetSaleOfferId() string {
 	return ""
 }
 
+func (x *BuyRequest) GetQuantity() int32 {
+	if x != nil && x.Quantity != nil {
+		return *x.Quantity
+	}
+	return 0
+}
+
 type CreateSaleOfferRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Bond series to sell. The service canonicalizes this value to uppercase.
@@ -79,8 +89,11 @@ type CreateSaleOfferRequest struct {
 	CurrencyCode string `protobuf:"bytes,5,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
 	// Required for USD submissions and forbidden for MXN submissions.
 	ConversionQuoteId string `protobuf:"bytes,6,opt,name=conversion_quote_id,json=conversionQuoteId,proto3" json:"conversion_quote_id,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Positive quantity offered at the unit price. Omission preserves the
+	// original API behavior by publishing one unit.
+	Quantity      *int32 `protobuf:"varint,7,opt,name=quantity,proto3,oneof" json:"quantity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateSaleOfferRequest) Reset() {
@@ -139,6 +152,13 @@ func (x *CreateSaleOfferRequest) GetConversionQuoteId() string {
 		return x.ConversionQuoteId
 	}
 	return ""
+}
+
+func (x *CreateSaleOfferRequest) GetQuantity() int32 {
+	if x != nil && x.Quantity != nil {
+		return *x.Quantity
+	}
+	return 0
 }
 
 type QuoteSaleOfferRequest struct {
@@ -813,8 +833,10 @@ type SaleOffer struct {
 	Id         string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	BondSeries string `protobuf:"bytes,3,opt,name=bond_series,json=bondSeries,proto3" json:"bond_series,omitempty"`
 	// Exact decimal monetary amount encoded as a string.
-	Price         string `protobuf:"bytes,4,opt,name=price,proto3" json:"price,omitempty"`
-	CurrencyCode  string `protobuf:"bytes,5,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
+	Price        string `protobuf:"bytes,4,opt,name=price,proto3" json:"price,omitempty"`
+	CurrencyCode string `protobuf:"bytes,5,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
+	// Available units at the offer's unit price.
+	Quantity      int32 `protobuf:"varint,6,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -877,10 +899,19 @@ func (x *SaleOffer) GetCurrencyCode() string {
 	return ""
 }
 
+func (x *SaleOffer) GetQuantity() int32 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
 type BuyResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Offer         *SaleOffer             `protobuf:"bytes,1,opt,name=offer,proto3" json:"offer,omitempty"`
-	BoughtAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=bought_at,json=boughtAt,proto3" json:"bought_at,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Offer    *SaleOffer             `protobuf:"bytes,1,opt,name=offer,proto3" json:"offer,omitempty"`
+	BoughtAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=bought_at,json=boughtAt,proto3" json:"bought_at,omitempty"`
+	// Units reserved from the returned immutable offer segment.
+	Quantity      int32 `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -927,6 +958,13 @@ func (x *BuyResponse) GetBoughtAt() *timestamppb.Timestamp {
 		return x.BoughtAt
 	}
 	return nil
+}
+
+func (x *BuyResponse) GetQuantity() int32 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
 }
 
 // Error is the REST error response. Native gRPC callers receive the equivalent status code and message.
@@ -978,18 +1016,22 @@ var File_bondexchange_v1_bond_exchange_proto protoreflect.FileDescriptor
 
 const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\n" +
-	"#bondexchange/v1/bond_exchange.proto\x12\x0fbondexchange.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\"W\n" +
+	"#bondexchange/v1/bond_exchange.proto\x12\x0fbondexchange.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\"\x85\x01\n" +
 	"\n" +
 	"BuyRequest\x12\"\n" +
-	"\rsale_offer_id\x18\x02 \x01(\tR\vsaleOfferId:\x15\x92A\x12\n" +
-	"\x10\xd2\x01\rsale_offer_idJ\x04\b\x01\x10\x02R\bbuyer_id\"\xec\x01\n" +
+	"\rsale_offer_id\x18\x02 \x01(\tR\vsaleOfferId\x12\x1f\n" +
+	"\bquantity\x18\x03 \x01(\x05H\x00R\bquantity\x88\x01\x01:\x15\x92A\x12\n" +
+	"\x10\xd2\x01\rsale_offer_idB\v\n" +
+	"\t_quantityJ\x04\b\x01\x10\x02R\bbuyer_id\"\x9a\x02\n" +
 	"\x16CreateSaleOfferRequest\x12\x1f\n" +
 	"\vbond_series\x18\x03 \x01(\tR\n" +
 	"bondSeries\x12\x14\n" +
 	"\x05price\x18\x04 \x01(\tR\x05price\x12#\n" +
 	"\rcurrency_code\x18\x05 \x01(\tR\fcurrencyCode\x12.\n" +
-	"\x13conversion_quote_id\x18\x06 \x01(\tR\x11conversionQuoteId:+\x92A(\n" +
-	"&\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03R\x02idR\tseller_id\"\xa0\x01\n" +
+	"\x13conversion_quote_id\x18\x06 \x01(\tR\x11conversionQuoteId\x12\x1f\n" +
+	"\bquantity\x18\a \x01(\x05H\x00R\bquantity\x88\x01\x01:+\x92A(\n" +
+	"&\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeB\v\n" +
+	"\t_quantityJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03R\x02idR\tseller_id\"\xa0\x01\n" +
 	"\x15QuoteSaleOfferRequest\x12\x1f\n" +
 	"\vbond_series\x18\x01 \x01(\tR\n" +
 	"bondSeries\x12\x14\n" +
@@ -1043,18 +1085,20 @@ const file_bondexchange_v1_bond_exchange_proto_rawDesc = "" +
 	"\tattempted\x18\x01 \x01(\x04R\tattempted\x12\x1c\n" +
 	"\tdelivered\x18\x02 \x01(\x04R\tdelivered\x12\x16\n" +
 	"\x06failed\x18\x03 \x01(\x04R\x06failed\x12\x1c\n" +
-	"\tremaining\x18\x04 \x01(\x04R\tremaining\"\xba\x01\n" +
+	"\tremaining\x18\x04 \x01(\x04R\tremaining\"\xd6\x01\n" +
 	"\tSaleOffer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vbond_series\x18\x03 \x01(\tR\n" +
 	"bondSeries\x12\x14\n" +
 	"\x05price\x18\x04 \x01(\tR\x05price\x12#\n" +
-	"\rcurrency_code\x18\x05 \x01(\tR\fcurrencyCode:0\x92A-\n" +
-	"+\xd2\x01\x02id\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeJ\x04\b\x02\x10\x03R\tseller_id\"\xa3\x01\n" +
+	"\rcurrency_code\x18\x05 \x01(\tR\fcurrencyCode\x12\x1a\n" +
+	"\bquantity\x18\x06 \x01(\x05R\bquantity:0\x92A-\n" +
+	"+\xd2\x01\x02id\xd2\x01\vbond_series\xd2\x01\x05price\xd2\x01\rcurrency_codeJ\x04\b\x02\x10\x03R\tseller_id\"\xca\x01\n" +
 	"\vBuyResponse\x120\n" +
 	"\x05offer\x18\x01 \x01(\v2\x1a.bondexchange.v1.SaleOfferR\x05offer\x127\n" +
-	"\tbought_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bboughtAt:\x19\x92A\x16\n" +
-	"\x14\xd2\x01\x05offer\xd2\x01\tbought_atJ\x04\b\x02\x10\x03R\bbuyer_id\",\n" +
+	"\tbought_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bboughtAt\x12\x1a\n" +
+	"\bquantity\x18\x04 \x01(\x05R\bquantity:$\x92A!\n" +
+	"\x1f\xd2\x01\x05offer\xd2\x01\tbought_at\xd2\x01\bquantityJ\x04\b\x02\x10\x03R\bbuyer_id\",\n" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error:\r\x92A\n" +
 	"\n" +
@@ -1257,6 +1301,8 @@ func file_bondexchange_v1_bond_exchange_proto_init() {
 	if File_bondexchange_v1_bond_exchange_proto != nil {
 		return
 	}
+	file_bondexchange_v1_bond_exchange_proto_msgTypes[0].OneofWrappers = []any{}
+	file_bondexchange_v1_bond_exchange_proto_msgTypes[1].OneofWrappers = []any{}
 	file_bondexchange_v1_bond_exchange_proto_msgTypes[6].OneofWrappers = []any{
 		(*ListActiveOffersResponse_Offer)(nil),
 		(*ListActiveOffersResponse_Complete)(nil),

@@ -50,6 +50,7 @@ one is missing from this table.
 | 20260906030000 | [`contract_user_identity.sql`](migrations/20260906030000_contract_user_identity.sql) | Removal of the separate user identity table (contract). |
 | 20260906120000 | [`retire_legacy_identifier_archive.sql`](migrations/20260906120000_retire_legacy_identifier_archive.sql) | Accepted retirement of expired pre-UUID identifier evidence. |
 | 20260907000000 | [`retire_buyer_not_found_code.sql`](migrations/20260907000000_retire_buyer_not_found_code.sql) | Retirement of the `buyer_not_found` rejection code. |
+| 20260911000000 | [`add_partial_purchase_lineages.sql`](migrations/20260911000000_add_partial_purchase_lineages.sql) | Positive offer and purchase quantities, immutable residual-offer provenance, and quantity-aware event references. |
 
 ## Identity and keys
 
@@ -129,15 +130,28 @@ represent the correction as new facts under review.
 
 ## Marketplace facts
 
-A purchase records the buyer's binding order or reservation and has its own
-UUIDv7 primary key. Settlement, payment, custody, ownership transfer, expiry,
-and cancellation are not represented and remain pending.
+A purchase records the buyer's positive quantity as a binding order or
+reservation and has its own UUIDv7 primary key. Settlement, payment, custody,
+ownership transfer, expiry, and cancellation are not represented and remain
+pending.
 
-The unique `sale_offer_uuid` constraint gives concurrent inserts for the same
-offer one winner even when they come from different server instances. The losing
-requests are reported as an unavailable offer, while the original offer row
-remains as history. That constraint, the self-trade trigger below, and the
-append-only triggers are cited as evidence by the
+Each partial purchase atomically creates one new immutable sale offer for the
+remainder. `sale_offers.partial_purchase_provenance` names the purchase that
+created it; deferred constraint triggers require exact quantity conservation,
+one residual for a partial purchase, none for a full purchase, and inheritance
+of seller, bond, raw terms, and canonical MXN terms. The original offer UUID is
+the stable entry point: the adapter follows purchase-to-residual links to its
+active leaf.
+
+The unique `sale_offer_uuid` purchase constraint gives concurrent inserts for
+one immutable segment a winner even across server instances. A conflicting
+partial buy rolls back its serializable snapshot and retries from the original
+ID, allowing it to purchase the newly visible residual when enough quantity
+remains. An omitted buy quantity consumes the active leaf in full. An explicit
+request larger than the leaf reports `insufficient_quantity`; a fully consumed
+lineage reports `offer_unavailable`. The original and residual rows remain as
+history. These constraints, the self-trade trigger below, and the append-only
+triggers are cited as evidence by the
 [guarantee register](../docs/guarantees.md), which states the promises they
 back and what those promises exclude.
 
@@ -158,8 +172,8 @@ canonical offers tradable by that principal in ID order; the
 separate distinct query derives the sorted list of bond series having at least
 one offer tradable by that principal.
 
-The unique offer constraint supports the anti-join and enforces single-sale
-concurrency. Purchase history by buyer is supported by
+The unique offer-segment constraint supports the anti-join and serializes each
+lineage step. Purchase history by buyer is supported by
 `purchases_buyer_uuid_sale_offer_uuid_idx`. Add further indexes only for
 observed query plans.
 
@@ -244,6 +258,10 @@ source facts immediately before publication. The narrowly scoped trigger
 function runs as its migration owner with a fixed system search path, so
 applying the expand migration does not require a previously deployed exchange
 writer to gain a new table privilege.
+
+Readers retain schema versions 1 and 2. Version 3 is emitted when quantity
+semantics are needed: offer events add quantity, and purchase events add the
+reserved quantity plus the residual offer ID and quantity when one exists.
 
 `integration_event_deliveries` is mutable operational coordination rather than a
 domain-fact table. It has its own UUIDv7 key and a unique destination/event

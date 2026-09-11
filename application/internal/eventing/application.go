@@ -8,9 +8,9 @@ import (
 )
 
 type Exchange interface {
-	Buy(context.Context, exchange.AccessContext, string, string) (exchange.Purchase, error)
+	Buy(context.Context, exchange.AccessContext, string, string, *int32) (exchange.Purchase, error)
 	QuoteSaleOffer(context.Context, exchange.AccessContext, string, string, string, string) (offerintake.Quote, error)
-	CreateSaleOffer(context.Context, exchange.AccessContext, string, string, string, string, string) (exchange.SaleOffer, error)
+	CreateSaleOffer(context.Context, exchange.AccessContext, string, string, string, string, string, *int32) (exchange.SaleOffer, error)
 	StreamActiveOffers(context.Context, exchange.AccessContext, string, func(exchange.SaleOffer) error) error
 	ActiveBondSeries(context.Context, exchange.AccessContext) ([]exchange.BondSeries, error)
 }
@@ -45,8 +45,9 @@ func (application *Application) Buy(
 	access exchange.AccessContext,
 	idempotencyKey string,
 	offer string,
+	quantity *int32,
 ) (exchange.Purchase, error) {
-	purchase, err := application.exchange.Buy(ctx, access, idempotencyKey, offer)
+	purchase, err := application.exchange.Buy(ctx, access, idempotencyKey, offer, quantity)
 	if err == nil {
 		application.dispatcher.Publish(ctx, SourceRef{TableName: TablePurchases, ID: string(purchase.ID)})
 	}
@@ -61,8 +62,9 @@ func (application *Application) CreateSaleOffer(
 	price string,
 	currency string,
 	quoteID string,
+	quantity *int32,
 ) (exchange.SaleOffer, error) {
-	offer, err := application.exchange.CreateSaleOffer(ctx, access, idempotencyKey, bond, price, currency, quoteID)
+	offer, err := application.exchange.CreateSaleOffer(ctx, access, idempotencyKey, bond, price, currency, quoteID, quantity)
 	if err == nil {
 		application.dispatcher.Publish(ctx, SourceRef{TableName: TableSaleOffers, ID: string(offer.ID)})
 	}

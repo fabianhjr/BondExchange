@@ -43,23 +43,23 @@ parentheses; the in-process gateway derives one from the other.
 
 ## Marketplace integrity
 
-### G-001 — At most one buyer acquires a sale offer
+### G-001 — At most one buyer acquires an immutable offer segment
 
-**Promise.** One sale offer produces at most one binding reservation, for one
-buyer, permanently.
+**Promise.** Each immutable sale-offer segment produces at most one binding
+reservation, for one buyer, permanently.
 
 **Even when.** Any number of authorized buyers submit `Buy` for the same offer
 in the same instant, against different stateless server instances, with no
 coordination between them.
 
-**You will see.** Exactly one caller receives `201 Created` (`OK`) with the
-purchase. Every other caller receives `404 Not Found` (`NOT_FOUND`) and
-`offer_unavailable` is recorded as the durable outcome of that caller's
-operation, so retrying the same idempotency nonce returns the same rejection
-rather than racing again.
+**You will see.** When callers omit quantity and therefore race to consume all
+remaining units, exactly one receives `201 Created` (`OK`) and the others
+receive `404 Not Found` (`NOT_FOUND`). For explicit partial quantities, only one
+transaction consumes a given segment; compatible contenders may subsequently
+succeed against its residual as stated by [G-017](#g-017--partial-fills-conserve-quantity-and-compatible-contenders-succeed).
 
 **Not promised.** A reservation is not settlement, payment, custody, or
-ownership transfer, and the offer never returns to the active book
+ownership transfer, and a purchased segment never returns to the active book
 ([F-001](../FRICTIONS.md#f-001--buying-stops-at-an-immutable-reservation-p1),
 [FM-001](FMEA.md#fm-001--reservation-mistaken-for-settlement)). Which of the
 racing buyers wins is unspecified; there is no price/time priority
@@ -72,12 +72,11 @@ racing buyers wins is unspecified; there is no price/time priority
 - TLA+: `AtMostOnePurchasePerOffer`, `ActiveAndPurchasedOffersAreDisjoint`, `EveryPurchasedOfferWasPublished`
 - Verified by: `spec:check`, `go:test`, `integration:load-smoke`
 
-The unique constraint on the offer UUID, not a lock in the server, is what
-decides the race; `integration:load-smoke` sends a burst of concurrent buys for
-one offer and fails unless exactly one succeeds and every other request is
-refused. See
+The unique constraint on each offer-segment UUID, not a lock in the server, is
+what decides each lineage step; `integration:load-smoke` sends a burst of
+whole-remainder buys for one offer and fails unless exactly one succeeds. See
 [ADR-0003](adr/0003-use-append-only-postgresql-facts.md) and
-[FM-003](FMEA.md#fm-003--double-acquisition-of-one-offer).
+[FM-003](FMEA.md#fm-003--double-acquisition-of-one-offer-segment).
 
 ### G-002 — Nobody buys their own sale offer
 
@@ -144,8 +143,9 @@ is unreachable rather than mispriced. See
 
 ### G-004 — Published offer terms never change, and offer IDs are never reused
 
-**Promise.** Once published, an offer's seller, bond, price, and currency are
-fixed under its ID forever, and that ID never names a different offer.
+**Promise.** Once published, an offer's seller, bond, price, currency, quantity,
+and provenance are fixed under its ID forever, and that ID never names a
+different offer.
 
 **Even when.** The seller resubmits, a correction is needed, or an operator has
 direct database access through the application role.
@@ -164,6 +164,45 @@ workflow at all; a correction would require new facts and a decided lifecycle
 - Go: `createSaleOfferQuery`, `ErrOfferAlreadyExists`
 - TLA+: `OfferTermsAreImmutable`, `SaleOfferIdsAreNeverReused`, `UniqueSaleOfferIds`, `PurchasedOffersStayPurchased`
 - Verified by: `spec:check`, `go:test`, `db:migrate`
+
+### G-017 — Partial fills conserve quantity and compatible contenders succeed
+
+**Promise.** A partial purchase reserves exactly its requested positive
+quantity and creates exactly one active residual for the difference; concurrent
+partial buys against the same original offer both succeed when their combined
+quantity fits.
+
+**Even when.** The requests reach different stateless instances, both begin
+from the same ancestor ID, and one transaction's first insert conflicts after
+the other has advanced the lineage.
+
+**You will see.** Each successful caller receives `201 Created` (`OK`) with the
+quantity it reserved and the immutable offer segment it consumed. Discovery
+shows only the remaining residual. A request larger than that residual returns
+`400 Bad Request` (`FAILED_PRECONDITION`) and replays as
+`insufficient_quantity`; omitting quantity buys all remaining units.
+
+**Not promised.** This is allocation of reservation quantity, not proof of
+inventory, funding, holdings, ownership, or settlement
+([F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1),
+[FM-002](FMEA.md#fm-002--unsupported-market-integrity-behavior)). Each small
+fill also grows immutable history, for which no retention policy exists
+([F-005](../FRICTIONS.md#f-005--append-only-and-event-delivery-data-has-no-lifecycle-policy-p1),
+[FM-006](FMEA.md#fm-006--storage-or-query-exhaustion-from-retained-history)).
+
+**Enforced by.**
+
+- PostgreSQL: `purchases_sale_offer_uuid_unique`, `purchases_enforce_quantity`, `purchases_check_remainder`, `sale_offers_check_residual`, `sale_offers_partial_purchase_provenance_unique`
+- Go: `Quantity`, `ParseOptionalQuantity`, `buyQuery`, `classifyFailedBuyQuery`, `ErrInsufficientQuantity`
+- Proto3: `BuyRequest`, `CreateSaleOfferRequest`, `SaleOffer`, `BuyResponse`, `quantity`
+- TLA+: `AtMostOnePurchasePerOffer`, `AtMostOneResidualPerPurchase`, `PurchaseQuantitiesDoNotExceedOffers`, `EveryResidualHasPurchasedProvenance`, `ResidualsConserveQuantityAndTerms`, `PartialPurchasesHaveExactlyOneResidual`
+- Verified by: `api:check`, `db:migrate`, `go:test`, `spec:check`
+
+PostgreSQL commits the purchase, residual, canonical terms, and operation result
+atomically. A serialization or segment conflict restarts the transaction so it
+can observe and follow the newly committed residual. See
+[ADR-0036](adr/0036-represent-partial-fills-as-residual-offer-lineages.md) and
+[FM-023](FMEA.md#fm-023--partial-fill-lineage-loses-or-duplicates-quantity).
 
 ## History and provenance
 
@@ -202,9 +241,9 @@ this service. See
 
 ### G-006 — Every fact comes from one authorized, recorded operation
 
-**Promise.** Each offer and each purchase corresponds to exactly one succeeded
-operation result, is attributed to the principal that claimed that operation,
-and no succeeded operation exists without its fact.
+**Promise.** Each root offer and each purchase corresponds to exactly one
+succeeded operation result, while each residual offer corresponds to exactly
+one partial purchase; every fact is attributed to that recorded provenance.
 
 **Even when.** A request is retried, a transaction is rolled back, or a
 connection drops mid-write.
@@ -218,9 +257,9 @@ downstream consumer; see [G-014](#g-014--integration-event-delivery-is-not-guara
 
 **Enforced by.**
 
-- PostgreSQL: `operation_results_shape`, `operation_results_outcome_known`, `operation_claims_operation_canonical`
+- PostgreSQL: `operation_results_shape`, `operation_results_outcome_known`, `operation_claims_operation_canonical`, `sale_offers_partial_purchase_provenance_fkey`
 - Go: `recordOperationSuccess`, `recordOperationRejection`, `beginAuthorizedMutation`
-- TLA+: `EveryFactHasASucceededOperation`, `OfferSellersMatchOperationPrincipals`, `PurchaseBuyersMatchOperationPrincipals`, `EveryResultHasAClaim`, `ResultsReferenceKnownResources`, `ResultShapeIsWellFormed`
+- TLA+: `EveryFactHasASucceededOperation`, `EveryResidualHasPurchasedProvenance`, `OfferSellersMatchOperationPrincipals`, `PurchaseBuyersMatchOperationPrincipals`, `EveryResultHasAClaim`, `ResultsReferenceKnownResources`, `ResultShapeIsWellFormed`
 - Verified by: `spec:check`, `go:test`
 
 ## Identity, authorization, and admission
@@ -496,7 +535,10 @@ recovery operation
 - Go: `RecordEventDelivery`, `ErrNoPublishers`
 - Verified by: `go:test`, `observability:check`
 
-See [ADR-0011](adr/0011-use-minimal-transactional-event-references.md).
+Quantity-aware mutations use event schema version 3. Purchase payloads include
+the reserved quantity and, for a partial fill, the residual ID and quantity;
+versions 1 and 2 remain readable. See
+[ADR-0011](adr/0011-use-minimal-transactional-event-references.md).
 
 ### G-015 — Telemetry leaves the process only when it is configured to
 
@@ -539,7 +581,7 @@ a deliberate scope decision, tracked where it can be acted on.
 | --- | --- |
 | Settlement, payment, custody, or ownership transfer. `Buy` records a reservation and stops. | [F-001](../FRICTIONS.md#f-001--buying-stops-at-an-immutable-reservation-p1), [FM-001](FMEA.md#fm-001--reservation-mistaken-for-settlement) |
 | Cancellation, expiry, amendment, or any return of an offer to the active book. | [F-001](../FRICTIONS.md#f-001--buying-stops-at-an-immutable-reservation-p1) |
-| Buy offers, a matching engine, partial fills, balances, holdings, eligibility, price bands, or price/time priority. | [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1), [FM-002](FMEA.md#fm-002--unsupported-market-integrity-behavior) |
+| Buy offers, a matching engine, balances, holdings, funding, eligibility, price bands, or price/time priority. | [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1), [FM-002](FMEA.md#fm-002--unsupported-market-integrity-behavior) |
 | Detection of affiliated-account, wash, or otherwise manipulative trading. Only same-identity self-trading is prevented. | [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1) |
 | Creation of principals or bonds through the API, or any administration of principals, roles, and grants. | [F-003](../FRICTIONS.md#f-003--provisioning-and-security-administration-require-direct-sql-p1) |
 | Any relationship between distinct principals: the principal is the identity, not the person behind it. | [F-002](../FRICTIONS.md#f-002--market-integrity-rules-are-undecided-p1) |

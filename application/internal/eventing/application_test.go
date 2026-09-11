@@ -15,11 +15,11 @@ type exchangeFake struct {
 	err      error
 }
 
-func (fake *exchangeFake) Buy(context.Context, exchange.AccessContext, string, string) (exchange.Purchase, error) {
+func (fake *exchangeFake) Buy(context.Context, exchange.AccessContext, string, string, *int32) (exchange.Purchase, error) {
 	return fake.purchase, fake.err
 }
 
-func (fake *exchangeFake) CreateSaleOffer(context.Context, exchange.AccessContext, string, string, string, string, string) (exchange.SaleOffer, error) {
+func (fake *exchangeFake) CreateSaleOffer(context.Context, exchange.AccessContext, string, string, string, string, string, *int32) (exchange.SaleOffer, error) {
 	return fake.offer, fake.err
 }
 
@@ -60,10 +60,10 @@ func TestApplicationPublishesSuccessfulMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, testMutationNonce, testOfferID); err != nil {
+	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, testMutationNonce, testOfferID, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, testMutationNonce, "BND", "1", "MXN", ""); err != nil {
+	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, testMutationNonce, "BND", "1", "MXN", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(publisher.events) != 2 {
@@ -88,10 +88,10 @@ func TestApplicationDoesNotPublishFailedMutation(t *testing.T) {
 	publisher := &publisherFake{}
 	dispatcher, _ := NewDispatcher(store, []Destination{{ID: "sink", Publisher: publisher}}, 0)
 	application := NewApplication(&exchangeFake{err: want}, authorizerFake{}, dispatcher)
-	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, testMutationNonce, testOfferID); !errors.Is(err, want) {
+	if _, err := application.Buy(context.Background(), exchange.AccessContext{}, testMutationNonce, testOfferID, nil); !errors.Is(err, want) {
 		t.Fatalf("Buy() error = %v", err)
 	}
-	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, testMutationNonce, "BND", "1", "MXN", ""); !errors.Is(err, want) {
+	if _, err := application.CreateSaleOffer(context.Background(), exchange.AccessContext{}, testMutationNonce, "BND", "1", "MXN", "", nil); !errors.Is(err, want) {
 		t.Fatalf("CreateSaleOffer() error = %v", err)
 	}
 	if len(publisher.events) != 0 {

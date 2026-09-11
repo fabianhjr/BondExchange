@@ -25,7 +25,7 @@ REST routes:
 
 | Route | Notes |
 | --- | --- |
-| `POST /buys` | Takes a UUIDv7. A principal cannot reserve its own offer. |
+| `POST /buys` | Takes a UUIDv7 and optional positive quantity. Omission buys all quantity remaining in that offer's lineage. A principal cannot reserve its own offer. |
 | `POST /sale-offer-quotes` | Takes a USD submission, for example `{"bond_series":"BND2026","price":"99.75","currency_code":"USD"}`. |
 | `POST /sale-offers` | Takes an MXN submission, or the exact USD submission plus the returned `conversion_quote_id`. |
 | `GET /active-offers?bond=BND2026` | Streams every active offer tradable by the principal and a terminal count as `application/json-seq`. |
@@ -62,6 +62,15 @@ Identity fields are not part of request messages: the operation-bound assertion
 resolves the principal used as buyer or seller. Assertion content and validation
 are documented in [`../docs/security/ASVS.md`](../docs/security/ASVS.md), and
 [`../docs/demo.md`](../docs/demo.md) shows how to mint one locally.
+
+`quantity` is an optional positive 32-bit integer on `CreateSaleOfferRequest`
+and `BuyRequest`. An omitted create quantity means one; an omitted buy quantity
+means all quantity remaining when the transaction executes. Offer and buy
+responses report the actual quantity. A non-positive quantity is gRPC
+`InvalidArgument`/HTTP `400`; a request larger than the active remainder is
+gRPC `FailedPrecondition`/HTTP `400`. Compatible concurrent partial buys sent
+to the same original offer can both succeed because a conflicting transaction
+retries against the residual offer created by the winner.
 
 Buying an offer attributed to the same internal principal is rejected as gRPC
 `FailedPrecondition` and REST HTTP `400`, including when the caller retained the

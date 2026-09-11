@@ -51,6 +51,9 @@ UniqueSaleOfferIds ==
 AtMostOnePurchasePerOffer ==
   Cardinality(PurchasedOfferIds) = Cardinality(purchases)
 
+AtMostOneResidualPerPurchase ==
+  \A offerId \in SaleOfferIds : Cardinality(ResidualsOf(offerId)) <= 1
+
 ActiveAndPurchasedOffersAreDisjoint ==
   (ActiveOfferIds \cap PurchasedOfferIds) = {}
 
@@ -64,6 +67,35 @@ NoSelfPurchases ==
   \A purchase \in purchases :
     \A offer \in publishedOffers :
       purchase.offer = offer.id => purchase.buyer # offer.seller
+
+PurchaseQuantitiesDoNotExceedOffers ==
+  \A purchase \in purchases :
+    \A offer \in publishedOffers :
+      purchase.offer = offer.id => purchase.quantity <= offer.quantity
+
+EveryResidualHasPurchasedProvenance ==
+  \A residual \in ResidualOffers : residual.provenance \in PurchasedOfferIds
+
+ResidualsConserveQuantityAndTerms ==
+  \A residual \in ResidualOffers :
+    \A parent \in publishedOffers :
+      residual.provenance = parent.id =>
+        /\ residual.seller = parent.seller
+        /\ residual.bond = parent.bond
+        /\ residual.price = parent.price
+        /\ residual.currency = parent.currency
+        /\ \E purchase \in purchases :
+             /\ purchase.offer = parent.id
+             /\ purchase.quantity < parent.quantity
+             /\ residual.quantity = parent.quantity - purchase.quantity
+
+PartialPurchasesHaveExactlyOneResidual ==
+  \A purchase \in purchases :
+    \A offer \in publishedOffers :
+      purchase.offer = offer.id =>
+        IF purchase.quantity < offer.quantity
+        THEN Cardinality(ResidualsOf(offer.id)) = 1
+        ELSE ResidualsOf(offer.id) = {}
 
 (***************************************************************************)
 (* Provenance                                                              *)
@@ -82,15 +114,15 @@ ResultsReferenceKnownResources ==
     result.outcome = Succeeded => result.resource \in KnownSaleOfferIds
 
 EveryFactHasASucceededOperation ==
-  /\ OfferIdsOf(publishedOffers) =
+  /\ OfferIdsOf(RootOffers) =
        {result.resource : result \in SucceededResults(CreateOfferOperation)}
   /\ PurchasedOfferIds =
        {result.resource : result \in SucceededResults(BuyOperation)}
-  /\ Cardinality(SucceededResults(CreateOfferOperation)) = Cardinality(publishedOffers)
+  /\ Cardinality(SucceededResults(CreateOfferOperation)) = Cardinality(RootOffers)
   /\ Cardinality(SucceededResults(BuyOperation)) = Cardinality(purchases)
 
 OfferSellersMatchOperationPrincipals ==
-  \A offer \in publishedOffers :
+  \A offer \in RootOffers :
     \E result \in SucceededResults(CreateOfferOperation) :
       /\ result.resource = offer.id
       /\ result.claim.scope.principal = offer.seller
@@ -167,9 +199,10 @@ BuyIsClaimableForAnActiveOffer ==
       \A client \in Clients :
         \A key \in IdempotencyKeys :
           \A requestDigest \in RequestDigests :
-            ( /\ IsAuthorized(buyer, client, BuyOperation)
-              /\ ScopeIsUnused(buyer, client, BuyOperation, key) )
-              => ENABLED ClaimBuy(buyer, client, key, requestDigest, offer.id)
+            \A quantity \in Quantities \cup {AllRemaining} :
+              ( /\ IsAuthorized(buyer, client, BuyOperation)
+                /\ ScopeIsUnused(buyer, client, BuyOperation, key) )
+                => ENABLED ClaimBuy(buyer, client, key, requestDigest, offer.id, quantity)
 
 RetriesAreTotal ==
   \A claim \in claims :

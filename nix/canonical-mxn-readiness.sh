@@ -25,7 +25,8 @@ BEGIN
     ON submission.sale_offer_uuid = offer.uuid_id
   WHERE offer.currency_code <> 'MXN'
      OR offer.price IS DISTINCT FROM canonical.price
-     OR submission.sale_offer_uuid IS NULL;
+     OR (offer.partial_purchase_provenance IS NULL AND submission.sale_offer_uuid IS NULL)
+     OR (offer.partial_purchase_provenance IS NOT NULL AND submission.sale_offer_uuid IS NOT NULL);
   IF invalid_count <> 0 THEN
     RAISE EXCEPTION 'canonical offer/provenance inconsistency: % rows', invalid_count;
   END IF;

@@ -19,15 +19,17 @@ const (
 var maxMonetaryAmount = decimal.New(99_999_999_999_999, -MonetaryAmountScale)
 
 var (
-	ErrInvalidOfferID      = errors.New("sale-offer ID must be a canonical UUIDv7")
-	ErrInvalidBondSeries   = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
-	ErrInvalidPrice        = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
-	ErrInvalidCurrencyCode = errors.New("currency code must contain exactly three uppercase ASCII letters")
-	ErrSellerNotFound      = errors.New("seller is not a known principal")
-	ErrBondNotFound        = errors.New("bond series does not exist")
-	ErrOfferAlreadyExists  = errors.New("sale-offer ID already exists")
-	ErrOfferUnavailable    = errors.New("sale offer does not exist or has already been bought")
-	ErrSelfTradeProhibited = errors.New("a buyer cannot reserve their own sale offer")
+	ErrInvalidOfferID       = errors.New("sale-offer ID must be a canonical UUIDv7")
+	ErrInvalidBondSeries    = errors.New("bond series must be 3-40 uppercase ASCII alphanumeric characters")
+	ErrInvalidPrice         = errors.New("price must be a positive decimal with at most 10 integer and 4 fractional digits")
+	ErrInvalidCurrencyCode  = errors.New("currency code must contain exactly three uppercase ASCII letters")
+	ErrInvalidQuantity      = errors.New("quantity must be a positive 32-bit integer")
+	ErrInsufficientQuantity = errors.New("sale offer has less quantity remaining than requested")
+	ErrSellerNotFound       = errors.New("seller is not a known principal")
+	ErrBondNotFound         = errors.New("bond series does not exist")
+	ErrOfferAlreadyExists   = errors.New("sale-offer ID already exists")
+	ErrOfferUnavailable     = errors.New("sale offer does not exist or has already been bought")
+	ErrSelfTradeProhibited  = errors.New("a buyer cannot reserve their own sale offer")
 )
 
 // PrincipalID identifies one authenticated principal. It is also the identity
@@ -46,6 +48,35 @@ func ParseOfferID(value string) (OfferID, error) {
 }
 
 type PurchaseID string
+
+type Quantity int32
+
+const DefaultOfferQuantity Quantity = 1
+
+func ParseQuantity(value int32) (Quantity, error) {
+	if value <= 0 {
+		return 0, ErrInvalidQuantity
+	}
+	return Quantity(value), nil
+}
+
+func ParseOptionalQuantity(value *int32) (*Quantity, error) {
+	if value == nil {
+		return nil, nil
+	}
+	quantity, err := ParseQuantity(*value)
+	if err != nil {
+		return nil, err
+	}
+	return &quantity, nil
+}
+
+func ParseOfferQuantity(value *int32) (Quantity, error) {
+	if value == nil {
+		return DefaultOfferQuantity, nil
+	}
+	return ParseQuantity(*value)
+}
 
 type BondSeries string
 
@@ -108,6 +139,7 @@ type SaleOffer struct {
 	BondSeries BondSeries      `json:"bond_series"`
 	Price      decimal.Decimal `json:"price"`
 	Currency   CurrencyCode    `json:"currency_code"`
+	Quantity   Quantity        `json:"quantity"`
 }
 
 type Purchase struct {
@@ -115,4 +147,5 @@ type Purchase struct {
 	Offer    SaleOffer   `json:"offer"`
 	BuyerID  PrincipalID `json:"buyer_id"`
 	BoughtAt time.Time   `json:"bought_at"`
+	Quantity Quantity    `json:"quantity"`
 }

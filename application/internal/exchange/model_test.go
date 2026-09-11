@@ -93,6 +93,21 @@ func TestPriceAndCurrencyParsing(t *testing.T) {
 	}
 }
 
+func TestQuantityParsing(t *testing.T) {
+	t.Parallel()
+	if quantity, err := ParseQuantity(7); err != nil || quantity != 7 {
+		t.Fatalf("ParseQuantity(7) = %d, %v", quantity, err)
+	}
+	for _, invalid := range []int32{0, -1} {
+		if _, err := ParseQuantity(invalid); !errors.Is(err, ErrInvalidQuantity) {
+			t.Fatalf("ParseQuantity(%d) error = %v", invalid, err)
+		}
+	}
+	if quantity, err := ParseOfferQuantity(nil); err != nil || quantity != DefaultOfferQuantity {
+		t.Fatalf("ParseOfferQuantity(nil) = %d, %v", quantity, err)
+	}
+}
+
 func TestIdempotencyKeyValidation(t *testing.T) {
 	t.Parallel()
 	for _, valid := range []string{testNonce} {

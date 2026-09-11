@@ -11,6 +11,10 @@ ADR-0030 further restricts inserts and application reads: a buyer cannot equal
 the referenced offer's seller, and discovery excludes the principal's own
 offers. The global append-only projection remains unchanged.
 
+ADR-0036 extends this representation with quantity: a partial purchase appends
+one residual sale-offer fact, while the unique purchase key continues to
+serialize each immutable segment.
+
 ## Context
 
 The Go server must be safe when several instances handle attempts to buy the
@@ -78,8 +82,9 @@ query-plan evidence.
 
 ## Consequences
 
-- Any number of stateless server instances can compete for an offer, while
-  the database records at most one winning buyer.
+- Any number of stateless server instances can compete for an immutable offer
+  segment, while the database records at most one buyer for that segment;
+  compatible partial contenders can continue through its residual lineage.
 - Sale-offer and purchase history remains available for audit and debugging.
 - The active-offer view is transactionally current and requires no refresh
   process.

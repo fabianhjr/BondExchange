@@ -8,9 +8,9 @@ This directory contains a deliberately small marketplace model:
 - `BondExchangeProperties.tla` defines the state invariants, action
   properties, and liveness properties that TLC checks.
 - `BondExchange.tla` composes the actions into the checked specifications.
-- `BondExchange.cfg`, `BondExchangeAuthorization.cfg`, and
-  `BondExchangeLiveness.cfg` provide finite instances for exhaustive TLC
-  checking.
+- `BondExchange.cfg`, `BondExchangePartialFills.cfg`,
+  `BondExchangeAuthorization.cfg`, and `BondExchangeLiveness.cfg` provide
+  finite instances for exhaustive TLC checking.
 
 ## Domain
 
@@ -18,10 +18,12 @@ This directory contains a deliberately small marketplace model:
   identity in the model: it authenticates, sells, and buys.
 - A bond is identified by an uppercase alphanumeric series string whose length
   is between 3 and 40 characters, inclusive.
-- A sale offer has a unique ID, a seller, a bond, a positive price, and
-  MXN-denominated terms.
+- A sale offer has a unique ID, a seller, a bond, a positive price, a positive
+  quantity, MXN-denominated terms, and either root or partial-purchase
+  provenance.
 - A purchase fact relates a reserved offer ID to the principal who placed the
-  binding order. It does not assert settlement or ownership transfer.
+  binding order and the positive quantity reserved. It does not assert
+  settlement or ownership transfer.
 - An operation claim records a principal, client, operation, idempotency key,
   and abstract request digest. An operation result records the outcome of one
   claim: a succeeded result names the resulting offer ID, and a rejected
@@ -40,6 +42,10 @@ representatives of positive exact monetary values. Decimal precision,
 PostgreSQL encoding, and JSON serialization do not affect buying behavior or
 the checked properties, so they remain outside the domain model.
 
+`Quantities` likewise uses positive natural numbers. `AllRemaining` is a
+request sentinel, not a stored quantity: commit resolves it to the active
+offer's quantity.
+
 Case-insensitive lookup and conversion of input to the uppercase canonical
 representation are responsibilities of the system boundary. The TLA+ model
 does not implement that conversion; it assumes it receives normalized bond
@@ -50,7 +56,9 @@ identifiers and verifies that their stored representation is uppercase.
 Every domain fact set is append-only. The active sale book is not a fact: it
 is `ActiveOffers`, a view over published offers and purchases, matching the
 service's derived active-offer read. Buying therefore never removes a record;
-it appends a purchase that removes the offer from the derived book.
+it appends a purchase that removes one immutable segment from the derived book.
+A partial purchase appends a residual offer, so the remaining quantity becomes
+active under a new ID while every ancestor stays historical.
 
 The only non-monotonic variable is `inFlightBuys`, which holds binding orders
 that have been claimed and not yet resolved. It represents a request in
@@ -73,6 +81,7 @@ mapping is:
 | `ActiveOffers` | the global derived book: canonical terms, no purchase |
 | `TradableOffers(buyer)` | the adapter's principal-specific read: active offers whose seller differs from the principal |
 | `purchases` | `purchases`, referencing its offer by `sale_offer_uuid` |
+| `offer.provenance` | root sentinel, or the parent segment identified by the purchase referenced from `sale_offers.partial_purchase_provenance` |
 | `claims` | `operation_claims`, keyed by the scope's unique constraint |
 | `results` | `operation_results`, including the succeeded/rejected shape |
 | `inFlightBuys` | a mutation request between claim and commit, not a row |
@@ -109,13 +118,14 @@ distinct principals are unaffiliated
 
 ## Behavior
 
-The market starts empty. Every offer, purchase, claim, and result is produced
-by a modeled operation, so every fact has provenance and the specification can
-require that no fact exists without an authorized operation. The initial
+The market starts empty. Every root offer and purchase is produced by a modeled
+operation, while every residual is produced by its partial purchase, so every
+fact has provenance. The initial
 authorization state is the reviewed bootstrap: one trader role carrying both
 mutation permissions, granted to every principal.
 
-`CreateSaleOffer` publishes a new active MXN sale offer atomically. It requires
+`CreateSaleOffer` publishes a new active MXN sale offer with a positive quantity
+atomically. It requires
 authorization, a new idempotency scope, and an ID that has never appeared
 before, and it appends the offer together with its claim and succeeded result.
 `offerId` represents the fresh identity allocated by the service; it is not
@@ -124,22 +134,34 @@ modeled as caller-selected, and no other request contends for it.
 Buying is split into a claim and a resolution:
 
 - `ClaimBuy` requires authorization and a new idempotency scope, then appends
-  the claim and records the order as in flight. It may name any offer ID,
-  including one that is unpublished or already sold.
-- `CommitBuy` is enabled only when the named offer is still active and its
-  seller differs from the buyer. It appends the purchase and a succeeded
-  result.
-- `RejectBuy` is enabled otherwise. It appends a rejected result carrying
-  `offer_unavailable` and appends no purchase.
+  the claim and records the requested quantity, or `AllRemaining`, as in
+  flight. It may name any offer ID, including one that is unpublished or
+  already purchased.
+- `CommitFullBuy` consumes the active segment when the requested quantity is
+  equal to it, or when the request uses `AllRemaining`.
+- `CommitPartialBuy` appends the purchase plus one residual offer that inherits
+  the parent's terms and carries the conserved remainder.
+- `AdvanceBuyToResidual` moves a contending pending buy from a purchased
+  ancestor to its residual, modeling the transaction retry that observes the
+  winner's newly committed fact.
+- `CommitContendedResidualBuy` is the compatible-race reachability witness. It
+  is a full residual commit guarded to require that another buyer made the
+  parent purchase; the coverage gate fails unless this exact success path is
+  reached.
+- `RejectInsufficientQuantity` records `insufficient_quantity` when an explicit
+  request is larger than the active segment.
+- `RejectBuy` records `offer_unavailable` only when the segment is inactive and
+  has no residual.
 - `RejectSelfBuy` handles an active offer attributed to the buyer. It appends a
   rejected result carrying `self_trade_prohibited` and no purchase.
 
-The split is what gives the exclusivity property its content. Two authorized
-buyers can hold simultaneous claims against one active offer, so at most one
-purchase per offer is a property of the resolution rule rather than a
-consequence of an atomic action. This models concurrent contention for one
-offer, not the mechanism that resolves it: transaction isolation, unique
-constraints, conflict handling, and retry belong to the persistence adapter.
+The split is what gives the exclusivity and conservation properties their
+content. Two authorized buyers can hold simultaneous claims against one active
+offer. Only one can consume that immutable segment, but a compatible loser can
+advance to the residual and succeed, so two one-unit claims against a two-unit
+root can both commit without purchasing any segment twice. Transaction
+isolation, unique constraints, conflict classification, and retries remain
+persistence-adapter mechanics.
 
 `ReplayCompletedOperation`, `RetryInFlightOperation`, and
 `RejectConflictingRetry` are the three ways a retry of a claimed scope is
@@ -177,8 +199,9 @@ principal.
 It has no beneficial-owner or affiliated-principal relationship.
 
 There are intentionally no buy offers, matching engine, balances, holdings,
-partial fills, order publication, ownership transfer, cancellation, expiry, or
-settlement process in this model. Settlement semantics remain pending.
+funding, allocation priority, order publication, ownership transfer,
+cancellation, expiry, or settlement process in this model. Partial fills only
+allocate reservation quantity; settlement semantics remain pending.
 
 ## Checked properties
 
@@ -192,6 +215,12 @@ that this module no longer defines or that no TLC configuration checks.
 
 - `AtMostOnePurchasePerOffer` — one offer is acquired at most once, even when
   several authorized buyers hold simultaneous claims against it.
+- `AtMostOneResidualPerPurchase`, `EveryResidualHasPurchasedProvenance`,
+  `ResidualsConserveQuantityAndTerms`, and
+  `PartialPurchasesHaveExactlyOneResidual` — a partial purchase creates one
+  correctly inherited remainder and a full purchase creates none.
+- `PurchaseQuantitiesDoNotExceedOffers` — a purchase never reserves more than
+  its immutable segment contains.
 - `ActiveAndPurchasedOffersAreDisjoint` and `EveryPurchasedOfferWasPublished` —
   the derived book and the purchase history stay consistent.
 - `UniqueSaleOfferIds`.
@@ -203,10 +232,10 @@ that this module no longer defines or that no TLC configuration checks.
 
 ### Provenance
 
-- `EveryFactHasASucceededOperation` — the published offers and the purchased
-  offer IDs are exactly the resources named by succeeded create and buy
-  results, with matching counts. No fact exists without an authorized,
-  idempotent operation, and no succeeded operation exists without its fact.
+- `EveryFactHasASucceededOperation` — root-offer IDs and purchased segment IDs
+  are exactly the resources named by succeeded create and buy results, with
+  matching counts. Residual provenance is checked separately by the
+  partial-fill properties above.
 - `OfferSellersMatchOperationPrincipals` and
   `PurchaseBuyersMatchOperationPrincipals` — a fact is attributed to the
   principal that claimed the operation producing it.
@@ -285,13 +314,13 @@ require the `offers.list` permission, but they change no state and have no
 modeled action, so nothing here verifies that a revoked or suspended principal
 cannot read the book.
 
-**Rejection paths are largely absent.** `offer_unavailable` is the only
-recorded rejection the model produces. The service also records
+**Rejection paths are largely absent.** `offer_unavailable`,
+`self_trade_prohibited`, and `insufficient_quantity` are the recorded
+rejections the model produces. The service also records
 `seller_not_found`, `bond_not_found`, `offer_already_exists`, and
 `conversion_quote_unavailable` as durable rejected results and replays them.
-Publishing cannot fail in the model, so `ResultShapeIsWellFormed` and the
-provenance properties exercise two of the six recorded rejection codes:
-`offer_unavailable` and `self_trade_prohibited`.
+Publishing cannot fail in the model, so the application-boundary rejection
+set is still wider than the modeled set.
 
 **Assertion binding is absent.** `operation_claims.assertion_digest` and the
 issuer, audience, `jti`, and audience-binding checks have no counterpart.
@@ -321,14 +350,15 @@ devenv tasks run spec:check
 `devenv test` includes the same check, and the specification CI workflow
 invokes the focused `spec:check` task directly.
 
-The task checks three finite instances. Marketplace and authorization state
-spaces multiply, and each concern needs different constants to stay
+The task checks four finite instances. Marketplace, partial-fill, and
+authorization state spaces multiply, and each concern needs different constants to stay
 falsifiable, so one combined instance would be either intractable or too small
 to reach the interesting interleavings:
 
 | Instance | Specification | Purpose |
 | --- | --- | --- |
 | `BondExchange.cfg` | `MarketplaceSpec` | Contention, same-identity self-trade prevention, provenance, append-only history, and idempotent retries under a fixed authorization state. Two principals make both self and non-self resolution reachable; two offer identities and two prices make term immutability and identity reuse falsifiable; two request digests reach the conflicting-retry path. |
+| `BondExchangePartialFills.cfg` | `PartialFillSpec` | Quantity conservation and the contended path from a two-unit root to a one-unit residual. Three principals represent one seller and two buyers; two offer identities let both one-unit buyers consume distinct segments. |
 | `BondExchangeAuthorization.cfg` | `AuthorizationSpec` | Grants, revocations, suspensions, and reinstatements interleaved with marketplace operations. Two grant generations let access be revoked and then restored by a new fact. The market is kept minimal. |
 | `BondExchangeLiveness.cfg` | `FairSpec` | Resolution of claimed binding orders under weak fairness. Every dimension is at the minimum that still lets two buyers contend. |
 

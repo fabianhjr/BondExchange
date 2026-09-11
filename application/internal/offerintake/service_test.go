@@ -27,7 +27,7 @@ type exchangeStub struct {
 	err      error
 }
 
-func (stub exchangeStub) Buy(context.Context, exchange.AccessContext, string, string) (exchange.Purchase, error) {
+func (stub exchangeStub) Buy(context.Context, exchange.AccessContext, string, string, *int32) (exchange.Purchase, error) {
 	return stub.purchase, stub.err
 }
 
@@ -295,7 +295,7 @@ func TestCreateSaleOfferSeparatesCanonicalAndSubmissionTerms(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	created, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "demo2026", "97.125", "USD", string(testQuoteID))
+	created, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "demo2026", "97.125", "USD", string(testQuoteID), nil)
 	if err != nil || created.Currency != exchange.MXN {
 		t.Fatalf("CreateSaleOffer() = %#v, %v", created, err)
 	}
@@ -305,16 +305,16 @@ func TestCreateSaleOfferSeparatesCanonicalAndSubmissionTerms(t *testing.T) {
 		t.Fatalf("submission = %#v", repository.submission)
 	}
 
-	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "USD", ""); !errors.Is(err, ErrConversionQuoteRequired) {
+	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "USD", "", nil); !errors.Is(err, ErrConversionQuoteRequired) {
 		t.Fatalf("missing quote error = %v", err)
 	}
-	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "EUR", ""); !errors.Is(err, ErrUnsupportedSubmissionCurrency) {
+	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "EUR", "", nil); !errors.Is(err, ErrUnsupportedSubmissionCurrency) {
 		t.Fatalf("unsupported currency error = %v", err)
 	}
-	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "MXN", string(testQuoteID)); !errors.Is(err, ErrConversionQuoteUnavailable) {
+	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "MXN", string(testQuoteID), nil); !errors.Is(err, ErrConversionQuoteUnavailable) {
 		t.Fatalf("MXN quote error = %v", err)
 	}
-	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "USD", "not-a-uuid"); !errors.Is(err, ErrInvalidConversionQuote) {
+	if _, err := service.CreateSaleOffer(context.Background(), createAccess(), testNonce, "DEMO2026", "1", "USD", "not-a-uuid", nil); !errors.Is(err, ErrInvalidConversionQuote) {
 		t.Fatalf("invalid quote ID error = %v", err)
 	}
 	if _, err := ParseQuoteID(testNonce); !errors.Is(err, ErrInvalidConversionQuote) {
@@ -351,14 +351,14 @@ func TestOfferIntakeRejectsInvalidCreateInputsAndDelegatesCoreOperations(t *test
 		{name: "currency", access: createAccess(), key: testNonce, bond: "BND", price: "1", currency: "mxn", want: exchange.ErrInvalidCurrencyCode},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := service.CreateSaleOffer(context.Background(), test.access, test.key, test.bond, test.price, test.currency, "")
+			_, err := service.CreateSaleOffer(context.Background(), test.access, test.key, test.bond, test.price, test.currency, "", nil)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("CreateSaleOffer() error = %v, want %v", err, test.want)
 			}
 		})
 	}
 
-	purchase, err := service.Buy(context.Background(), exchange.AccessContext{}, testNonce, string(testOfferID))
+	purchase, err := service.Buy(context.Background(), exchange.AccessContext{}, testNonce, string(testOfferID), nil)
 	if err != nil || purchase.ID != testPurchaseID {
 		t.Fatalf("Buy() = %#v, %v", purchase, err)
 	}
@@ -375,7 +375,7 @@ func TestOfferIntakeRejectsInvalidCreateInputsAndDelegatesCoreOperations(t *test
 	}
 
 	service, _ = NewService(exchangeStub{err: coreErr}, &ratesStub{}, repository, Config{})
-	if _, err := service.Buy(context.Background(), exchange.AccessContext{}, testNonce, string(testOfferID)); !errors.Is(err, coreErr) {
+	if _, err := service.Buy(context.Background(), exchange.AccessContext{}, testNonce, string(testOfferID), nil); !errors.Is(err, coreErr) {
 		t.Fatalf("Buy() error = %v", err)
 	}
 	if err := service.StreamActiveOffers(context.Background(), exchange.AccessContext{}, "BND", func(exchange.SaleOffer) error { return nil }); !errors.Is(err, coreErr) {

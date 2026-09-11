@@ -48,7 +48,7 @@ metrics:
 | `bondexchange.idempotency.result` | operation, outcome | Mutation claim, replay, conflict, and idempotency-storage-error decisions. Transaction retries can repeat a claim decision. |
 | `bondexchange.request.rate_limit.count` / `.duration` | operation, outcome | Authenticated admission decisions and coordination latency: allowed, rejected, or error. |
 | `bondexchange.market_integrity.rejection.count` | control | Market-integrity rejections; currently the bounded `self_trade` control. |
-| `bondexchange.database.transaction.retry` | operation, reason | Retryable serialization failures and deadlocks. |
+| `bondexchange.database.transaction.retry` | operation, reason | Retryable serialization failures, deadlocks, and partial-fill lineage advances. |
 | `bondexchange.rate.cache.result` | outcome | Cache hits, misses, and lease contention. |
 | `bondexchange.rate.fetch.attempt.count` / `.duration` | fetch kind, outcome | Actual provider request count and latency. |
 | `bondexchange.rate.fetch.work_unit.count` | fetch kind, outcome | Series/month work units included in actual provider requests. |

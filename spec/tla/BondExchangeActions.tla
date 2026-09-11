@@ -12,7 +12,7 @@ EXTENDS FiniteSets, Naturals, Sequences, TLC
 (* but not yet resolved, so that two orders can contend for one offer.     *)
 (***************************************************************************)
 
-CONSTANTS Principals, Clients, Bonds, SaleOfferIds, Prices, MXN,
+CONSTANTS Principals, Clients, Bonds, SaleOfferIds, Prices, Quantities, MXN,
           IdempotencyKeys, RequestDigests, MaxGrantGeneration
 
 VARIABLES
@@ -36,6 +36,8 @@ authorizationVars ==
     suspensions, reinstatements>>
 
 vars == <<exchangeVars, operationVars, authorizationVars>>
+
+ModelSymmetry == Permutations(Principals)
 
 (***************************************************************************)
 (* Operations, permissions, and roles                                      *)
@@ -68,10 +70,13 @@ Outcomes  == {Succeeded, Rejected}
 
 OfferUnavailable == "offer_unavailable"
 SelfTradeProhibited == "self_trade_prohibited"
-SafeErrorCodes   == {OfferUnavailable, SelfTradeProhibited}
+InsufficientQuantity == "insufficient_quantity"
+SafeErrorCodes   == {OfferUnavailable, SelfTradeProhibited, InsufficientQuantity}
 
 NoResource  == "no_resource"
 NoErrorCode == "no_error_code"
+NoProvenance == "no_provenance"
+AllRemaining == 0
 
 (***************************************************************************)
 (* Bond series validation                                                  *)
@@ -101,6 +106,9 @@ ASSUME /\ Principals # {}
        /\ Prices # {}
        /\ IsFiniteSet(Prices)
        /\ Prices \subseteq (Nat \ {0})
+       /\ Quantities # {}
+       /\ IsFiniteSet(Quantities)
+       /\ Quantities \subseteq (Nat \ {0})
        /\ MXN \in STRING
        /\ IdempotencyKeys # {}
        /\ IsFiniteSet(IdempotencyKeys)
@@ -117,12 +125,15 @@ SaleOffer == [
   seller   : Principals,
   bond     : Bonds,
   price    : Prices,
-  currency : {MXN}
+  currency : {MXN},
+  quantity : Quantities,
+  provenance : SaleOfferIds \cup {NoProvenance}
 ]
 
 Purchase == [
   offer : SaleOfferIds,
-  buyer : Principals
+  buyer : Principals,
+  quantity : Quantities
 ]
 
 Scope == [
@@ -146,7 +157,8 @@ Result == [
 
 PendingBuy == [
   claim : Claim,
-  offer : SaleOfferIds
+  offer : SaleOfferIds,
+  quantity : Quantities \cup {AllRemaining}
 ]
 
 RolePermissionGrant == [
@@ -175,6 +187,16 @@ OfferIdsOf(offers) == {offer.id : offer \in offers}
 PurchasedOfferIds == {purchase.offer : purchase \in purchases}
 
 KnownSaleOfferIds == OfferIdsOf(publishedOffers)
+
+RootOffers == {offer \in publishedOffers : offer.provenance = NoProvenance}
+
+ResidualOffers == {offer \in publishedOffers : offer.provenance # NoProvenance}
+
+ResidualsOf(offerId) ==
+  {offer \in ResidualOffers : offer.provenance = offerId}
+
+PurchasesOf(offerId) ==
+  {purchase \in purchases : purchase.offer = offerId}
 
 \* The active sale book is a view over append-only facts, never a fact.
 ActiveOffers == {offer \in publishedOffers : offer.id \notin PurchasedOfferIds}
@@ -238,7 +260,7 @@ IsAuthorized(principal, client, operation) ==
 (* specification must decide which one acquires it.                        *)
 (***************************************************************************)
 
-CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price) ==
+CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price, quantity) ==
   /\ IsAuthorized(seller, client, CreateOfferOperation)
   /\ ScopeIsUnused(seller, client, CreateOfferOperation, key)
   /\ offerId \notin KnownSaleOfferIds
@@ -249,7 +271,9 @@ CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price) ==
                seller   |-> seller,
                bond     |-> bond,
                price    |-> price,
-               currency |-> MXN]
+               currency |-> MXN,
+               quantity |-> quantity,
+               provenance |-> NoProvenance]
             }
         /\ claims' = claims \cup {claim}
         /\ results' = results \cup {
@@ -261,21 +285,30 @@ CreateSaleOffer(seller, client, key, requestDigest, bond, offerId, price) ==
   /\ UNCHANGED <<purchases, inFlightBuys>>
   /\ UNCHANGED authorizationVars
 
-ClaimBuy(buyer, client, key, requestDigest, offerId) ==
+ClaimBuy(buyer, client, key, requestDigest, offerId, quantity) ==
   /\ IsAuthorized(buyer, client, BuyOperation)
   /\ ScopeIsUnused(buyer, client, BuyOperation, key)
   /\ LET claim == [scope         |-> MakeScope(buyer, client, BuyOperation, key),
                    requestDigest |-> requestDigest]
      IN /\ claims' = claims \cup {claim}
-        /\ inFlightBuys' = inFlightBuys \cup {[claim |-> claim, offer |-> offerId]}
+        /\ inFlightBuys' = inFlightBuys \cup {
+             [claim |-> claim, offer |-> offerId, quantity |-> quantity]
+           }
   /\ UNCHANGED <<publishedOffers, purchases, results>>
   /\ UNCHANGED authorizationVars
 
-CommitBuy(pending) ==
+CommitFullBuy(pending) ==
   /\ pending \in inFlightBuys
-  /\ pending.offer \in TradableOfferIds(pending.claim.scope.principal)
+  /\ \E offer \in TradableOffers(pending.claim.scope.principal) :
+       /\ offer.id = pending.offer
+       /\ \/ pending.quantity = AllRemaining
+          \/ pending.quantity = offer.quantity
   /\ purchases' = purchases \cup {
-       [offer |-> pending.offer, buyer |-> pending.claim.scope.principal]
+       [offer |-> pending.offer,
+        buyer |-> pending.claim.scope.principal,
+        quantity |-> IF pending.quantity = AllRemaining
+                     THEN (CHOOSE offer \in ActiveOffers : offer.id = pending.offer).quantity
+                     ELSE pending.quantity]
      }
   /\ results' = results \cup {
        [claim     |-> pending.claim,
@@ -287,9 +320,66 @@ CommitBuy(pending) ==
   /\ UNCHANGED <<publishedOffers, claims>>
   /\ UNCHANGED authorizationVars
 
+\* This is the required compatible-race witness. It is behaviorally a full
+\* commit, but its additional guard makes TLC coverage fail unless a second
+\* buyer can follow another buyer's partial purchase to the residual and
+\* succeed there.
+CommitContendedResidualBuy(pending) ==
+  /\ pending \in inFlightBuys
+  /\ \E residual \in ResidualOffers :
+       /\ residual.id = pending.offer
+       /\ \E purchase \in purchases :
+            /\ purchase.offer = residual.provenance
+            /\ purchase.buyer # pending.claim.scope.principal
+  /\ CommitFullBuy(pending)
+
+CommitPartialBuy(pending, residualId) ==
+  /\ pending \in inFlightBuys
+  /\ pending.quantity # AllRemaining
+  /\ residualId \notin KnownSaleOfferIds
+  /\ \E offer \in TradableOffers(pending.claim.scope.principal) :
+       /\ offer.id = pending.offer
+       /\ pending.quantity < offer.quantity
+       /\ purchases' = purchases \cup {
+            [offer |-> pending.offer,
+             buyer |-> pending.claim.scope.principal,
+             quantity |-> pending.quantity]
+          }
+       /\ publishedOffers' = publishedOffers \cup {
+            [id |-> residualId,
+             seller |-> offer.seller,
+             bond |-> offer.bond,
+             price |-> offer.price,
+             currency |-> offer.currency,
+             quantity |-> offer.quantity - pending.quantity,
+             provenance |-> offer.id]
+          }
+  /\ results' = results \cup {
+       [claim     |-> pending.claim,
+        outcome   |-> Succeeded,
+        resource  |-> pending.offer,
+        errorCode |-> NoErrorCode]
+     }
+  /\ inFlightBuys' = inFlightBuys \ {pending}
+  /\ UNCHANGED claims
+  /\ UNCHANGED authorizationVars
+
+AdvanceBuyToResidual(pending, residual) ==
+  /\ pending \in inFlightBuys
+  /\ PurchasesOf(pending.offer) # {}
+  /\ residual \in ResidualsOf(pending.offer)
+  /\ inFlightBuys' =
+       (inFlightBuys \ {pending}) \cup {
+         [claim |-> pending.claim, offer |-> residual.id,
+          quantity |-> pending.quantity]
+       }
+  /\ UNCHANGED <<publishedOffers, purchases, claims, results>>
+  /\ UNCHANGED authorizationVars
+
 RejectBuy(pending) ==
   /\ pending \in inFlightBuys
   /\ pending.offer \notin ActiveOfferIds
+  /\ ResidualsOf(pending.offer) = {}
   /\ results' = results \cup {
        [claim     |-> pending.claim,
         outcome   |-> Rejected,
@@ -314,8 +404,29 @@ RejectSelfBuy(pending) ==
   /\ UNCHANGED <<publishedOffers, purchases, claims>>
   /\ UNCHANGED authorizationVars
 
+RejectInsufficientQuantity(pending) ==
+  /\ pending \in inFlightBuys
+  /\ pending.quantity # AllRemaining
+  /\ \E offer \in TradableOffers(pending.claim.scope.principal) :
+       /\ offer.id = pending.offer
+       /\ pending.quantity > offer.quantity
+  /\ results' = results \cup {
+       [claim     |-> pending.claim,
+        outcome   |-> Rejected,
+        resource  |-> NoResource,
+        errorCode |-> InsufficientQuantity]
+     }
+  /\ inFlightBuys' = inFlightBuys \ {pending}
+  /\ UNCHANGED <<publishedOffers, purchases, claims>>
+  /\ UNCHANGED authorizationVars
+
 ResolveBuy(pending) ==
-  CommitBuy(pending) \/ RejectBuy(pending) \/ RejectSelfBuy(pending)
+  \/ CommitFullBuy(pending)
+  \/ (\E residualId \in SaleOfferIds : CommitPartialBuy(pending, residualId))
+  \/ (\E residual \in publishedOffers : AdvanceBuyToResidual(pending, residual))
+  \/ RejectBuy(pending)
+  \/ RejectSelfBuy(pending)
+  \/ RejectInsufficientQuantity(pending)
 
 (***************************************************************************)
 (* Retry actions                                                           *)

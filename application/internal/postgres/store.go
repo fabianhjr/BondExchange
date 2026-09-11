@@ -15,19 +15,62 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var errBuyLineageAdvanced = errors.New("partial-purchase lineage advanced during buy")
+
 const buyQuery = `
-WITH inserted_purchase AS (
-  INSERT INTO bond_exchange.purchases (sale_offer_uuid, buyer_uuid)
-  SELECT sale_offer.uuid_id, buyer.uuid_id
-  FROM bond_exchange.sale_offers AS sale_offer
+WITH RECURSIVE lineage AS (
+  SELECT offer.uuid_id, offer.seller_uuid, offer.bond_uuid,
+         offer.price, offer.currency_code, offer.quantity
+  FROM bond_exchange.sale_offers AS offer
+  WHERE offer.uuid_id = $1
+  UNION ALL
+  SELECT residual.uuid_id, residual.seller_uuid, residual.bond_uuid,
+         residual.price, residual.currency_code, residual.quantity
+  FROM lineage AS parent
+  JOIN bond_exchange.purchases AS purchase
+    ON purchase.sale_offer_uuid = parent.uuid_id
+  JOIN bond_exchange.sale_offers AS residual
+    ON residual.partial_purchase_provenance = purchase.uuid_id
+), candidate AS (
+  SELECT lineage.*
+  FROM lineage
   JOIN bond_exchange.sale_offer_canonical_terms AS canonical
-    ON canonical.sale_offer_uuid = sale_offer.uuid_id
+    ON canonical.sale_offer_uuid = lineage.uuid_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM bond_exchange.purchases AS purchase
+    WHERE purchase.sale_offer_uuid = lineage.uuid_id
+  )
+), inserted_purchase AS (
+  INSERT INTO bond_exchange.purchases (sale_offer_uuid, buyer_uuid, quantity)
+  SELECT candidate.uuid_id, buyer.uuid_id, COALESCE($3, candidate.quantity)
+  FROM candidate
   CROSS JOIN bond_exchange.principals AS buyer
-  WHERE sale_offer.uuid_id = $1
-    AND buyer.uuid_id = $2
-    AND sale_offer.seller_uuid <> buyer.uuid_id
+  WHERE buyer.uuid_id = $2
+    AND candidate.seller_uuid <> buyer.uuid_id
+    AND COALESCE($3, candidate.quantity) <= candidate.quantity
   ON CONFLICT (sale_offer_uuid) DO NOTHING
-  RETURNING uuid_id, sale_offer_uuid, buyer_uuid, bought_at
+  RETURNING uuid_id, sale_offer_uuid, buyer_uuid, quantity, bought_at
+), inserted_residual AS (
+  INSERT INTO bond_exchange.sale_offers
+    (seller_uuid, bond_uuid, price, currency_code, quantity, partial_purchase_provenance)
+  SELECT candidate.seller_uuid, candidate.bond_uuid,
+         candidate.price, candidate.currency_code,
+         candidate.quantity - inserted_purchase.quantity,
+         inserted_purchase.uuid_id
+  FROM inserted_purchase
+  JOIN candidate ON candidate.uuid_id = inserted_purchase.sale_offer_uuid
+  WHERE inserted_purchase.quantity < candidate.quantity
+  RETURNING uuid_id, partial_purchase_provenance
+), inserted_residual_terms AS (
+  INSERT INTO bond_exchange.sale_offer_canonical_terms
+    (sale_offer_uuid, price, currency_code)
+  SELECT inserted_residual.uuid_id, canonical.price, canonical.currency_code
+  FROM inserted_residual
+  JOIN inserted_purchase
+    ON inserted_purchase.uuid_id = inserted_residual.partial_purchase_provenance
+  JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+    ON canonical.sale_offer_uuid = inserted_purchase.sale_offer_uuid
+  RETURNING sale_offer_uuid
 )
 SELECT
   inserted_purchase.uuid_id,
@@ -36,7 +79,9 @@ SELECT
   bond.series,
   canonical.price,
   canonical.currency_code,
+  sale_offer.quantity,
   inserted_purchase.buyer_uuid,
+  inserted_purchase.quantity,
   inserted_purchase.bought_at
 FROM inserted_purchase
 JOIN bond_exchange.sale_offers AS sale_offer
@@ -44,24 +89,44 @@ JOIN bond_exchange.sale_offers AS sale_offer
 JOIN bond_exchange.sale_offer_canonical_terms AS canonical
   ON canonical.sale_offer_uuid = sale_offer.uuid_id
 JOIN bond_exchange.bonds AS bond
-  ON bond.uuid_id = sale_offer.bond_uuid`
+  ON bond.uuid_id = sale_offer.bond_uuid
+LEFT JOIN inserted_residual_terms ON TRUE`
 
 // The buyer is the authenticated principal, and `purchases_buyer_principal_fkey`
-// makes a buyer that is not a principal unrepresentable, so a failed insert can
-// only mean the caller's own offer or an offer that is no longer available.
+// makes a buyer that is not a principal unrepresentable. A failed insert is
+// classified from the active lineage leaf; a leaf still visible in this
+// serializable snapshot means another transaction advanced it and this whole
+// transaction must restart before the residual can be observed.
 const classifyFailedBuyQuery = `
-SELECT EXISTS (
-  SELECT 1
+WITH RECURSIVE lineage AS (
+  SELECT offer.uuid_id, offer.seller_uuid, offer.quantity
   FROM bond_exchange.sale_offers AS offer
-  JOIN bond_exchange.sale_offer_canonical_terms AS canonical
-    ON canonical.sale_offer_uuid = offer.uuid_id
   WHERE offer.uuid_id = $2
-    AND offer.seller_uuid = $1
-    AND NOT EXISTS (
-      SELECT 1 FROM bond_exchange.purchases AS purchase
-      WHERE purchase.sale_offer_uuid = offer.uuid_id
-    )
-)`
+  UNION ALL
+  SELECT residual.uuid_id, residual.seller_uuid, residual.quantity
+  FROM lineage AS parent
+  JOIN bond_exchange.purchases AS purchase
+    ON purchase.sale_offer_uuid = parent.uuid_id
+  JOIN bond_exchange.sale_offers AS residual
+    ON residual.partial_purchase_provenance = purchase.uuid_id
+), candidate AS (
+  SELECT lineage.*
+  FROM lineage
+  JOIN bond_exchange.sale_offer_canonical_terms AS canonical
+    ON canonical.sale_offer_uuid = lineage.uuid_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM bond_exchange.purchases AS purchase
+    WHERE purchase.sale_offer_uuid = lineage.uuid_id
+  )
+)
+SELECT COALESCE((
+  SELECT CASE
+    WHEN seller_uuid = $1 THEN 'self_trade'
+    WHEN $3::integer IS NOT NULL AND quantity < $3::integer THEN 'insufficient_quantity'
+    ELSE 'lineage_advanced'
+  END
+  FROM candidate
+), 'offer_unavailable')`
 
 const purchaseByOfferQuery = `
 SELECT
@@ -71,7 +136,9 @@ SELECT
   bond.series,
   canonical.price,
   canonical.currency_code,
+  sale_offer.quantity,
   purchase.buyer_uuid,
+  purchase.quantity,
   purchase.bought_at
 FROM bond_exchange.purchases AS purchase
 JOIN bond_exchange.sale_offers AS sale_offer
@@ -85,11 +152,11 @@ WHERE purchase.sale_offer_uuid = $1`
 const createSaleOfferQuery = `
 WITH inserted_offer AS (
   INSERT INTO bond_exchange.sale_offers
-    (seller_uuid, bond_uuid, price, currency_code)
-  SELECT $1, bond.uuid_id, $3::numeric, $4
+    (seller_uuid, bond_uuid, price, currency_code, quantity)
+  SELECT $1, bond.uuid_id, $3::numeric, $4, $5
   FROM bond_exchange.bonds AS bond
   WHERE bond.series = $2
-  RETURNING uuid_id, seller_uuid, bond_uuid, price, currency_code
+  RETURNING uuid_id, seller_uuid, bond_uuid, price, currency_code, quantity
 ), inserted_terms AS (
   INSERT INTO bond_exchange.sale_offer_canonical_terms
     (sale_offer_uuid, price, currency_code)
@@ -104,7 +171,7 @@ WITH inserted_offer AS (
   RETURNING sale_offer_uuid
 )
 SELECT inserted_offer.uuid_id, inserted_offer.seller_uuid, bond.series,
-       inserted_offer.price, inserted_offer.currency_code
+       inserted_offer.price, inserted_offer.currency_code, inserted_offer.quantity
 FROM inserted_offer
 JOIN inserted_terms ON inserted_terms.sale_offer_uuid = inserted_offer.uuid_id
 JOIN inserted_submission ON inserted_submission.sale_offer_uuid = inserted_offer.uuid_id
@@ -116,7 +183,8 @@ SELECT
   offer.seller_uuid,
   bond.series,
   canonical.price,
-  canonical.currency_code
+  canonical.currency_code,
+  offer.quantity
 FROM bond_exchange.sale_offers AS offer
 JOIN bond_exchange.sale_offer_canonical_terms AS canonical
   ON canonical.sale_offer_uuid = offer.uuid_id
@@ -219,12 +287,14 @@ func (store *Store) createSaleOfferOnce(
 		string(offer.BondSeries),
 		offer.Price.String(),
 		string(offer.Currency),
+		int32(offer.Quantity),
 	).Scan(
 		&created.ID,
 		&created.SellerID,
 		&created.BondSeries,
 		&priceText,
 		&created.Currency,
+		&created.Quantity,
 	)
 	if err != nil {
 		_ = work.Rollback(ctx)
@@ -287,9 +357,10 @@ func (store *Store) Buy(
 	ctx context.Context,
 	operation exchange.MutationContext,
 	offerID exchange.OfferID,
+	quantity *exchange.Quantity,
 ) (exchange.Purchase, error) {
 	return retryTransaction(ctx, exchange.OperationBuy, func() (exchange.Purchase, error) {
-		return store.buyOnce(ctx, operation, offerID)
+		return store.buyOnce(ctx, operation, offerID, quantity)
 	})
 }
 
@@ -297,6 +368,7 @@ func (store *Store) buyOnce(
 	ctx context.Context,
 	operation exchange.MutationContext,
 	offerID exchange.OfferID,
+	quantity *exchange.Quantity,
 ) (exchange.Purchase, error) {
 	tx, err := store.beginAuthorizedMutation(ctx, operation, exchange.PermissionBuy)
 	if err != nil {
@@ -315,23 +387,28 @@ func (store *Store) buyOnce(
 	}
 
 	var (
-		purchaseID   string
-		offerIDValue string
-		sellerID     string
-		bondSeries   string
-		priceText    string
-		currencyCode string
-		buyerIDValue string
-		boughtAt     time.Time
+		purchaseID            string
+		offerIDValue          string
+		sellerID              string
+		bondSeries            string
+		priceText             string
+		currencyCode          string
+		purchaseOfferQuantity exchange.Quantity
+		buyerIDValue          string
+		purchaseQuantity      exchange.Quantity
+		boughtAt              time.Time
 	)
-	err = tx.QueryRow(ctx, buyQuery, string(offerID), string(operation.Principal.ID)).Scan(
+	quantityValue := databaseQuantity(quantity)
+	err = tx.QueryRow(ctx, buyQuery, string(offerID), string(operation.Principal.ID), quantityValue).Scan(
 		&purchaseID,
 		&offerIDValue,
 		&sellerID,
 		&bondSeries,
 		&priceText,
 		&currencyCode,
+		&purchaseOfferQuantity,
 		&buyerIDValue,
+		&purchaseQuantity,
 		&boughtAt,
 	)
 	if err == nil {
@@ -347,11 +424,13 @@ func (store *Store) buyOnce(
 				BondSeries: exchange.BondSeries(bondSeries),
 				Price:      price,
 				Currency:   exchange.CurrencyCode(currencyCode),
+				Quantity:   purchaseOfferQuantity,
 			},
 			BuyerID:  exchange.PrincipalID(buyerIDValue),
 			BoughtAt: boughtAt,
+			Quantity: purchaseQuantity,
 		}
-		if err := recordOperationSuccess(ctx, tx, claimID, string(offerID)); err != nil {
+		if err := recordOperationSuccess(ctx, tx, claimID, offerIDValue); err != nil {
 			return exchange.Purchase{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -363,18 +442,25 @@ func (store *Store) buyOnce(
 		return exchange.Purchase{}, classifyBuyError(err)
 	}
 
-	var selfTrade bool
+	var classification string
 	if classifyErr := tx.QueryRow(
 		ctx,
 		classifyFailedBuyQuery,
 		string(operation.Principal.ID),
 		string(offerID),
-	).Scan(&selfTrade); classifyErr != nil {
+		quantityValue,
+	).Scan(&classification); classifyErr != nil {
 		return exchange.Purchase{}, classifyErr
 	}
-	err = exchange.ErrOfferUnavailable
-	if selfTrade {
+	switch classification {
+	case "lineage_advanced":
+		return exchange.Purchase{}, errBuyLineageAdvanced
+	case "self_trade":
 		err = exchange.ErrSelfTradeProhibited
+	case "insufficient_quantity":
+		err = exchange.ErrInsufficientQuantity
+	default:
+		err = exchange.ErrOfferUnavailable
 	}
 	code, _ := safeOperationErrorCode(err)
 	if recordErr := recordOperationRejection(ctx, tx, claimID, code); recordErr != nil {
@@ -422,6 +508,7 @@ func (store *Store) StreamActiveOffers(
 			&offer.BondSeries,
 			&priceText,
 			&offer.Currency,
+			&offer.Quantity,
 		); err != nil {
 			return err
 		}
@@ -576,7 +663,8 @@ func (store *Store) replayCreatedOffer(
 	var offer exchange.SaleOffer
 	var priceText string
 	err = store.pool.QueryRow(ctx, `
-SELECT offer.uuid_id, offer.seller_uuid, bond.series, canonical.price, canonical.currency_code
+SELECT offer.uuid_id, offer.seller_uuid, bond.series, canonical.price, canonical.currency_code,
+       offer.quantity
 FROM bond_exchange.sale_offers AS offer
 JOIN bond_exchange.sale_offer_canonical_terms AS canonical
   ON canonical.sale_offer_uuid = offer.uuid_id
@@ -587,6 +675,7 @@ WHERE offer.uuid_id = $1`, resourceID).Scan(
 		&offer.BondSeries,
 		&priceText,
 		&offer.Currency,
+		&offer.Quantity,
 	)
 	if err != nil {
 		return exchange.SaleOffer{}, err
@@ -642,6 +731,8 @@ func safeOperationErrorCode(err error) (string, bool) {
 		return "offer_unavailable", true
 	case errors.Is(err, exchange.ErrSelfTradeProhibited):
 		return "self_trade_prohibited", true
+	case errors.Is(err, exchange.ErrInsufficientQuantity):
+		return "insufficient_quantity", true
 	case errors.Is(err, exchange.ErrOfferAlreadyExists):
 		return "offer_already_exists", true
 	case errors.Is(err, exchange.ErrSellerNotFound):
@@ -661,6 +752,8 @@ func operationErrorFromCode(code string) error {
 		return exchange.ErrOfferUnavailable
 	case "self_trade_prohibited":
 		return exchange.ErrSelfTradeProhibited
+	case "insufficient_quantity":
+		return exchange.ErrInsufficientQuantity
 	case "offer_already_exists":
 		return exchange.ErrOfferAlreadyExists
 	case "seller_not_found":
@@ -683,6 +776,9 @@ func classifyBuyError(err error) error {
 }
 
 func isRetryableTransactionError(err error) bool {
+	if errors.Is(err, errBuyLineageAdvanced) {
+		return true
+	}
 	var databaseError *pgconn.PgError
 	return errors.As(err, &databaseError) && (databaseError.Code == "40001" || databaseError.Code == "40P01")
 }
@@ -705,11 +801,21 @@ func retryTransaction[T any](ctx context.Context, operationName string, operatio
 }
 
 func retryReason(err error) string {
+	if errors.Is(err, errBuyLineageAdvanced) {
+		return "partial_fill_advanced"
+	}
 	var databaseError *pgconn.PgError
 	if errors.As(err, &databaseError) && databaseError.Code == "40P01" {
 		return "deadlock"
 	}
 	return "serialization_failure"
+}
+
+func databaseQuantity(quantity *exchange.Quantity) any {
+	if quantity == nil {
+		return nil
+	}
+	return int32(*quantity)
 }
 
 func waitBeforeTransactionRetry(ctx context.Context, attempt int) error {
@@ -749,7 +855,9 @@ func scanPurchase(row rowScanner) (exchange.Purchase, error) {
 		&purchase.Offer.BondSeries,
 		&priceText,
 		&purchase.Offer.Currency,
+		&purchase.Offer.Quantity,
 		&purchase.BuyerID,
+		&purchase.Quantity,
 		&purchase.BoughtAt,
 	)
 	if err != nil {

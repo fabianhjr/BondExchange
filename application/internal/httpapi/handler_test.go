@@ -161,6 +161,7 @@ func (application *applicationStub) Buy(
 	_ exchange.AccessContext,
 	_ string,
 	offer string,
+	_ *int32,
 ) (exchange.Purchase, error) {
 	if application.panicBuy {
 		panic("test panic")
@@ -177,6 +178,7 @@ func (application *applicationStub) CreateSaleOffer(
 	price string,
 	currency string,
 	quoteID string,
+	_ *int32,
 ) (exchange.SaleOffer, error) {
 	application.createBond = bond
 	application.createPrice = price

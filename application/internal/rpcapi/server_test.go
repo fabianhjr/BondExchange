@@ -44,10 +44,12 @@ type applicationStub struct {
 	series         []exchange.BondSeries
 	seriesErr      error
 	buyOffer       string
+	buyQuantity    *int32
 	createBond     string
 	createPrice    string
 	createCurrency string
 	createQuoteID  string
+	createQuantity *int32
 	quote          offerintake.Quote
 	quoteErr       error
 	bond           string
@@ -61,8 +63,10 @@ func (application *applicationStub) Buy(
 	_ exchange.AccessContext,
 	_ string,
 	offer string,
+	quantity *int32,
 ) (exchange.Purchase, error) {
 	application.buyOffer = offer
+	application.buyQuantity = quantity
 	return application.purchase, application.buyErr
 }
 
@@ -74,11 +78,13 @@ func (application *applicationStub) CreateSaleOffer(
 	price string,
 	currency string,
 	quoteID string,
+	quantity *int32,
 ) (exchange.SaleOffer, error) {
 	application.createBond = bond
 	application.createPrice = price
 	application.createCurrency = currency
 	application.createQuoteID = quoteID
+	application.createQuantity = quantity
 	return application.created, application.createErr
 }
 
@@ -179,6 +185,8 @@ func TestGRPCServer(t *testing.T) {
 	t.Parallel()
 
 	boughtAt := time.Date(2026, time.September, 1, 1, 2, 3, 0, time.UTC)
+	buyQuantity := int32(3)
+	createQuantity := int32(8)
 	application := &applicationStub{
 		purchase: exchange.Purchase{
 			Offer: exchange.SaleOffer{
@@ -187,9 +195,11 @@ func TestGRPCServer(t *testing.T) {
 				BondSeries: "BND1",
 				Price:      decimal.RequireFromString("100.25"),
 				Currency:   "MXN",
+				Quantity:   10,
 			},
 			BuyerID:  testBuyerID,
 			BoughtAt: boughtAt,
+			Quantity: 3,
 		},
 		created: exchange.SaleOffer{
 			ID:         testOtherOfferID,
@@ -197,6 +207,7 @@ func TestGRPCServer(t *testing.T) {
 			BondSeries: "BND1",
 			Price:      decimal.RequireFromString("99.75"),
 			Currency:   "MXN",
+			Quantity:   8,
 		},
 		quote: offerintake.Quote{
 			ID:             "01991a20-0000-7000-8000-000000000099",
@@ -214,12 +225,16 @@ func TestGRPCServer(t *testing.T) {
 
 	purchase, err := client.Buy(context.Background(), &bondexchangev1.BuyRequest{
 		SaleOfferId: string(testOfferID),
+		Quantity:    &buyQuantity,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if application.buyOffer != string(testOfferID) {
 		t.Fatalf("application received offer %q", application.buyOffer)
+	}
+	if application.buyQuantity == nil || *application.buyQuantity != 3 || purchase.GetQuantity() != 3 || purchase.GetOffer().GetQuantity() != 10 {
+		t.Fatalf("buy quantities = application %v, response %v", application.buyQuantity, purchase)
 	}
 	if purchase.GetOffer().GetPrice() != "100.25" {
 		t.Fatalf("purchase = %v", purchase)
@@ -241,6 +256,7 @@ func TestGRPCServer(t *testing.T) {
 		Price:             "99.75",
 		CurrencyCode:      "USD",
 		ConversionQuoteId: quote.GetQuoteId(),
+		Quantity:          &createQuantity,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -249,7 +265,8 @@ func TestGRPCServer(t *testing.T) {
 		t.Fatalf("created offer = %v", created)
 	}
 	if application.createBond != "bnd1" || application.createPrice != "99.75" ||
-		application.createCurrency != "USD" || application.createQuoteID != quote.GetQuoteId() {
+		application.createCurrency != "USD" || application.createQuoteID != quote.GetQuoteId() ||
+		application.createQuantity == nil || *application.createQuantity != 8 || created.GetOffer().GetQuantity() != 8 {
 		t.Fatalf("create input = %#v", application)
 	}
 
@@ -314,8 +331,10 @@ func TestGRPCErrors(t *testing.T) {
 		{name: "unauthenticated", err: exchange.ErrUnauthenticated, code: codes.Unauthenticated},
 		{name: "permission", err: exchange.ErrPermissionDenied, code: codes.PermissionDenied},
 		{name: "invalid", err: exchange.ErrInvalidOfferID, code: codes.InvalidArgument},
+		{name: "invalid quantity", err: exchange.ErrInvalidQuantity, code: codes.InvalidArgument},
 		{name: "missing offer", err: exchange.ErrOfferUnavailable, code: codes.NotFound},
 		{name: "self trade", err: exchange.ErrSelfTradeProhibited, code: codes.FailedPrecondition},
+		{name: "insufficient quantity", err: exchange.ErrInsufficientQuantity, code: codes.FailedPrecondition},
 		{name: "identity inconsistency", err: exchange.ErrSellerNotFound, code: codes.Internal},
 		{name: "idempotency conflict", err: exchange.ErrIdempotencyConflict, code: codes.AlreadyExists},
 		{name: "internal", err: errors.New("boom"), code: codes.Internal},

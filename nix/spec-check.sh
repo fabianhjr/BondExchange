@@ -13,6 +13,7 @@ cd "$specification_directory"
 # either be intractable or too small to reach the interesting interleavings.
 configurations=(
   "BondExchange.cfg"
+  "BondExchangePartialFills.cfg"
   "BondExchangeAuthorization.cfg"
   "BondExchangeLiveness.cfg"
 )

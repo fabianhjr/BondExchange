@@ -60,4 +60,5 @@ type Submission struct {
 	Price      decimal.Decimal
 	Currency   exchange.CurrencyCode
 	QuoteID    QuoteID
+	Quantity   exchange.Quantity
 }

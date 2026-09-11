@@ -70,8 +70,10 @@ at the top level.
   share PostgreSQL as the concurrency and durable-idempotency authority.
 - **Domain facts are append-only.** Principals, bonds, sale offers, binding
   orders, RBAC changes, and operation results are inserted, never mutated.
-  A unique purchase constraint on the offer UUID guarantees one winner per
-  offer race ([ADR-0003](docs/adr/0003-use-append-only-postgresql-facts.md)).
+  A partial purchase creates one immutable residual offer; a unique purchase
+  constraint on each offer-segment UUID serializes concurrent buyers while
+  letting compatible requests advance through the residual lineage
+  ([ADR-0036](docs/adr/0036-represent-partial-fills-as-residual-offer-lineages.md)).
 - **PostgreSQL generates identity.** Every table has a database-generated UUIDv7
   primary key; UUIDv4 is reserved for request and lease nonces
   ([ADR-0017](docs/adr/0017-use-postgresql-18-uuidv7-identities-and-uuidv4-nonces.md)).
