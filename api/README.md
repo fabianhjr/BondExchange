@@ -27,7 +27,7 @@ REST routes:
 | --- | --- |
 | `POST /buys` | Takes a UUIDv7 and optional positive quantity. Omission buys all quantity remaining in that offer's lineage. A principal cannot reserve its own offer. |
 | `POST /sale-offer-quotes` | Takes a USD submission, for example `{"bond_series":"BND2026","price":"99.75","currency_code":"USD"}`. |
-| `POST /sale-offers` | Takes an MXN submission, or the exact USD submission plus the returned `conversion_quote_id`. |
+| `POST /sale-offers` | Takes an MXN submission, or the exact USD submission plus the returned `conversion_quote_id`; optional positive quantity defaults to one. |
 | `GET /active-offers?bond=BND2026` | Streams every active offer tradable by the principal and a terminal count as `application/json-seq`. |
 | `GET /active-bond-series` | Returns every bond series having an offer tradable by the principal. |
 | `GET /healthz` | Readiness. |

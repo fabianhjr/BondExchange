@@ -15,7 +15,7 @@ devenv tasks run integration:test
 
 ## Scenarios
 
-The four Hurl files are intended to be read as API documentation. The runner
+The five Hurl files are intended to be read as API documentation. The runner
 arranges fixtures and binds assertions; every documented request and response
 lives in a scenario file.
 
@@ -23,15 +23,16 @@ lives in a scenario file.
 | --- | --- |
 | [`sale-offer-quote.hurl`](http/sale-offer-quote.hurl) | Pricing a USD submission against a pinned `SF43718` FIX observation, and replaying that quote instead of repricing it. |
 | [`sale-offer-create.hurl`](http/sale-offer-create.hurl) | Accepting the quote, returning only canonical MXN terms, and receiving the PostgreSQL-generated offer UUIDv7. |
-| [`sale-offer-lifecycle.hurl`](http/sale-offer-lifecycle.hurl) | Discovery, listing, buying, idempotent retry, self-trade rejection, and removal from the active book. |
+| [`sale-offer-lifecycle.hurl`](http/sale-offer-lifecycle.hurl) | Discovery, listing, a three-unit partial fill, idempotent retry, following the four-unit residual through the original ID, self-trade rejection, and final removal from the active book. |
 | [`authentication-failures.hurl`](http/authentication-failures.hurl) | Every way an assertion, nonce, or JSON envelope can be refused. |
 | [`offer-intake-failures.hurl`](http/offer-intake-failures.hurl) | Every way a conversion quote can be misused, and an idempotency conflict. |
 
 The lifecycle scenario discovers and lists seeded offers, observes the created
 offer in the active book from the buyer's tradable view, verifies the seller
-cannot discover or reserve its own offer, replays that durable rejection, buys
-from the separate buyer, demonstrates a successful idempotent retry, and shows
-that a new buy can no longer acquire it. The REST offer list is
+cannot discover or reserve its own offer, replays that durable rejection,
+reserves three of seven units from the separate buyer, demonstrates a
+successful idempotent retry, consumes the four-unit residual through the
+original ancestor ID, and shows that a later buy can no longer acquire it. The REST offer list is
 an RFC 7464 JSON Text Sequence, so the runner also parses every frame with
 `jq --seq` and verifies ordering and the terminal count.
 The runner also preloads the dedicated `demo-rate-limited` principal's

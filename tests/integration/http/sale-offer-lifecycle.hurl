@@ -19,7 +19,8 @@ Authorization: Bearer {{self_buy_token}}
 Idempotency-Key: 00000000-0000-4000-8000-000000000004
 Content-Type: application/json
 {
-  "sale_offer_id": "{{offer_id}}"
+  "sale_offer_id": "{{offer_id}}",
+  "quantity": 3
 }
 HTTP 400
 [Asserts]
@@ -31,7 +32,8 @@ Authorization: Bearer {{self_buy_retry_token}}
 Idempotency-Key: 00000000-0000-4000-8000-000000000004
 Content-Type: application/json
 {
-  "sale_offer_id": "{{offer_id}}"
+  "sale_offer_id": "{{offer_id}}",
+  "quantity": 3
 }
 HTTP 400
 [Asserts]
@@ -59,13 +61,15 @@ body contains "01991a20-0000-7000-8000-000000000102"
 body contains "{{offer_id}}"
 body contains "\"offer_count\":\"3\""
 
-# Buy creates a binding reservation, not settlement or custody transfer.
+# A partial Buy creates a binding reservation and an immutable residual, not
+# settlement or custody transfer.
 POST {{base_url}}/buys
 Authorization: Bearer {{buy_token}}
 Idempotency-Key: 00000000-0000-4000-8000-000000000002
 Content-Type: application/json
 {
-  "sale_offer_id": "{{offer_id}}"
+  "sale_offer_id": "{{offer_id}}",
+  "quantity": 3
 }
 HTTP 201
 [Captures]
@@ -73,6 +77,8 @@ bought_at: jsonpath "$.bought_at"
 [Asserts]
 jsonpath "$.offer.id" == "{{offer_id}}"
 jsonpath "$.offer.price" == "1651.125"
+jsonpath "$.offer.quantity" == 7
+jsonpath "$.quantity" == 3
 jsonpath "$.buyer_id" not exists
 jsonpath "$.bought_at" matches /^\d{4}-\d{2}-\d{2}T/
 
@@ -82,20 +88,41 @@ Authorization: Bearer {{buy_retry_token}}
 Idempotency-Key: 00000000-0000-4000-8000-000000000002
 Content-Type: application/json
 {
-  "sale_offer_id": "{{offer_id}}"
+  "sale_offer_id": "{{offer_id}}",
+  "quantity": 3
 }
 HTTP 201
 [Asserts]
 jsonpath "$.offer.id" == "{{offer_id}}"
+jsonpath "$.quantity" == 3
 jsonpath "$.bought_at" == "{{bought_at}}"
 
-# A new operation cannot buy the already reserved offer.
+# A new operation sent to the original ID follows its residual and reserves the
+# four units left there.
 POST {{base_url}}/buys
 Authorization: Bearer {{second_buy_token}}
 Idempotency-Key: 00000000-0000-4000-8000-000000000003
 Content-Type: application/json
 {
-  "sale_offer_id": "{{offer_id}}"
+  "sale_offer_id": "{{offer_id}}",
+  "quantity": 4
+}
+HTTP 201
+[Asserts]
+jsonpath "$.offer.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+jsonpath "$.offer.id" != "{{offer_id}}"
+jsonpath "$.offer.quantity" == 4
+jsonpath "$.quantity" == 4
+
+# Once the residual is fully reserved, another request through the ancestor is
+# unavailable.
+POST {{base_url}}/buys
+Authorization: Bearer {{third_buy_token}}
+Idempotency-Key: 00000000-0000-4000-8000-000000000005
+Content-Type: application/json
+{
+  "sale_offer_id": "{{offer_id}}",
+  "quantity": 3
 }
 HTTP 404
 [Asserts]

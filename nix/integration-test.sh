@@ -35,7 +35,7 @@ if [[ ! "$quote_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[
 fi
 
 create_key='00000000-0000-4000-8000-000000000001'
-create_request="{\"bond_series\":\"demo2026\",\"price\":\"97.125\",\"currency_code\":\"USD\",\"conversion_quote_id\":\"$quote_id\"}"
+create_request="{\"bond_series\":\"demo2026\",\"price\":\"97.125\",\"currency_code\":\"USD\",\"conversion_quote_id\":\"$quote_id\",\"quantity\":7}"
 create_token="$(issue_token demo-seller offers.create "$create_key" "$create_request")"
 
 hurl --jobs 1 --output "$test_root/create.json" \
@@ -49,15 +49,18 @@ if [[ ! "$offer_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[
   exit 1
 fi
 
-buy_request="{\"sale_offer_id\":\"$offer_id\"}"
+buy_request="{\"sale_offer_id\":\"$offer_id\",\"quantity\":3}"
+second_buy_request="{\"sale_offer_id\":\"$offer_id\",\"quantity\":4}"
 buy_key='00000000-0000-4000-8000-000000000002'
 second_buy_key='00000000-0000-4000-8000-000000000003'
 self_buy_key='00000000-0000-4000-8000-000000000004'
+third_buy_key='00000000-0000-4000-8000-000000000005'
 buy_token="$(issue_token demo-buyer purchases.buy "$buy_key" "$buy_request")"
 buy_retry_token="$(issue_token demo-buyer purchases.buy "$buy_key" "$buy_request")"
-second_buy_token="$(issue_token demo-buyer purchases.buy "$second_buy_key" "$buy_request")"
+second_buy_token="$(issue_token demo-buyer purchases.buy "$second_buy_key" "$second_buy_request")"
 self_buy_token="$(issue_token demo-seller purchases.buy "$self_buy_key" "$buy_request")"
 self_buy_retry_token="$(issue_token demo-seller purchases.buy "$self_buy_key" "$buy_request")"
+third_buy_token="$(issue_token demo-buyer purchases.buy "$third_buy_key" "$buy_request")"
 seller_series_token="$(issue_token demo-seller bond-series.list - '{}')"
 seller_offers_token="$(issue_token demo-seller offers.list - '{"bond":"DEMO2026"}')"
 
@@ -73,6 +76,7 @@ hurl --test --jobs 1 --no-output \
   --secret "second_buy_token=$second_buy_token" \
   --secret "self_buy_token=$self_buy_token" \
   --secret "self_buy_retry_token=$self_buy_retry_token" \
+  --secret "third_buy_token=$third_buy_token" \
   "$scenarios/sale-offer-lifecycle.hurl"
 
 curl --fail --silent \

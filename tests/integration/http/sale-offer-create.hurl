@@ -8,7 +8,8 @@ Content-Type: application/json
   "bond_series": "demo2026",
   "price": "97.125",
   "currency_code": "USD",
-  "conversion_quote_id": "{{quote_id}}"
+  "conversion_quote_id": "{{quote_id}}",
+  "quantity": 7
 }
 HTTP 201
 [Asserts]
@@ -16,4 +17,5 @@ jsonpath "$.offer.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a
 jsonpath "$.offer.bond_series" == "DEMO2026"
 jsonpath "$.offer.price" == "1651.125"
 jsonpath "$.offer.currency_code" == "MXN"
+jsonpath "$.offer.quantity" == 7
 jsonpath "$.offer.seller_id" not exists
