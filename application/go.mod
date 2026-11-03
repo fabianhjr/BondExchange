@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/exaring/otelpgx v0.11.1
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/jackc/pgx/v5 v5.10.0
